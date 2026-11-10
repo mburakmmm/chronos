@@ -1,0 +1,272 @@
+from clock import Clock
+from errors import DuplicateJobError, InvalidJobError, JobNotFoundError, SchedulerStateError
+from executor import ExecutionOutcome, InlineExecutor
+from job import Job, JobContext
+from registry import JobRegistry
+from time import MAX_MS, UtcInstant
+
+STATE_CREATED: str = "created"
+STATE_RUNNING: str = "running"
+STATE_STOPPING: str = "stopping"
+STATE_STOPPED: str = "stopped"
+STATE_FAILED: str = "failed"
+
+class ScheduledEntry:
+    job_id: str
+    generation: int
+    has_next: bool
+    next_utc_ms: int
+    completed: bool
+
+    def __init__(self, job_id: str, generation: int, has_next: bool, next_utc_ms: int) -> None:
+        self.job_id = job_id
+        self.generation = generation
+        self.has_next = has_next
+        self.next_utc_ms = next_utc_ms
+        self.completed = not has_next
+
+    def set_next(self, has_next: bool, next_utc_ms: int) -> None:
+
+        self.has_next = has_next
+        self.next_utc_ms = next_utc_ms
+        self.completed = not has_next
+
+class DueItem:
+    job_id: str
+    generation: int
+    scheduled_utc_ms: int
+
+    def __init__(self, job_id: str, generation: int, scheduled_utc_ms: int) -> None:
+        self.job_id = job_id
+        self.generation = generation
+        self.scheduled_utc_ms = scheduled_utc_ms
+
+class TickResult:
+    succeeded: int
+    failed: int
+    skipped: int
+
+    def __init__(self) -> None:
+        self.succeeded = 0
+        self.failed = 0
+        self.skipped = 0
+
+    def dispatched(self) -> int:
+
+        return self.succeeded + self.failed
+
+class Scheduler:
+    clock: Clock
+    registry: JobRegistry
+    executor: InlineExecutor
+    schedules: list[ScheduledEntry]
+    state_value: str
+    generation_counter: int
+    has_active_job: bool
+    active_job_id: str
+
+    def __init__(self, clock: Clock, max_jobs: int) -> None:
+        self.clock = clock
+        self.registry = JobRegistry(max_jobs)
+        self.executor = InlineExecutor()
+        self.schedules = []
+        self.state_value = STATE_CREATED
+        self.generation_counter = 0
+        self.has_active_job = False
+        self.active_job_id = ""
+
+    def state(self) -> str:
+
+        return self.state_value
+
+    def start(self) -> None:
+
+        if self.state_value == STATE_RUNNING:
+            return
+        if self.state_value != STATE_CREATED:
+            raise SchedulerStateError(self.state_value, "cannot start")
+        self.state_value = STATE_RUNNING
+
+    def stop(self) -> None:
+
+        if self.state_value == STATE_STOPPED or self.state_value == STATE_STOPPING:
+            return
+        if self.state_value == STATE_CREATED:
+            self.state_value = STATE_STOPPED
+            return
+        if self.state_value != STATE_RUNNING:
+            raise SchedulerStateError(self.state_value, "cannot stop")
+        if self.has_active_job:
+            self.state_value = STATE_STOPPING
+        else:
+            self.state_value = STATE_STOPPED
+
+    def add(self, target: Job) -> None:
+
+        self._require_mutable()
+        if target.trigger_kind() != "utc":
+            raise InvalidJobError("manual scheduler currently supports UTC jobs only")
+        if self.has_active_job and self.active_job_id == target.job_id:
+            raise DuplicateJobError(target.job_id)
+        if self.registry.contains(target.job_id):
+            raise DuplicateJobError(target.job_id)
+        if self.generation_counter == MAX_MS:
+            raise InvalidJobError("scheduler generation limit exceeded")
+
+        next_run: UtcInstant | None = target.next_utc_at_or_after(self.clock.now_utc())
+        self.registry.add(target)
+        self.generation_counter += 1
+        has_next: bool = next_run is not None
+        next_utc_ms: int = 0
+        if next_run is not None:
+            next_utc_ms = next_run.epoch_ms
+        self.schedules.append(ScheduledEntry(target.job_id, self.generation_counter, has_next, next_utc_ms))
+
+    def remove(self, job_id: str) -> Job:
+
+        self._require_mutable()
+        index: int = self._find_schedule(job_id)
+        if index < 0:
+            raise JobNotFoundError(job_id)
+        removed: Job = self.registry.remove(job_id)
+        self.schedules.pop(index)
+        return removed
+
+    def enable(self, job_id: str) -> None:
+
+        self._require_mutable()
+        target: Job = self.registry.get(job_id)
+        index: int = self._required_schedule(job_id)
+        now: UtcInstant = self.clock.now_utc()
+        next_run: UtcInstant | None = target.next_utc_at_or_after(now)
+        target.set_enabled(True, now)
+        self._set_entry_next(self.schedules[index], next_run)
+
+    def disable(self, job_id: str) -> None:
+
+        self._require_mutable()
+        self.registry.disable(job_id, self.clock.now_utc())
+
+    def list_jobs(self) -> list[Job]:
+
+        return self.registry.list_jobs()
+
+    def next_run_utc(self, job_id: str) -> UtcInstant | None:
+
+        index: int = self._required_schedule(job_id)
+        entry: ScheduledEntry = self.schedules[index]
+        if not entry.has_next:
+            return None
+        return UtcInstant(entry.next_utc_ms)
+
+    def is_completed(self, job_id: str) -> bool:
+
+        index: int = self._required_schedule(job_id)
+        return self.schedules[index].completed
+
+    def tick(self) -> TickResult:
+
+        if self.state_value != STATE_RUNNING:
+            raise SchedulerStateError(self.state_value, "tick requires running state")
+
+        now: UtcInstant = self.clock.now_utc()
+        due_items: list[DueItem] = self._collect_due(now)
+        result: TickResult = TickResult()
+
+        for due in due_items:
+            if self.state_value != STATE_RUNNING:
+                break
+
+            schedule_index: int = self._find_schedule(due.job_id)
+            if schedule_index < 0:
+                result.skipped += 1
+                continue
+            scheduled: ScheduledEntry = self.schedules[schedule_index]
+            if scheduled.generation != due.generation or not scheduled.has_next or scheduled.next_utc_ms != due.scheduled_utc_ms:
+                result.skipped += 1
+                continue
+
+            selected: Job | None = self.registry.find(due.job_id)
+            if selected is None or not selected.enabled:
+                result.skipped += 1
+                continue
+
+            self.has_active_job = True
+            self.active_job_id = due.job_id
+            context: JobContext = JobContext(due.job_id, "utc", due.scheduled_utc_ms, 1)
+            outcome: ExecutionOutcome = self.executor.execute(selected, context)
+            self.has_active_job = False
+            self.active_job_id = ""
+
+            completed_at: UtcInstant = self.clock.now_utc()
+            try:
+                if outcome.succeeded:
+                    selected.record_success(completed_at)
+                    result.succeeded += 1
+                else:
+                    selected.record_failure(outcome.error_category, completed_at)
+                    result.failed += 1
+            except Exception:
+                self.state_value = STATE_FAILED
+                raise SchedulerStateError(self.state_value, "failed to record execution outcome")
+
+            if self.state_value == STATE_STOPPING:
+                self.state_value = STATE_STOPPED
+                break
+
+            current_index: int = self._find_schedule(due.job_id)
+            current_job: Job | None = self.registry.find(due.job_id)
+            if current_index >= 0 and current_job is not None and current_job.enabled:
+                current: ScheduledEntry = self.schedules[current_index]
+                if current.generation == due.generation:
+                    reference_ms: int = due.scheduled_utc_ms
+                    if completed_at.epoch_ms > reference_ms:
+                        reference_ms = completed_at.epoch_ms
+                    self._set_entry_next(current, current_job.next_utc_after(UtcInstant(reference_ms)))
+
+        return result
+
+    def _collect_due(self, now: UtcInstant) -> list[DueItem]:
+
+        result: list[DueItem] = []
+        for scheduled in self.schedules:
+            if scheduled.has_next and scheduled.next_utc_ms <= now.epoch_ms:
+                target: Job | None = self.registry.find(scheduled.job_id)
+                if target is not None and target.enabled:
+                    candidate: DueItem = DueItem(scheduled.job_id, scheduled.generation, scheduled.next_utc_ms)
+                    insertion_index: int = len(result)
+                    for i in range(len(result)):
+                        existing: DueItem = result[i]
+                        earlier_time: bool = candidate.scheduled_utc_ms < existing.scheduled_utc_ms
+                        same_time_earlier_id: bool = candidate.scheduled_utc_ms == existing.scheduled_utc_ms and candidate.job_id < existing.job_id
+                        if earlier_time or same_time_earlier_id:
+                            insertion_index = i
+                            break
+                    result.insert(insertion_index, candidate)
+        return result
+
+    def _find_schedule(self, job_id: str) -> int:
+
+        for i in range(len(self.schedules)):
+            if self.schedules[i].job_id == job_id:
+                return i
+        return -1
+
+    def _set_entry_next(self, entry: ScheduledEntry, next_run: UtcInstant | None) -> None:
+
+        if next_run is None:
+            entry.set_next(False, 0)
+        else:
+            entry.set_next(True, next_run.epoch_ms)
+
+    def _required_schedule(self, job_id: str) -> int:
+
+        index: int = self._find_schedule(job_id)
+        if index < 0:
+            raise JobNotFoundError(job_id)
+        return index
+
+    def _require_mutable(self) -> None:
+
+        if self.state_value != STATE_CREATED and self.state_value != STATE_RUNNING:
+            raise SchedulerStateError(self.state_value, "job mutation is not allowed")

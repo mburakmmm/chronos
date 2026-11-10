@@ -1,0 +1,18 @@
+from job import Job, JobContext
+
+class ExecutionOutcome:
+    succeeded: bool
+    error_category: str
+
+    def __init__(self, succeeded: bool, error_category: str) -> None:
+        self.succeeded = succeeded
+        self.error_category = error_category
+
+class InlineExecutor:
+    def execute(self, target: Job, context: JobContext) -> ExecutionOutcome:
+
+        try:
+            target.run(context)
+        except Exception:
+            return ExecutionOutcome(False, "handler-error")
+        return ExecutionOutcome(True, "")

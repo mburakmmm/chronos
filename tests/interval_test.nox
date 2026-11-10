@@ -52,6 +52,11 @@ nox.test.assert_true(exact is not None, "fixed-rate next after exact occurrence"
 if exact is not None:
     nox.test.assert_eq_int(exact.as_ms(), 175, "fixed-rate exact boundary excluded")
 
+inclusive_exact: MonotonicInstant | None = rate.next_fire_at_or_after(MonotonicInstant(150))
+nox.test.assert_true(inclusive_exact is not None, "fixed-rate inclusive occurrence exists")
+if inclusive_exact is not None:
+    nox.test.assert_eq_int(inclusive_exact.as_ms(), 150, "fixed-rate registration boundary included")
+
 far: MonotonicInstant | None = rate.next_fire_after(MonotonicInstant(1000100))
 nox.test.assert_true(far is not None, "fixed-rate far reference")
 if far is not None:

@@ -50,4 +50,4 @@ Until then, manual tick is the supported portable lifecycle.
 
 ## Reentrancy
 
-User callbacks are invoked without holding scheduler collection mutation state. Add/remove requests made during a callback are staged in a bounded context and applied deterministically after the callback returns. See `docs/architecture.md` ADR-002.
+User callbacks are invoked without iterating the live registry/schedule collections. A tick dispatches from a finite due snapshot and revalidates generation and current registry state before every callback. Additions become eligible on the next tick; removals invalidate pending snapshot entries. Active ID reuse is rejected until the inline callback returns. See `docs/architecture.md` ADR-002.

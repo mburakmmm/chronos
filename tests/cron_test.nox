@@ -1,7 +1,7 @@
 import nox.strings
 import nox.test
 import nox.time
-from cron import CronSchedule, parse
+from cron import CronSchedule, CronTrigger, parse
 from errors import CronParseError, CronSearchLimitError, TimeRangeError
 from time import UtcInstant
 
@@ -107,6 +107,10 @@ nox.test.assert_eq_str(next_text("0 0 29 2 *", epoch(2023, 3, 1, 0, 0)), "2024-0
 nox.test.assert_eq_str(next_text("0 0 * * 0", epoch(2024, 1, 6, 0, 0)), "2024-01-07 00:00:00", "Sunday zero")
 nox.test.assert_eq_str(next_text("0 0 1 1 *", epoch(2024, 12, 31, 23, 59)), "2025-01-01 00:00:00", "year rollover")
 nox.test.assert_eq_str(next_text("0 0 31 * *", epoch(2024, 4, 1, 0, 0)), "2024-05-31 00:00:00", "month length skip")
+epoch_schedule: CronSchedule = parse("0 0 * * 4")
+nox.test.assert_eq_int(epoch_schedule.next_fire_at_or_after(UtcInstant(0)).epoch_ms, 0, "inclusive cron supports Unix epoch boundary")
+epoch_adapter: CronTrigger = CronTrigger(epoch_schedule)
+nox.test.assert_true(epoch_adapter.next_fire_at_or_after(UtcInstant(0)) is not None, "cron trigger exposes inclusive registration contract")
 nox.test.assert_true(reports_unsatisfiable(), "unsatisfiable schedule reports search limit")
 nox.test.assert_true(reports_timestamp_overflow(), "minute boundary overflow rejected")
 nox.test.assert_true(successive_results_increase(), "successive cron results increase")

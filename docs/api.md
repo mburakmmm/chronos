@@ -25,6 +25,7 @@ Callers should branch on the exception class, not message text.
 - `InvalidJobError`: invalid job configuration, bounded resource violation, or registry invariant failure.
 - `DuplicateJobError`: an ID is already present; `job_id` contains the rejected ID.
 - `JobNotFoundError`: an operation targeted an absent ID; `job_id` contains that ID.
+- `SchedulerStateError`: an operation is invalid for the scheduler lifecycle; `state` contains the observed state.
 
 ## `chronos.time`
 
@@ -91,13 +92,13 @@ Calendar and elapsed-time triggers use distinct protocols so UTC and monotonic v
 
 ### `UtcTrigger`
 
-Structural protocol with `next_fire_after(reference: UtcInstant) -> UtcInstant | None`.
+Structural protocol with strictly-exclusive `next_fire_after(reference)` and inclusive `next_fire_at_or_after(reference)` operations.
 
 ### `MonotonicTrigger`
 
-Structural protocol with `next_fire_after(reference: MonotonicInstant) -> MonotonicInstant | None`.
+Structural protocol with the same exclusive/inclusive pair for `MonotonicInstant`.
 
-Both contracts are strictly exclusive: every returned value is greater than the reference.
+Schedulers use the inclusive operation only to preserve an occurrence exactly at registration/enable time. Recurrence uses the exclusive operation so every next result advances.
 
 ### `OnceTrigger(target)`
 
@@ -129,6 +130,8 @@ If a syntactically valid expression has no match within eight calendar years or 
 
 `CronField.values` contains normalized sorted unique values. `CronField.wildcard` is true only for a field written exactly as `*`; enumerating a full range remains restricted syntax for DOM/DOW semantics.
 
+`next_fire_at_or_after(reference)` preserves a matching exact minute boundary. `matches(candidate)` reports whether a minute-aligned UTC instant matches the schedule.
+
 ### `CronTrigger(schedule)`
 
 Adapts an already parsed `CronSchedule` to the optional-return `UtcTrigger` protocol without parsing the expression again. Search-limit and time-range failures remain explicit exceptions.
@@ -152,7 +155,9 @@ Handlers have the verified type `(JobContext) -> None`. A context carries `job_i
 
 - `trigger_kind() -> str`
 - `next_utc_after(reference) -> UtcInstant | None`
+- `next_utc_at_or_after(reference) -> UtcInstant | None`
 - `next_monotonic_after(reference) -> MonotonicInstant | None`
+- `next_monotonic_at_or_after(reference) -> MonotonicInstant | None`
 
 Calling the wrong-domain method raises `InvalidJobError`.
 
@@ -169,7 +174,32 @@ Creates an application-owned in-memory registry. `max_jobs` must be between 1 an
 - `remove(job_id) -> Job` removes future registry ownership and returns the job.
 - `contains(job_id)` and `count()` inspect registry state.
 
-Removal does not interrupt a handler. The standalone registry permits ID reuse after removal; the future scheduler must defer reuse while an execution with that ID remains active.
+Removal does not interrupt a handler. The standalone registry permits ID reuse after removal; the manual scheduler rejects reuse while an execution with that ID remains active.
+
+## `chronos.executor`
+
+### `InlineExecutor`
+
+`execute(job, context) -> ExecutionOutcome` invokes the trusted handler synchronously. Handler exceptions are contained and represented only by `succeeded = false` and the safe category `handler-error`. The executor does not calculate triggers, record history, spawn work, or claim timeout enforcement.
+
+## `chronos.scheduler`
+
+### `Scheduler(clock, max_jobs)`
+
+Creates an application-owned manual scheduler with injected `Clock`, bounded `JobRegistry`, and inline executor.
+
+- `state() -> str`
+- `start()` / `stop()`
+- `add(job) -> None` / `remove(job_id) -> Job`
+- `enable(job_id)` / `disable(job_id)`
+- `list_jobs() -> list[Job]`
+- `next_run_utc(job_id) -> UtcInstant | None`
+- `is_completed(job_id) -> bool`
+- `tick() -> TickResult`
+
+`TickResult` exposes `succeeded`, `failed`, `skipped`, and `dispatched()`.
+
+The current scheduler slice accepts UTC jobs only. Exact registration boundaries are inclusive; recurring calculation is exclusive. Due work is ordered by planned UTC time then lexical job ID. See `docs/scheduler.md` for lifecycle, mutation, shutdown, and provisional missed-run behavior.
 
 ## Consumer imports
 
@@ -178,8 +208,10 @@ For a dependency aliased as `chronos`:
 ```nox-fragment
 from chronos.clock import Clock, FakeClock
 from chronos.cron import CronSchedule, CronTrigger, parse
+from chronos.executor import InlineExecutor
 from chronos.job import Job, JobContext, JobMetadata, make_monotonic_job, make_utc_job
 from chronos.registry import JobRegistry
+from chronos.scheduler import Scheduler, TickResult
 from chronos.system_clock import SystemClock
 from chronos.time import Duration, MonotonicInstant, UtcInstant
 from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger

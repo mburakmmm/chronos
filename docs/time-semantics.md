@@ -54,6 +54,8 @@ Chronos therefore performs explicit precondition checks before timestamp or dura
 
 Negative durations are rejected. Zero-duration behavior is defined per trigger and cannot create a recurring trigger that repeatedly returns the same timestamp.
 
+Trigger recurrence uses strictly-after calculation. Initial registration and re-enable use an explicit at-or-after calculation so an occurrence exactly equal to the observed clock is not discarded. These are separate operations; the scheduler never feeds an inclusive result back as recurrence without advancing.
+
 ## Precision and exclusions
 
 - Absolute and interval triggers preserve millisecond precision.

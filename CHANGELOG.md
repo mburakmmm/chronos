@@ -30,9 +30,14 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Bounded typed jobs with explicit UTC/monotonic trigger domains, typed handler contexts, defensive metadata copies, and latest-outcome retention.
 - Deterministic application-owned `JobRegistry` with duplicate/missing errors, bounded capacity, lexical listing, enable/disable, and future-schedule removal.
 - LLVM/QBE job and registry tests plus a compiling registry example.
+- Inclusive registration-time trigger operations that preserve exact one-shot, delay, fixed-rate, and cron boundaries while keeping recurrence strictly exclusive.
+- Application-owned UTC manual-tick scheduler with explicit lifecycle, deterministic ordering, completed one-shot retention, parsed cron integration, and bounded due snapshots.
+- Inline synchronous executor that contains handler failures without retaining exception payloads or stopping unrelated jobs.
+- Reentrant add/remove support through generation-checked snapshot dispatch, including active job-ID reuse protection and stop-during-callback behavior.
+- Deterministic scheduler/executor tests and a compiling manual polling example for LLVM and QBE.
 
 ### Limitations
 
-- No manual-tick scheduler or execution API exists yet.
+- The current manual scheduler accepts UTC jobs only; monotonic delay/fixed-rate and completion-based fixed-delay integration remain incomplete.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.

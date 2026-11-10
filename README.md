@@ -4,7 +4,7 @@ Chronos is a Nox-native scheduling library under development. Its planned MVP co
 
 ## Current status
 
-Chronos Phase 1 (`0.1.0`) implementation is complete but unreleased. Phase 2 (`0.2.0`) is in development. The typed job model and deterministic bounded registry are implemented; the manual-tick scheduler and executor are not implemented yet.
+Chronos Phase 1 (`0.1.0`) implementation is complete but unreleased. Phase 2 (`0.2.0`) is in development. Typed jobs, the bounded registry, inline executor, and application-driven UTC manual-tick scheduler are implemented. Monotonic interval/fixed-delay scheduler integration, events, and execution policies remain in progress.
 
 The currently verified development compiler is Nox 2.1.0 on macOS arm64. This is not yet a support commitment; backend and platform claims will be added only after executable tests.
 
@@ -23,11 +23,11 @@ The currently verified development compiler is Nox 2.1.0 on macOS arm64. This is
 
 Nox package modules intended for consumers will live at the repository root. This allows a dependency aliased as `chronos` to expose modules such as `chronos.cron`. The decision and its compiling proof are recorded in [docs/architecture.md](docs/architecture.md).
 
-The current manifest entry demonstrates job registration:
+The current manifest entry demonstrates manual polling with an injected fake clock:
 
 ```sh
-noxc check examples/registry.nox
-noxc run examples/registry.nox
+noxc check examples/poll.nox
+noxc run examples/poll.nox
 ```
 
 Clock, trigger, and UTC cron calculations are demonstrated separately:
@@ -36,13 +36,14 @@ Clock, trigger, and UTC cron calculations are demonstrated separately:
 noxc run examples/clock.nox
 noxc run examples/triggers.nox
 noxc run examples/cron_utc.nox
+noxc run examples/registry.nox
 ```
 
 ## Development
 
 Work is tracked release by release in [todo.md](todo.md). Binding engineering rules are in [AGENTS.md](AGENTS.md).
 
-The experimental public surface is listed in [docs/api.md](docs/api.md). Job and registry contracts are in [docs/jobs.md](docs/jobs.md). Time and timezone decisions are documented in [docs/time-semantics.md](docs/time-semantics.md) and [docs/timezones.md](docs/timezones.md). The UTC cron contract is in [docs/cron.md](docs/cron.md), the portable execution boundary is in [docs/concurrency.md](docs/concurrency.md), and the threat model is in [docs/security.md](docs/security.md). Executed platform evidence is tracked in [docs/capabilities.md](docs/capabilities.md).
+The experimental public surface is listed in [docs/api.md](docs/api.md). Job and registry contracts are in [docs/jobs.md](docs/jobs.md), and manual scheduler behavior is in [docs/scheduler.md](docs/scheduler.md). Time and timezone decisions are documented in [docs/time-semantics.md](docs/time-semantics.md) and [docs/timezones.md](docs/timezones.md). The UTC cron contract is in [docs/cron.md](docs/cron.md), the portable execution boundary is in [docs/concurrency.md](docs/concurrency.md), and the threat model is in [docs/security.md](docs/security.md). Executed platform evidence is tracked in [docs/capabilities.md](docs/capabilities.md).
 
 Do not infer support from a planned item. A feature is supported only after its implementation, deterministic tests, compiling example, and documentation are complete.
 

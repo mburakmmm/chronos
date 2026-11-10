@@ -44,3 +44,10 @@ class JobNotFoundError(ChronosError):
     def __init__(self, job_id: str) -> None:
         super().__init__("job '" + job_id + "' is not registered")
         self.job_id = job_id
+
+class SchedulerStateError(ChronosError):
+    state: str
+
+    def __init__(self, state: str, message: str) -> None:
+        super().__init__("scheduler state '" + state + "': " + message)
+        self.state = state

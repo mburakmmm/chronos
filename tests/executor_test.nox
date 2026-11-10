@@ -1,0 +1,27 @@
+import nox.test
+from executor import ExecutionOutcome, InlineExecutor
+from job import Job, JobContext, make_utc_job
+from time import UtcInstant
+from trigger import OnceTrigger
+
+class HandlerFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+def succeeds(context: JobContext) -> None:
+    pass
+
+def fails(context: JobContext) -> None:
+    raise HandlerFailure("secret payload must not escape")
+
+runner: InlineExecutor = InlineExecutor()
+context: JobContext = JobContext("sample", "utc", 1000, 1)
+successful: Job = make_utc_job("sample", "Sample", OnceTrigger(UtcInstant(1000)), succeeds, True, UtcInstant(0), [])
+success: ExecutionOutcome = runner.execute(successful, context)
+nox.test.assert_true(success.succeeded, "inline success returned")
+nox.test.assert_eq_str(success.error_category, "", "success has no error category")
+
+failing: Job = make_utc_job("sample", "Sample", OnceTrigger(UtcInstant(1000)), fails, True, UtcInstant(0), [])
+failure: ExecutionOutcome = runner.execute(failing, context)
+nox.test.assert_true(not failure.succeeded, "handler failure captured")
+nox.test.assert_eq_str(failure.error_category, "handler-error", "failure category is bounded and safe")

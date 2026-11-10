@@ -10,6 +10,8 @@ if future is not None:
 
 nox.test.assert_true(once.next_fire_after(UtcInstant(1000)) is None, "one-shot exact boundary excluded")
 nox.test.assert_true(once.next_fire_after(UtcInstant(1001)) is None, "one-shot past exhausted")
+inclusive_once: UtcInstant | None = once.next_fire_at_or_after(UtcInstant(1000))
+nox.test.assert_true(inclusive_once is not None, "one-shot exact registration boundary included")
 
 delay: DelayTrigger = DelayTrigger(MonotonicInstant(500), Duration(250))
 due: MonotonicInstant | None = delay.next_fire_after(MonotonicInstant(749))
@@ -19,6 +21,8 @@ if due is not None:
 
 nox.test.assert_true(delay.next_fire_after(MonotonicInstant(750)) is None, "delay exact boundary excluded")
 nox.test.assert_true(delay.next_fire_after(MonotonicInstant(800)) is None, "elapsed delay exhausted")
+inclusive_delay: MonotonicInstant | None = delay.next_fire_at_or_after(MonotonicInstant(750))
+nox.test.assert_true(inclusive_delay is not None, "delay exact registration boundary included")
 
 zero_delay: DelayTrigger = DelayTrigger(MonotonicInstant(20), Duration(0))
 nox.test.assert_true(zero_delay.next_fire_after(MonotonicInstant(20)) is None, "zero delay does not repeat")

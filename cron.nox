@@ -105,6 +105,19 @@ class CronSchedule:
 
         raise CronSearchLimitError("cron transition limit exceeded")
 
+    def next_fire_at_or_after(self, reference: UtcInstant) -> UtcInstant:
+
+        if self.matches(reference):
+            return reference
+        return self.next_fire_after(reference)
+
+    def matches(self, candidate: UtcInstant) -> bool:
+
+        if candidate.epoch_ms % MINUTE_MS != 0:
+            return False
+        current: nox.time.DateTime = nox.time.from_epoch_ms(candidate.epoch_ms)
+        return self.month.contains(current.month) and self._day_matches(current, candidate.epoch_ms) and self.hour.contains(current.hour) and self.minute.contains(current.minute)
+
     def _day_matches(self, current: nox.time.DateTime, epoch_ms: int) -> bool:
 
         dom_matches: bool = self.day_of_month.contains(current.day)
@@ -126,6 +139,10 @@ class CronTrigger:
     def next_fire_after(self, reference: UtcInstant) -> UtcInstant | None:
 
         return self.schedule.next_fire_after(reference)
+
+    def next_fire_at_or_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        return self.schedule.next_fire_at_or_after(reference)
 
 def parse(expression: str) -> CronSchedule:
     byte_count: int = nox.strings.byte_len(expression)

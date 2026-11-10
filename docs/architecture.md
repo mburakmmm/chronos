@@ -98,14 +98,14 @@ The LLVM and QBE handler proof verified that Nox 2.1.0 can:
 - use `T | None` and custom exception subclasses;
 - catch a handler error and continue operating on unrelated state.
 
-The proof also used a handler context with bounded pending-add and pending-remove collections. A handler records requested scheduler mutations in the context; the scheduler applies them only after user code returns and its internal iteration/dispatch state is no longer borrowed.
+The proof also demonstrated a handler context that can collect deferred mutations. The implemented manual scheduler uses an equivalent snapshot-and-revalidation design that is smaller for the verified inline executor: it never iterates live collections while invoking a callback, and it revalidates a generation token before each later dispatch.
 
 This establishes the initial reentrancy rule:
 
-1. The scheduler never holds an internal collection mutation guard while invoking user code.
-2. Add/remove requests made during dispatch are staged.
-3. Staged operations are applied in deterministic order after the callback boundary.
-4. The production queue must be bounded and define conflict behavior before Phase 2.
+1. The scheduler never iterates or holds an internal collection mutation guard while invoking user code.
+2. Each tick uses a bounded due snapshot ordered by planned UTC time and job ID.
+3. Additions made during dispatch wait until the next tick; removals invalidate later snapshot items.
+4. Active job ID reuse is rejected until the callback boundary has returned.
 
 The scheduler and registry are application-owned instances. They are not mutable module-level singletons. This avoids Nox's documented worker-local module state behavior and keeps lifecycle explicit.
 
@@ -129,6 +129,8 @@ next_fire_after(reference_utc_ms) -> timestamp | none
 ```
 
 A returned timestamp must be greater than the reference. A recurring trigger returning the same timestamp is a contract violation.
+
+Each UTC/monotonic trigger also exposes `next_fire_at_or_after` for initial registration or re-enable. The inclusive operation may return the reference itself; the scheduler never uses it for recurrence.
 
 ### One-shot registration
 
@@ -176,4 +178,4 @@ The shared `Job` type owns identity, handler, enabled state, bounded metadata, a
 
 The registry is a bounded, lexically ordered list rather than a mutable process-global map. This gives deterministic inspection order, avoids hidden lifecycle, and keeps correctness independent of hash iteration. A future benchmark may justify an additional index without changing the public contract.
 
-Registry removal means future schedule removal only. It does not cancel an executing handler. The standalone registry allows reuse after removal; scheduler integration must retain an active ID until an in-flight execution has finished.
+Registry removal means future schedule removal only. It does not cancel an executing handler. The standalone registry allows reuse after removal; the manual scheduler retains an active ID guard until the in-flight callback has finished.

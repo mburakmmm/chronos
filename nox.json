@@ -1,6 +1,6 @@
 {
   "name": "chronos",
   "version": "0.2.0-dev",
-  "entry": "examples/registry.nox",
+  "entry": "examples/poll.nox",
   "requires": []
 }

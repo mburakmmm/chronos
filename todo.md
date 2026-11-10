@@ -214,31 +214,31 @@ Amaç: Portable, uygulama tarafından sahiplenilen, senkron ve deterministik sch
 - [x] Duplicate ID için açık error davranışı uygula; implicit replace yapma.
 - [x] Add, inspect/list, enable, disable, remove ve pending schedule cancellation işlemlerini uygula.
 - [x] Running job cancellation ile pending schedule cancellation ayrımını API ve belgede açık tut.
-- [ ] Job ID reuse davranışını, aktif run varken ambiguity yaratmayacak şekilde tanımla.
+- [x] Job ID reuse davranışını, aktif run varken ambiguity yaratmayacak şekilde tanımla.
 - [x] Job result/error summary retention sınırını uygula.
 - [x] Executable closure/function pointer serialization yapma.
 
 ## Scheduler ve executor
 
-- [ ] `created`, `running`, `stopping`, `stopped`, `failed` lifecycle state'lerini uygula.
-- [ ] Start/stop idempotence veya state error davranışını test et.
-- [ ] External `now`/clock injection kullanan manual `tick`/`poll` akışını uygula.
-- [ ] Scheduling decision ile handler execution katmanlarını ayır.
-- [ ] İlk executor olarak inline/synchronous adapter uygula.
-- [ ] Kullanıcı handler'ı çalışırken scheduler iç koleksiyon lock/mutation state'ini elde tutma.
-- [ ] Callback içinden add/remove yapılmasını safe deferred mutation veya doğrulanmış eşdeğer modelle destekle.
-- [ ] Handler exception'ını job failure olarak kaydet; diğer job'ların dispatch'ini bozma.
-- [ ] Aynı due timestamp için deterministik dispatch sırası uygula.
-- [ ] Scheduler shutdown tamamlandıktan sonra yeni callback başlatılmadığını test et.
+- [x] `created`, `running`, `stopping`, `stopped`, `failed` lifecycle state'lerini uygula.
+- [x] Start/stop idempotence veya state error davranışını test et.
+- [x] External `now`/clock injection kullanan manual `tick`/`poll` akışını uygula.
+- [x] Scheduling decision ile handler execution katmanlarını ayır.
+- [x] İlk executor olarak inline/synchronous adapter uygula.
+- [x] Kullanıcı handler'ı çalışırken scheduler iç koleksiyon lock/mutation state'ini elde tutma.
+- [x] Callback içinden add/remove yapılmasını generation-checked due snapshot ile destekle.
+- [x] Handler exception'ını job failure olarak kaydet; diğer job'ların dispatch'ini bozma.
+- [x] Aynı due timestamp için deterministik dispatch sırası uygula.
+- [x] Scheduler shutdown tamamlandıktan sonra yeni callback başlatılmadığını test et.
 
 ## Trigger integration
 
-- [ ] One-shot lifecycle: scheduled, due, completed ve retention davranışını uygula.
+- [x] One-shot lifecycle: scheduled, due, completed ve retention davranışını uygula.
 - [ ] Fixed-rate recurring işlerin anchor'ını execution süresinden bağımsız koru.
 - [ ] Fixed-delay next run'ını gerçek completion timestamp'ından üret.
 - [ ] Fixed-delay failure/cancellation sonrası davranışı açıkça tanımla ve test et.
-- [ ] UTC cron trigger'ını parser sonucunu tekrar parse etmeden scheduler'a bağla.
-- [ ] Exact-boundary ve clock jump senaryolarını fake clock ile test et.
+- [x] UTC cron trigger'ını parser sonucunu tekrar parse etmeden scheduler'a bağla.
+- [x] Exact-boundary ve clock jump senaryolarını fake clock ile test et.
 
 ## Temel events ve gözlemlenebilirlik
 
@@ -250,12 +250,12 @@ Amaç: Portable, uygulama tarafından sahiplenilen, senkron ve deterministik sch
 
 ## Test, örnek ve belge
 
-- [ ] Registry, lifecycle, tick, cancellation, ordering, exception recovery ve reentrancy testlerini ekle.
-- [ ] Çok sayıda aynı anda due job senaryosunu test et.
+- [x] Registry, lifecycle, tick, cancellation, ordering, exception recovery ve reentrancy testlerini ekle.
+- [x] Çok sayıda aynı anda due job senaryosunu test et.
 - [ ] `once`, `every`, `cron_utc`, `cancel` ve `poll` örneklerini gerçek API ile derle/çalıştır.
-- [ ] `docs/scheduler.md`, `docs/jobs.md`, `docs/concurrency.md` ve `docs/api.md` güncelle.
-- [ ] README'de manual tick'i portable/default mod olarak göster.
-- [ ] In-memory ve process restart'ta job kaybı sınırını görünür biçimde yaz.
+- [x] `docs/scheduler.md`, `docs/jobs.md`, `docs/concurrency.md` ve `docs/api.md` güncelle.
+- [x] README'de manual tick'i portable/default mod olarak göster.
+- [x] In-memory ve process restart'ta job kaybı sınırını görünür biçimde yaz.
 
 ### `0.2.0` çıkış kapısı
 
@@ -495,4 +495,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 2 / `0.2.0`: explicit lifecycle, inline executor ve FakeClock ile dışarıdan sürülen manual `tick` scheduler dilimini uygulamak. `0.1.0` yayınlanmış değildir; yalnızca implementation gate tamamlanmıştır.
+Phase 2 / `0.2.0`: monotonic fixed-rate/delay ile completion-anchored fixed-delay job state'ini manual scheduler'a bağlamak; ardından temel lifecycle event'lerine geçmek.

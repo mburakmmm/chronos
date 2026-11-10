@@ -1,0 +1,20 @@
+from clock import FakeClock
+from job import Job, JobContext, make_utc_job
+from scheduler import Scheduler, TickResult
+from time import Duration, UtcInstant
+from trigger import OnceTrigger
+
+def notify(context: JobContext) -> None:
+    print("ran", context.job_id, "scheduled", context.scheduled_time_ms)
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 100)
+target: Job = make_utc_job("notify.once", "One notification", OnceTrigger(UtcInstant(1250)), notify, True, UtcInstant(1000), [])
+engine.add(target)
+engine.start()
+
+print("before", engine.tick().dispatched())
+source_clock.advance(Duration(250))
+due: TickResult = engine.tick()
+print("after", due.succeeded, engine.is_completed("notify.once"))
+engine.stop()

@@ -38,7 +38,7 @@ This document separates documentation findings from executable verification. A d
 | `nox.time.instant_now()` | Monotonic interval clock | verified on LLVM/QBE |
 | `Instant.elapsed_ms()` | Monotonic elapsed milliseconds | verified on LLVM/QBE |
 | `nox.time.boot_ms()` | Monotonic counter including device suspend | difference measurement verified on LLVM/QBE; physical suspend not emulated |
-| `nox.time.sleep_ms(ms)` | Blocks the current thread | call verified on LLVM/QBE; concurrent scheduler impact POC pending |
+| `nox.time.sleep_ms(ms)` | Blocks the current thread | call and backend-specific scheduler impact verified on LLVM/QBE |
 | Time zones | Not provided by documented `nox.time` | missing; UTC-only MVP |
 | Clock capability | Clock-reading APIs unavailable in freestanding profile | pure calendar accepted and clock APIs rejected with `CapabilityNotGranted` |
 
@@ -223,4 +223,22 @@ noxc run --backend llvm examples/registry.nox       -> exit 0
 noxc run --backend qbe examples/registry.nox        -> exit 0
 noxc check --profile freestanding job.nox           -> exit 0
 noxc check --profile freestanding registry.nox      -> exit 0
+```
+
+## Phase 2 UTC manual-scheduler evidence
+
+The first manual scheduler slice verifies injected clocks, inclusive registration boundaries, forward/backward UTC clock jumps, strictly-exclusive recurrence, explicit lifecycle, deterministic due ordering, completed one-shot retention, parsed cron attachment, inline exception containment, reentrant add/remove, stale generation rejection, active ID reuse protection, stop-during-callback behavior, and a bounded 100-jobs-due-at-once case.
+
+A helper that accepted `list[DueItem]` and called `items.insert(...)` passed type checking but reached Nox 2.1.0's unsupported codegen path. Moving insertion into `_collect_due`, where the list is a local owned value rather than a function parameter, compiled and ran on LLVM and QBE. Chronos does not mutate list parameters in this scheduler path.
+
+```text
+noxc test tests                                      -> 11 passed, 0 failed
+noxc run --backend llvm tests/executor_test.nox     -> exit 0
+noxc run --backend qbe tests/executor_test.nox      -> exit 0
+noxc run --backend llvm tests/scheduler_test.nox    -> exit 0
+noxc run --backend qbe tests/scheduler_test.nox     -> exit 0
+noxc run --backend llvm examples/poll.nox           -> exit 0
+noxc run --backend qbe examples/poll.nox            -> exit 0
+noxc check --profile freestanding executor.nox      -> exit 0
+noxc check --profile freestanding scheduler.nox     -> exit 0
 ```

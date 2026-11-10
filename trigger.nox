@@ -5,8 +5,16 @@ protocol UtcTrigger:
     def next_fire_after(self, reference: UtcInstant) -> UtcInstant | None:
         pass
 
+    def next_fire_at_or_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        pass
+
 protocol MonotonicTrigger:
     def next_fire_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+        pass
+
+    def next_fire_at_or_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+
         pass
 
 class OnceTrigger:
@@ -21,6 +29,12 @@ class OnceTrigger:
             return self.target
         return None
 
+    def next_fire_at_or_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        if self.target.epoch_ms >= reference.epoch_ms:
+            return self.target
+        return None
+
 class DelayTrigger:
     deadline: MonotonicInstant
 
@@ -30,6 +44,12 @@ class DelayTrigger:
     def next_fire_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
 
         if self.deadline.value_ms > reference.value_ms:
+            return self.deadline
+        return None
+
+    def next_fire_at_or_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+
+        if self.deadline.value_ms >= reference.value_ms:
             return self.deadline
         return None
 
@@ -52,6 +72,20 @@ class FixedRateTrigger:
             raise TimeRangeError("fixed-rate occurrence index overflow")
         next_index: int = completed_intervals + 1
         offset: Duration = multiply_duration(self.interval, next_index)
+        return add_monotonic_duration(self.anchor, offset)
+
+    def next_fire_at_or_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+
+        if reference.value_ms <= self.anchor.value_ms:
+            return self.anchor
+
+        elapsed: Duration = elapsed_between(self.anchor, reference)
+        occurrence_index: int = elapsed.value_ms // self.interval.value_ms
+        if elapsed.value_ms % self.interval.value_ms != 0:
+            if occurrence_index == MAX_MS:
+                raise TimeRangeError("fixed-rate occurrence index overflow")
+            occurrence_index += 1
+        offset: Duration = multiply_duration(self.interval, occurrence_index)
         return add_monotonic_duration(self.anchor, offset)
 
 class FixedDelay:

@@ -46,6 +46,6 @@ Raw exception text is intentionally not retained.
 
 The registry supports add, find/get, list, enable, disable, remove, contains, and count. Missing required targets raise `JobNotFoundError`.
 
-`remove` cancels only future ownership of the schedule. It does not claim to interrupt a handler that is already running. The standalone registry allows the ID to be added again after removal because it does not execute jobs. The scheduler layer must retain an active-run guard and reject or defer ID reuse until the prior run has completed.
+`remove` cancels only future ownership of the schedule. It does not claim to interrupt a handler that is already running. The standalone registry allows the ID to be added again after removal because it does not execute jobs. The manual scheduler adds an active-run guard and rejects reuse until the inline callback has returned.
 
 All registry state is process memory. Process exit loses it. No persistence, cross-process visibility, thread safety, or exactly-once behavior is implied.

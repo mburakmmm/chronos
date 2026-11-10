@@ -85,7 +85,15 @@ class Job:
 
         raise InvalidJobError("monotonic job has no UTC trigger")
 
+    def next_utc_at_or_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        raise InvalidJobError("monotonic job has no UTC trigger")
+
     def next_monotonic_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+
+        raise InvalidJobError("UTC job has no monotonic trigger")
+
+    def next_monotonic_at_or_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
 
         raise InvalidJobError("UTC job has no monotonic trigger")
 
@@ -133,6 +141,10 @@ class UtcJob(Job):
 
         return self.trigger.next_fire_after(reference)
 
+    def next_utc_at_or_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        return self.trigger.next_fire_at_or_after(reference)
+
 class MonotonicJob(Job):
     trigger: MonotonicTrigger
 
@@ -143,6 +155,10 @@ class MonotonicJob(Job):
     def next_monotonic_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
 
         return self.trigger.next_fire_after(reference)
+
+    def next_monotonic_at_or_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+
+        return self.trigger.next_fire_at_or_after(reference)
 
 def make_utc_job(job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
     return UtcJob(job_id, name, trigger, handler, enabled, created_at, metadata)

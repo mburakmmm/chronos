@@ -1,0 +1,243 @@
+import nox.test
+import nox.time
+from clock import FakeClock
+from cron import CronTrigger, parse
+from errors import DuplicateJobError, InvalidJobError, SchedulerStateError
+from job import Job, JobContext, make_monotonic_job, make_utc_job
+from scheduler import STATE_CREATED, STATE_RUNNING, STATE_STOPPED, Scheduler, TickResult
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger, OnceTrigger
+
+class Recorder:
+    events: list[str]
+    blocked_reuse: bool
+
+    def __init__(self) -> None:
+        self.events = []
+        self.blocked_reuse = False
+
+class HandlerFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+def record_handler(recorder: Recorder, label: str) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.events.append(label)
+
+    return handle
+
+def failing_handler(recorder: Recorder, label: str) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.events.append(label)
+        raise HandlerFailure("handler failed")
+
+    return handle
+
+def once_job(job_id: str, target_ms: int, handler: (JobContext) -> None, enabled: bool = True) -> Job:
+    return make_utc_job(job_id, "Job " + job_id, OnceTrigger(UtcInstant(target_ms)), handler, enabled, UtcInstant(0), [])
+
+def tick_rejected(engine: Scheduler, expected_state: str) -> bool:
+    try:
+        engine.tick()
+    except SchedulerStateError as error:
+        return error.state == expected_state
+    return False
+
+def start_rejected(engine: Scheduler, expected_state: str) -> bool:
+    try:
+        engine.start()
+    except SchedulerStateError as error:
+        return error.state == expected_state
+    return False
+
+def monotonic_job_rejected() -> bool:
+    engine: Scheduler = Scheduler(FakeClock(1000, 500), 4)
+    target: Job = make_monotonic_job("rate", "Rate", FixedRateTrigger(MonotonicInstant(500), Duration(10)), record_handler(Recorder(), "rate"), True, UtcInstant(0), [])
+    try:
+        engine.add(target)
+    except InvalidJobError:
+        return True
+    return False
+
+def remove_handler(engine: Scheduler, recorder: Recorder, remove_id: str) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.events.append(context.job_id)
+        engine.remove(remove_id)
+
+    return handle
+
+def add_handler(engine: Scheduler, recorder: Recorder, target: Job) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.events.append(context.job_id)
+        engine.add(target)
+
+    return handle
+
+def replace_handler(engine: Scheduler, recorder: Recorder, target: Job) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.events.append(context.job_id)
+        engine.remove(target.job_id)
+        engine.add(target)
+
+    return handle
+
+def stop_handler(engine: Scheduler, recorder: Recorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.events.append(context.job_id)
+        engine.stop()
+
+    return handle
+
+def remove_and_reuse_handler(engine: Scheduler, recorder: Recorder, replacement: Job) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        engine.remove(context.job_id)
+        try:
+            engine.add(replacement)
+        except DuplicateJobError:
+            recorder.blocked_reuse = True
+
+    return handle
+
+clock: FakeClock = FakeClock(1000, 500)
+recorder: Recorder = Recorder()
+engine: Scheduler = Scheduler(clock, 10)
+nox.test.assert_eq_str(engine.state(), STATE_CREATED, "scheduler starts created")
+engine.add(once_job("exact", 1000, record_handler(recorder, "exact")))
+next_run: UtcInstant | None = engine.next_run_utc("exact")
+nox.test.assert_true(next_run is not None, "exact registration has pending run")
+if next_run is not None:
+    nox.test.assert_eq_int(next_run.epoch_ms, 1000, "exact registration boundary preserved")
+nox.test.assert_true(tick_rejected(engine, STATE_CREATED), "tick rejected before start")
+engine.start()
+engine.start()
+nox.test.assert_eq_str(engine.state(), STATE_RUNNING, "start is idempotent while running")
+first: TickResult = engine.tick()
+nox.test.assert_eq_int(first.succeeded, 1, "exact one-shot succeeds")
+nox.test.assert_eq_int(len(recorder.events), 1, "exact one-shot invoked once")
+nox.test.assert_true(engine.is_completed("exact"), "one-shot retained as completed")
+nox.test.assert_eq_int(engine.tick().dispatched(), 0, "completed one-shot never repeats")
+engine.stop()
+engine.stop()
+nox.test.assert_eq_str(engine.state(), STATE_STOPPED, "stop is idempotent")
+nox.test.assert_true(tick_rejected(engine, STATE_STOPPED), "tick rejected after stop")
+nox.test.assert_true(start_rejected(engine, STATE_STOPPED), "stopped scheduler cannot restart")
+
+future_clock: FakeClock = FakeClock(1000, 500)
+future_recorder: Recorder = Recorder()
+future_engine: Scheduler = Scheduler(future_clock, 4)
+future_engine.add(once_job("future", 1100, record_handler(future_recorder, "future")))
+future_engine.add(once_job("past", 900, record_handler(future_recorder, "past")))
+future_engine.start()
+nox.test.assert_eq_int(future_engine.tick().dispatched(), 0, "future job waits and past job skips")
+nox.test.assert_true(future_engine.is_completed("past"), "past one-shot has no pending run")
+future_clock.advance(Duration(100))
+nox.test.assert_eq_int(future_engine.tick().succeeded, 1, "future job runs when due")
+nox.test.assert_eq_str(future_recorder.events[0], "future", "past job did not run")
+
+order_clock: FakeClock = FakeClock(2000, 700)
+order_recorder: Recorder = Recorder()
+order_engine: Scheduler = Scheduler(order_clock, 4)
+order_engine.add(once_job("b-good", 2000, record_handler(order_recorder, "b-good")))
+order_engine.add(once_job("a-fail", 2000, failing_handler(order_recorder, "a-fail")))
+order_engine.start()
+ordered: TickResult = order_engine.tick()
+nox.test.assert_eq_int(ordered.failed, 1, "handler failure recorded")
+nox.test.assert_eq_int(ordered.succeeded, 1, "unrelated job survives failure")
+nox.test.assert_eq_str(order_recorder.events[0], "a-fail", "same-time jobs use lexical ID order")
+nox.test.assert_eq_str(order_recorder.events[1], "b-good", "dispatch continues after failure")
+nox.test.assert_eq_str(order_engine.state(), STATE_RUNNING, "handler failure preserves scheduler state")
+
+remove_clock: FakeClock = FakeClock(3000, 800)
+remove_recorder: Recorder = Recorder()
+remove_engine: Scheduler = Scheduler(remove_clock, 4)
+remove_engine.add(once_job("z-victim", 3000, record_handler(remove_recorder, "z-victim")))
+remove_engine.add(once_job("a-remove", 3000, remove_handler(remove_engine, remove_recorder, "z-victim")))
+remove_engine.start()
+removed_tick: TickResult = remove_engine.tick()
+nox.test.assert_eq_int(removed_tick.succeeded, 1, "removing handler succeeds")
+nox.test.assert_eq_int(removed_tick.skipped, 1, "removed snapshot item skipped")
+nox.test.assert_eq_int(len(remove_recorder.events), 1, "removed callback never starts")
+
+replace_clock: FakeClock = FakeClock(3500, 850)
+replace_recorder: Recorder = Recorder()
+replace_engine: Scheduler = Scheduler(replace_clock, 4)
+replacement_due: Job = once_job("z-replaced", 3500, record_handler(replace_recorder, "replacement"))
+replace_engine.add(once_job("z-replaced", 3500, record_handler(replace_recorder, "stale")))
+replace_engine.add(once_job("a-replace", 3500, replace_handler(replace_engine, replace_recorder, replacement_due)))
+replace_engine.start()
+replaced_tick: TickResult = replace_engine.tick()
+nox.test.assert_eq_int(replaced_tick.succeeded, 1, "replacement mutation callback succeeds")
+nox.test.assert_eq_int(replaced_tick.skipped, 1, "old generation due item skipped")
+nox.test.assert_eq_int(len(replace_recorder.events), 1, "replacement waits for next tick")
+nox.test.assert_eq_int(replace_engine.tick().succeeded, 1, "new generation runs on next tick")
+nox.test.assert_eq_str(replace_recorder.events[1], "replacement", "new generation handler selected")
+
+add_clock: FakeClock = FakeClock(4000, 900)
+add_recorder: Recorder = Recorder()
+add_engine: Scheduler = Scheduler(add_clock, 4)
+added_job: Job = once_job("new", 4000, record_handler(add_recorder, "new"))
+add_engine.add(once_job("a-add", 4000, add_handler(add_engine, add_recorder, added_job)))
+add_engine.start()
+nox.test.assert_eq_int(add_engine.tick().succeeded, 1, "add callback succeeds")
+nox.test.assert_eq_int(len(add_recorder.events), 1, "new exact job deferred to next tick")
+nox.test.assert_eq_int(add_engine.tick().succeeded, 1, "new exact job runs on next tick")
+nox.test.assert_eq_str(add_recorder.events[1], "new", "added callback eventually runs")
+
+reuse_clock: FakeClock = FakeClock(5000, 1000)
+reuse_recorder: Recorder = Recorder()
+reuse_engine: Scheduler = Scheduler(reuse_clock, 4)
+replacement: Job = once_job("same", 5000, record_handler(reuse_recorder, "replacement"))
+reuse_engine.add(once_job("same", 5000, remove_and_reuse_handler(reuse_engine, reuse_recorder, replacement)))
+reuse_engine.start()
+reuse_engine.tick()
+nox.test.assert_true(reuse_recorder.blocked_reuse, "active job ID reuse blocked")
+reuse_engine.add(replacement)
+nox.test.assert_true(reuse_engine.next_run_utc("same") is not None, "ID reusable after active callback returns")
+
+stop_clock: FakeClock = FakeClock(6000, 1100)
+stop_recorder: Recorder = Recorder()
+stop_engine: Scheduler = Scheduler(stop_clock, 4)
+stop_engine.add(once_job("z-after", 6000, record_handler(stop_recorder, "z-after")))
+stop_engine.add(once_job("a-stop", 6000, stop_handler(stop_engine, stop_recorder)))
+stop_engine.start()
+stopped_tick: TickResult = stop_engine.tick()
+nox.test.assert_eq_int(stopped_tick.succeeded, 1, "active callback finishes during stop")
+nox.test.assert_eq_int(len(stop_recorder.events), 1, "no callback starts after stop request")
+nox.test.assert_eq_str(stop_engine.state(), STATE_STOPPED, "stop finalizes after active callback")
+
+cron_ms: int = nox.time.DateTime(2024, 1, 1, 9, 0, 0).to_epoch_ms()
+cron_clock: FakeClock = FakeClock(cron_ms, 1200)
+cron_recorder: Recorder = Recorder()
+cron_engine: Scheduler = Scheduler(cron_clock, 4)
+cron_engine.add(make_utc_job("weekday", "Weekday", CronTrigger(parse("0 9 * * 1-5")), record_handler(cron_recorder, "weekday"), True, UtcInstant(0), []))
+cron_engine.start()
+nox.test.assert_eq_int(cron_engine.tick().succeeded, 1, "parsed cron exact boundary runs without reparsing")
+
+jump_recorder: Recorder = Recorder()
+forward_clock: FakeClock = FakeClock(9000, 1300)
+forward_engine: Scheduler = Scheduler(forward_clock, 4)
+forward_engine.add(once_job("forward", 10000, record_handler(jump_recorder, "forward")))
+forward_engine.start()
+forward_clock.jump_utc_ms(2000)
+nox.test.assert_eq_int(forward_engine.tick().succeeded, 1, "forward wall jump makes UTC deadline due")
+
+backward_clock: FakeClock = FakeClock(9000, 1400)
+backward_engine: Scheduler = Scheduler(backward_clock, 4)
+backward_engine.add(once_job("backward", 10000, record_handler(jump_recorder, "backward")))
+backward_engine.start()
+backward_clock.jump_utc_ms(-500)
+nox.test.assert_eq_int(backward_engine.tick().dispatched(), 0, "backward wall jump does not run UTC deadline early")
+backward_clock.jump_utc_ms(1500)
+nox.test.assert_eq_int(backward_engine.tick().succeeded, 1, "UTC deadline runs after wall time reaches target")
+
+many_clock: FakeClock = FakeClock(12000, 1500)
+many_recorder: Recorder = Recorder()
+many_engine: Scheduler = Scheduler(many_clock, 128)
+for i in range(100):
+    many_id: str = "many-" + str(i)
+    many_engine.add(once_job(many_id, 12000, record_handler(many_recorder, many_id)))
+many_engine.start()
+nox.test.assert_eq_int(many_engine.tick().succeeded, 100, "one tick dispatches 100 bounded due jobs")
+nox.test.assert_eq_int(len(many_recorder.events), 100, "all bounded due callbacks invoked once")
+
+nox.test.assert_true(monotonic_job_rejected(), "current UTC scheduler slice rejects monotonic jobs explicitly")
