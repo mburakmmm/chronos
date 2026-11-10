@@ -165,3 +165,15 @@ UTC timestamps use epoch milliseconds from `0` through signed `int64` maximum. D
 The planned error taxonomy uses a `ChronosError` base with specific configuration, time-range, cron-parse/search, duplicate-job, missing-job, scheduler-state, and handler-execution categories. Exact public names will be contract-tested when implemented; callers must branch on error class, not message text.
 
 Cron grammar and search bounds are defined in `docs/cron.md`. Security/resource limits are defined in `docs/security.md`.
+
+## ADR-005: bounded job registry and trigger-domain subtypes
+
+Decision date: 2026-11-10
+
+Status: accepted for Phase 2
+
+The shared `Job` type owns identity, handler, enabled state, bounded metadata, and bounded latest-outcome state. `UtcJob` and `MonotonicJob` store their respective structural trigger protocols and override domain-specific next-fire methods. Public factories construct these subtypes; the base constructor is not a supported consumer API.
+
+The registry is a bounded, lexically ordered list rather than a mutable process-global map. This gives deterministic inspection order, avoids hidden lifecycle, and keeps correctness independent of hash iteration. A future benchmark may justify an additional index without changing the public contract.
+
+Registry removal means future schedule removal only. It does not cancel an executing handler. The standalone registry allows reuse after removal; scheduler integration must retain an active ID until an in-flight execution has finished.

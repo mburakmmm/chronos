@@ -26,9 +26,13 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Bounded five-field UTC cron parser with normalized fields and precise parse errors.
 - Calendar-jumping, strictly-after cron next-fire calculation with DOM/DOW OR semantics, leap-year handling, search horizon, and transition cap.
 - Regression coverage for pre-epoch rejection and syntax-based DOM/DOW wildcard behavior.
+- Pure `CronTrigger` adapter for attaching a parsed cron schedule without reparsing.
+- Bounded typed jobs with explicit UTC/monotonic trigger domains, typed handler contexts, defensive metadata copies, and latest-outcome retention.
+- Deterministic application-owned `JobRegistry` with duplicate/missing errors, bounded capacity, lexical listing, enable/disable, and future-schedule removal.
+- LLVM/QBE job and registry tests plus a compiling registry example.
 
 ### Limitations
 
-- No public scheduling API exists yet.
+- No manual-tick scheduler or execution API exists yet.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.

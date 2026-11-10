@@ -1,0 +1,15 @@
+from job import Job, JobContext, JobMetadata, make_utc_job
+from registry import JobRegistry
+from time import UtcInstant
+from trigger import OnceTrigger
+
+def send_report(context: JobContext) -> None:
+    print("run", context.job_id, context.attempt)
+
+store: JobRegistry = JobRegistry(100)
+report: Job = make_utc_job("report.daily", "Daily report", OnceTrigger(UtcInstant(2000)), send_report, True, UtcInstant(1000), [JobMetadata("owner", "finance")])
+store.add(report)
+
+print(store.count(), store.get("report.daily").name)
+store.disable("report.daily", UtcInstant(1100))
+print(store.get("report.daily").enabled)

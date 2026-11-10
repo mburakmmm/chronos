@@ -1,0 +1,107 @@
+from errors import DuplicateJobError, InvalidJobError, JobNotFoundError
+from job import Job
+from time import UtcInstant
+
+MAX_REGISTRY_JOBS: int = 10000
+
+class RegisteredJob:
+    job_id: str
+    job: Job
+
+    def __init__(self, job: Job) -> None:
+        self.job_id = job.job_id
+        self.job = job
+
+class JobRegistry:
+    entries: list[RegisteredJob]
+    max_jobs: int
+
+    def __init__(self, max_jobs: int) -> None:
+        if max_jobs < 1 or max_jobs > MAX_REGISTRY_JOBS:
+            raise InvalidJobError("registry max jobs must be between 1 and 10000")
+        self.entries = []
+        self.max_jobs = max_jobs
+
+    def count(self) -> int:
+
+        return len(self.entries)
+
+    def contains(self, job_id: str) -> bool:
+
+        index: int = self._find_index(job_id)
+        if index < 0:
+            return False
+        self._assert_entry_intact(index)
+        return True
+
+    def add(self, job: Job) -> None:
+
+        self._validate_entries()
+        if self.contains(job.job_id):
+            raise DuplicateJobError(job.job_id)
+        if len(self.entries) >= self.max_jobs:
+            raise InvalidJobError("job registry capacity exceeded")
+
+        insertion_index: int = len(self.entries)
+        for i in range(len(self.entries)):
+            if job.job_id < self.entries[i].job_id:
+                insertion_index = i
+                break
+        self.entries.insert(insertion_index, RegisteredJob(job))
+
+    def find(self, job_id: str) -> Job | None:
+
+        index: int = self._find_index(job_id)
+        if index < 0:
+            return None
+        self._assert_entry_intact(index)
+        return self.entries[index].job
+
+    def get(self, job_id: str) -> Job:
+
+        found: Job | None = self.find(job_id)
+        if found is None:
+            raise JobNotFoundError(job_id)
+        return found
+
+    def list_jobs(self) -> list[Job]:
+
+        result: list[Job] = []
+        for i in range(len(self.entries)):
+            self._assert_entry_intact(i)
+            result.append(self.entries[i].job)
+        return result
+
+    def enable(self, job_id: str, updated_at: UtcInstant) -> None:
+
+        self.get(job_id).set_enabled(True, updated_at)
+
+    def disable(self, job_id: str, updated_at: UtcInstant) -> None:
+
+        self.get(job_id).set_enabled(False, updated_at)
+
+    def remove(self, job_id: str) -> Job:
+
+        index: int = self._find_index(job_id)
+        if index < 0:
+            raise JobNotFoundError(job_id)
+        self._assert_entry_intact(index)
+        removed: RegisteredJob = self.entries.pop(index)
+        return removed.job
+
+    def _find_index(self, job_id: str) -> int:
+
+        for i in range(len(self.entries)):
+            if self.entries[i].job_id == job_id:
+                return i
+        return -1
+
+    def _assert_entry_intact(self, index: int) -> None:
+
+        if self.entries[index].job.job_id != self.entries[index].job_id:
+            raise InvalidJobError("registered job ID was mutated")
+
+    def _validate_entries(self) -> None:
+
+        for i in range(len(self.entries)):
+            self._assert_entry_intact(i)

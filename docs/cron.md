@@ -1,6 +1,6 @@
 # UTC cron dialect
 
-Status: Phase 0 grammar contract; implementation begins in Chronos 0.1.0.
+Status: implemented experimental Chronos 0.1 API.
 
 ## Time basis and fields
 
@@ -56,6 +56,8 @@ The implementation advances calendar fields rather than performing an unbounded 
 Malformed input raises `CronParseError`. A valid expression that has no match inside the search bounds raises `CronSearchLimitError`; timestamp overflow raises `TimeRangeError`.
 
 The supported reference range begins at Unix epoch `0`. Pre-1970 references are rejected by `UtcInstant` before calendar conversion.
+
+`CronTrigger(schedule)` adapts an already parsed schedule to the general `UtcTrigger` optional-return contract. The adapter retains the parsed schedule object and never reparses its expression.
 
 ## Resource bounds
 

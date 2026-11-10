@@ -1,0 +1,84 @@
+import nox.test
+from errors import DuplicateJobError, InvalidJobError, JobNotFoundError
+from job import Job, JobContext, make_utc_job
+from registry import JobRegistry
+from time import UtcInstant
+from trigger import OnceTrigger
+
+def noop(context: JobContext) -> None:
+    pass
+
+def make_job(job_id: str) -> Job:
+    return make_utc_job(job_id, "Job " + job_id, OnceTrigger(UtcInstant(1000)), noop, True, UtcInstant(100), [])
+
+def rejects_duplicate(store: JobRegistry) -> bool:
+    try:
+        store.add(make_job("beta"))
+    except DuplicateJobError as error:
+        return error.job_id == "beta"
+    return False
+
+def reports_missing(store: JobRegistry) -> bool:
+    try:
+        store.get("missing")
+    except JobNotFoundError as error:
+        return error.job_id == "missing"
+    return False
+
+def enforces_capacity() -> bool:
+    store: JobRegistry = JobRegistry(1)
+    store.add(make_job("one"))
+    try:
+        store.add(make_job("two"))
+    except InvalidJobError:
+        return True
+    return False
+
+def rejects_invalid_capacity() -> bool:
+    try:
+        JobRegistry(0)
+    except InvalidJobError:
+        return True
+    return False
+
+def detects_id_mutation() -> bool:
+    store: JobRegistry = JobRegistry(2)
+    job: Job = make_job("stable")
+    store.add(job)
+    job.job_id = "changed"
+    try:
+        store.get("stable")
+    except InvalidJobError:
+        return True
+    return False
+
+store: JobRegistry = JobRegistry(4)
+store.add(make_job("beta"))
+store.add(make_job("alpha"))
+store.add(make_job("gamma"))
+nox.test.assert_eq_int(store.count(), 3, "registry count")
+nox.test.assert_true(store.contains("alpha"), "contains registered job")
+nox.test.assert_true(store.find("missing") is None, "find missing returns none")
+
+jobs: list[Job] = store.list_jobs()
+nox.test.assert_eq_str(jobs[0].job_id, "alpha", "jobs sorted first")
+nox.test.assert_eq_str(jobs[1].job_id, "beta", "jobs sorted second")
+nox.test.assert_eq_str(jobs[2].job_id, "gamma", "jobs sorted third")
+
+store.disable("beta", UtcInstant(200))
+nox.test.assert_true(not store.get("beta").enabled, "job disabled")
+nox.test.assert_eq_int(store.get("beta").updated_at_utc_ms, 200, "disable timestamp")
+store.enable("beta", UtcInstant(250))
+nox.test.assert_true(store.get("beta").enabled, "job enabled")
+
+nox.test.assert_true(rejects_duplicate(store), "duplicate ID rejected")
+nox.test.assert_true(reports_missing(store), "missing job reported")
+
+removed: Job = store.remove("beta")
+nox.test.assert_eq_str(removed.job_id, "beta", "remove returns job")
+nox.test.assert_true(not store.contains("beta"), "removed job absent")
+store.add(make_job("beta"))
+nox.test.assert_true(store.contains("beta"), "ID reusable after registry removal")
+nox.test.assert_true(enforces_capacity(), "registry capacity bounded")
+nox.test.assert_true(rejects_invalid_capacity(), "invalid registry capacity rejected")
+nox.test.assert_true(detects_id_mutation(), "registered ID mutation detected")

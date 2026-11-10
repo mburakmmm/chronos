@@ -26,3 +26,21 @@ class CronParseError(ChronosError):
 class CronSearchLimitError(ChronosError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+class InvalidJobError(ChronosError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class DuplicateJobError(ChronosError):
+    job_id: str
+
+    def __init__(self, job_id: str) -> None:
+        super().__init__("job '" + job_id + "' is already registered")
+        self.job_id = job_id
+
+class JobNotFoundError(ChronosError):
+    job_id: str
+
+    def __init__(self, job_id: str) -> None:
+        super().__init__("job '" + job_id + "' is not registered")
+        self.job_id = job_id

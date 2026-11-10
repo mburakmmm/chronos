@@ -1,0 +1,181 @@
+import nox.strings
+from errors import InvalidJobError, TimeRangeError
+from time import MAX_MS, MonotonicInstant, UtcInstant
+from trigger import MonotonicTrigger, UtcTrigger
+
+MAX_JOB_ID_BYTES: int = 128
+MAX_JOB_NAME_BYTES: int = 256
+MAX_METADATA_ENTRIES: int = 16
+MAX_METADATA_KEY_BYTES: int = 64
+MAX_METADATA_VALUE_BYTES: int = 256
+MAX_ERROR_CATEGORY_BYTES: int = 64
+
+class JobMetadata:
+    key: str
+    value: str
+
+    def __init__(self, key: str, value: str) -> None:
+        _validate_identifier("metadata key", key, MAX_METADATA_KEY_BYTES)
+        value_size: int = nox.strings.byte_len(value)
+        if value_size > MAX_METADATA_VALUE_BYTES:
+            raise InvalidJobError("metadata value exceeds 256 bytes")
+        self.key = key
+        self.value = value
+
+class JobContext:
+    job_id: str
+    time_domain: str
+    scheduled_time_ms: int
+    attempt: int
+
+    def __init__(self, job_id: str, time_domain: str, scheduled_time_ms: int, attempt: int) -> None:
+        _validate_identifier("job ID", job_id, MAX_JOB_ID_BYTES)
+        if time_domain != "utc" and time_domain != "monotonic":
+            raise InvalidJobError("unknown job context time domain")
+        if time_domain == "utc":
+            UtcInstant(scheduled_time_ms)
+        if time_domain == "monotonic" and scheduled_time_ms < 0:
+            raise InvalidJobError("scheduled monotonic milliseconds must be nonnegative")
+        if attempt < 1:
+            raise InvalidJobError("job attempt must be at least one")
+        self.job_id = job_id
+        self.time_domain = time_domain
+        self.scheduled_time_ms = scheduled_time_ms
+        self.attempt = attempt
+
+class Job:
+    job_id: str
+    name: str
+    trigger_kind_value: str
+    handler: (JobContext) -> None
+    enabled: bool
+    created_at_utc_ms: int
+    updated_at_utc_ms: int
+    metadata: list[JobMetadata]
+    execution_count: int
+    last_status: str
+    last_error_category: str
+    has_last_completion: bool
+    last_completion_utc_ms: int
+
+    def __init__(self, job_id: str, name: str, trigger_kind_value: str, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
+        _validate_identifier("job ID", job_id, MAX_JOB_ID_BYTES)
+        _validate_text("job name", name, MAX_JOB_NAME_BYTES)
+        if trigger_kind_value != "utc" and trigger_kind_value != "monotonic":
+            raise InvalidJobError("unknown job trigger time domain")
+        self.job_id = job_id
+        self.name = name
+        self.trigger_kind_value = trigger_kind_value
+        self.handler = handler
+        self.enabled = enabled
+        self.created_at_utc_ms = created_at.epoch_ms
+        self.updated_at_utc_ms = created_at.epoch_ms
+        self.metadata = _copy_metadata(metadata)
+        self.execution_count = 0
+        self.last_status = "never"
+        self.last_error_category = ""
+        self.has_last_completion = False
+        self.last_completion_utc_ms = 0
+
+    def trigger_kind(self) -> str:
+
+        return self.trigger_kind_value
+
+    def next_utc_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        raise InvalidJobError("monotonic job has no UTC trigger")
+
+    def next_monotonic_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+
+        raise InvalidJobError("UTC job has no monotonic trigger")
+
+    def run(self, context: JobContext) -> None:
+
+        if context.job_id != self.job_id:
+            raise InvalidJobError("job context ID does not match handler job")
+        if context.time_domain != self.trigger_kind_value:
+            raise InvalidJobError("job context time domain does not match trigger")
+        self.handler(context)
+
+    def set_enabled(self, enabled: bool, updated_at: UtcInstant) -> None:
+
+        self.enabled = enabled
+        self.updated_at_utc_ms = updated_at.epoch_ms
+
+    def record_success(self, completed_at: UtcInstant) -> None:
+
+        self._record_completion("succeeded", "", completed_at)
+
+    def record_failure(self, error_category: str, completed_at: UtcInstant) -> None:
+
+        _validate_identifier("error category", error_category, MAX_ERROR_CATEGORY_BYTES)
+        self._record_completion("failed", error_category, completed_at)
+
+    def _record_completion(self, status: str, error_category: str, completed_at: UtcInstant) -> None:
+
+        if self.execution_count == MAX_MS:
+            raise TimeRangeError("job execution count overflow")
+        self.execution_count += 1
+        self.last_status = status
+        self.last_error_category = error_category
+        self.has_last_completion = True
+        self.last_completion_utc_ms = completed_at.epoch_ms
+        self.updated_at_utc_ms = completed_at.epoch_ms
+
+class UtcJob(Job):
+    trigger: UtcTrigger
+
+    def __init__(self, job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
+        super().__init__(job_id, name, "utc", handler, enabled, created_at, metadata)
+        self.trigger = trigger
+
+    def next_utc_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        return self.trigger.next_fire_after(reference)
+
+class MonotonicJob(Job):
+    trigger: MonotonicTrigger
+
+    def __init__(self, job_id: str, name: str, trigger: MonotonicTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
+        super().__init__(job_id, name, "monotonic", handler, enabled, created_at, metadata)
+        self.trigger = trigger
+
+    def next_monotonic_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+
+        return self.trigger.next_fire_after(reference)
+
+def make_utc_job(job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
+    return UtcJob(job_id, name, trigger, handler, enabled, created_at, metadata)
+
+def make_monotonic_job(job_id: str, name: str, trigger: MonotonicTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
+    return MonotonicJob(job_id, name, trigger, handler, enabled, created_at, metadata)
+
+def _copy_metadata(source: list[JobMetadata]) -> list[JobMetadata]:
+    if len(source) > MAX_METADATA_ENTRIES:
+        raise InvalidJobError("job metadata exceeds 16 entries")
+    result: list[JobMetadata] = []
+    for entry in source:
+        for existing in result:
+            if existing.key == entry.key:
+                raise InvalidJobError("duplicate metadata key")
+        result.append(JobMetadata(entry.key, entry.value))
+    return result
+
+def _validate_text(label: str, value: str, maximum_bytes: int) -> None:
+    size: int = nox.strings.byte_len(value)
+    if size == 0:
+        raise InvalidJobError(label + " must not be empty")
+    if size > maximum_bytes:
+        raise InvalidJobError(label + " exceeds byte limit")
+
+def _validate_identifier(label: str, value: str, maximum_bytes: int) -> None:
+    _validate_text(label, value, maximum_bytes)
+    size: int = nox.strings.byte_len(value)
+    for i in range(size):
+        byte: int = nox.strings.byte_at(value, i)
+        lowercase: bool = byte >= 97 and byte <= 122
+        uppercase: bool = byte >= 65 and byte <= 90
+        digit: bool = byte >= 48 and byte <= 57
+        punctuation: bool = byte == 45 or byte == 46 or byte == 58 or byte == 95
+        if not lowercase and not uppercase and not digit and not punctuation:
+            raise InvalidJobError(label + " contains an unsupported character")

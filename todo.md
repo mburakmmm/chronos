@@ -210,13 +210,13 @@ Amaç: Portable, uygulama tarafından sahiplenilen, senkron ve deterministik sch
 
 ## Job modeli ve registry
 
-- [ ] Stable job ID, name, trigger, handler, enabled state ve bounded metadata modelini uygula.
-- [ ] Duplicate ID için açık error davranışı uygula; implicit replace yapma.
-- [ ] Add, inspect/list, enable, disable, remove ve pending cancellation işlemlerini uygula.
-- [ ] Running job cancellation ile pending schedule cancellation ayrımını API ve belgede açık tut.
+- [x] Stable job ID, name, trigger, handler, enabled state ve bounded metadata modelini uygula.
+- [x] Duplicate ID için açık error davranışı uygula; implicit replace yapma.
+- [x] Add, inspect/list, enable, disable, remove ve pending schedule cancellation işlemlerini uygula.
+- [x] Running job cancellation ile pending schedule cancellation ayrımını API ve belgede açık tut.
 - [ ] Job ID reuse davranışını, aktif run varken ambiguity yaratmayacak şekilde tanımla.
-- [ ] Job result/error summary retention sınırını uygula.
-- [ ] Executable closure/function pointer serialization yapma.
+- [x] Job result/error summary retention sınırını uygula.
+- [x] Executable closure/function pointer serialization yapma.
 
 ## Scheduler ve executor
 
@@ -495,4 +495,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 2 / `0.2.0`: job modeli, registry ve manual-tick scheduler için en küçük deterministic dilimi uygulamak. `0.1.0` yayınlanmış değildir; yalnızca implementation gate tamamlanmıştır.
+Phase 2 / `0.2.0`: explicit lifecycle, inline executor ve FakeClock ile dışarıdan sürülen manual `tick` scheduler dilimini uygulamak. `0.1.0` yayınlanmış değildir; yalnızca implementation gate tamamlanmıştır.

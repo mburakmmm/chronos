@@ -117,6 +117,16 @@ class CronSchedule:
             return dom_matches
         return dom_matches or dow_matches
 
+class CronTrigger:
+    schedule: CronSchedule
+
+    def __init__(self, schedule: CronSchedule) -> None:
+        self.schedule = schedule
+
+    def next_fire_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        return self.schedule.next_fire_after(reference)
+
 def parse(expression: str) -> CronSchedule:
     byte_count: int = nox.strings.byte_len(expression)
     if byte_count == 0:

@@ -1,0 +1,125 @@
+import nox.strings
+import nox.test
+from cron import CronTrigger, parse
+from errors import InvalidJobError
+from job import Job, JobContext, JobMetadata, make_monotonic_job, make_utc_job
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger, OnceTrigger
+
+class Recorder:
+    calls: int
+    last_attempt: int
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.last_attempt = 0
+
+def recording_handler(recorder: Recorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls += 1
+        recorder.last_attempt = context.attempt
+
+    return handle
+
+def rejects_invalid_id() -> bool:
+    try:
+        make_utc_job("bad id", "Bad", OnceTrigger(UtcInstant(10)), recording_handler(Recorder()), True, UtcInstant(0), [])
+    except InvalidJobError:
+        return True
+    return False
+
+def rejects_duplicate_metadata() -> bool:
+    metadata: list[JobMetadata] = [JobMetadata("team", "one"), JobMetadata("team", "two")]
+    try:
+        make_utc_job("duplicate-meta", "Duplicate metadata", OnceTrigger(UtcInstant(10)), recording_handler(Recorder()), True, UtcInstant(0), metadata)
+    except InvalidJobError:
+        return True
+    return False
+
+def rejects_excess_metadata() -> bool:
+    metadata: list[JobMetadata] = []
+    for i in range(17):
+        metadata.append(JobMetadata("key-" + str(i), "value"))
+    try:
+        make_utc_job("excess-meta", "Excess metadata", OnceTrigger(UtcInstant(10)), recording_handler(Recorder()), True, UtcInstant(0), metadata)
+    except InvalidJobError:
+        return True
+    return False
+
+def rejects_long_metadata_value() -> bool:
+    try:
+        JobMetadata("key", nox.strings.repeat("x", 257))
+    except InvalidJobError:
+        return True
+    return False
+
+def rejects_long_error_category(target: Job) -> bool:
+    try:
+        target.record_failure(nox.strings.repeat("x", 65), UtcInstant(1200))
+    except InvalidJobError:
+        return True
+    return False
+
+def rejects_unknown_context_domain() -> bool:
+    try:
+        JobContext("context", "local", 10, 1)
+    except InvalidJobError:
+        return True
+    return False
+
+def rejects_wrong_handler_domain(target: Job) -> bool:
+    try:
+        target.run(JobContext(target.job_id, "monotonic", 1000, 1))
+    except InvalidJobError:
+        return True
+    return False
+
+recorder: Recorder = Recorder()
+metadata: list[JobMetadata] = [JobMetadata("team", "payments")]
+utc_job: Job = make_utc_job("billing.daily", "Daily billing", OnceTrigger(UtcInstant(1000)), recording_handler(recorder), True, UtcInstant(100), metadata)
+metadata[0].value = "mutated"
+nox.test.assert_eq_str(utc_job.trigger_kind(), "utc", "UTC trigger kind")
+nox.test.assert_eq_int(len(utc_job.metadata), 1, "metadata copied")
+nox.test.assert_eq_str(utc_job.metadata[0].value, "payments", "metadata copy is isolated")
+nox.test.assert_eq_str(utc_job.last_status, "never", "initial result status")
+
+next_utc: UtcInstant | None = utc_job.next_utc_after(UtcInstant(999))
+nox.test.assert_true(next_utc is not None, "UTC trigger dispatches through job")
+if next_utc is not None:
+    nox.test.assert_eq_int(next_utc.epoch_ms, 1000, "UTC trigger result")
+
+context: JobContext = JobContext("billing.daily", "utc", 1000, 2)
+utc_job.run(context)
+nox.test.assert_eq_int(recorder.calls, 1, "handler invoked")
+nox.test.assert_eq_int(recorder.last_attempt, 2, "typed context delivered")
+
+utc_job.record_failure("handler-error", UtcInstant(1200))
+nox.test.assert_eq_int(utc_job.execution_count, 1, "failure counted")
+nox.test.assert_eq_str(utc_job.last_status, "failed", "failure retained")
+nox.test.assert_eq_str(utc_job.last_error_category, "handler-error", "safe category retained")
+utc_job.record_success(UtcInstant(1300))
+nox.test.assert_eq_int(utc_job.execution_count, 2, "success counted")
+nox.test.assert_eq_str(utc_job.last_status, "succeeded", "success retained")
+nox.test.assert_eq_str(utc_job.last_error_category, "", "success clears error category")
+nox.test.assert_true(utc_job.has_last_completion, "completion presence retained")
+nox.test.assert_eq_int(utc_job.last_completion_utc_ms, 1300, "latest completion retained")
+
+monotonic_job: Job = make_monotonic_job("heartbeat", "Heartbeat", FixedRateTrigger(MonotonicInstant(50), Duration(10)), recording_handler(Recorder()), False, UtcInstant(100), [])
+nox.test.assert_eq_str(monotonic_job.trigger_kind(), "monotonic", "monotonic trigger kind")
+nox.test.assert_true(not monotonic_job.enabled, "disabled job retained")
+next_monotonic: MonotonicInstant | None = monotonic_job.next_monotonic_after(MonotonicInstant(50))
+nox.test.assert_true(next_monotonic is not None, "monotonic trigger dispatches through job")
+if next_monotonic is not None:
+    nox.test.assert_eq_int(next_monotonic.value_ms, 60, "monotonic trigger result")
+
+cron_job: Job = make_utc_job("weekday.cron", "Weekday cron", CronTrigger(parse("0 9 * * 1-5")), recording_handler(Recorder()), True, UtcInstant(0), [])
+cron_next: UtcInstant | None = cron_job.next_utc_after(UtcInstant(0))
+nox.test.assert_true(cron_next is not None, "cron schedule conforms to UTC trigger")
+
+nox.test.assert_true(rejects_invalid_id(), "invalid job ID rejected")
+nox.test.assert_true(rejects_duplicate_metadata(), "duplicate metadata rejected")
+nox.test.assert_true(rejects_excess_metadata(), "metadata entry count bounded")
+nox.test.assert_true(rejects_long_metadata_value(), "metadata value bytes bounded")
+nox.test.assert_true(rejects_long_error_category(utc_job), "error category bytes bounded")
+nox.test.assert_true(rejects_unknown_context_domain(), "context requires a known time domain")
+nox.test.assert_true(rejects_wrong_handler_domain(utc_job), "handler context domain checked")

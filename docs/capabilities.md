@@ -1,7 +1,7 @@
 # Nox capability matrix
 
 Last updated: 2026-11-10  
-Chronos phase: 1 (`0.1.0` development)
+Chronos phase: 2 (`0.2.0` development)
 
 This document separates documentation findings from executable verification. A documented API is not marked fully verified until an appropriate Chronos proof of concept compiles and runs.
 
@@ -206,3 +206,21 @@ noxc check --profile freestanding cron.nox           -> exit 0
 ```
 
 Golden tests cover lists, ranges, steps, malformed tokens, expression bounds, minute/hour/day/month/weekday transitions, DOM/DOW combinations, leap day, month length, year rollover, unsatisfiable schedules, overflow, and 50 successive increasing results.
+
+## Phase 2 job/registry evidence
+
+The initial job and registry slice was verified with typed handlers, captured closures, structural UTC/monotonic trigger fields, subclass dispatch, bounded class-valued lists, lexical string comparison, list insertion/removal, and custom job errors on both LLVM and QBE.
+
+The first production-shaped model used `int | None` class fields for scheduled and completion timestamps. It passed `noxc check` but reached the installed Nox 2.1.0 generic unsupported-codegen path when combined with the full job model. A minimal standalone optional-field probe succeeded, so the limitation is recorded narrowly rather than generalized. Chronos uses an explicit time-domain discriminator and `has_last_completion` flag in this model.
+
+```text
+noxc test tests                                      -> 9 passed, 0 failed
+noxc run --backend llvm tests/job_test.nox          -> exit 0
+noxc run --backend qbe tests/job_test.nox           -> exit 0
+noxc run --backend llvm tests/registry_test.nox     -> exit 0
+noxc run --backend qbe tests/registry_test.nox      -> exit 0
+noxc run --backend llvm examples/registry.nox       -> exit 0
+noxc run --backend qbe examples/registry.nox        -> exit 0
+noxc check --profile freestanding job.nox           -> exit 0
+noxc check --profile freestanding registry.nox      -> exit 0
+```

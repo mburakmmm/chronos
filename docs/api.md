@@ -1,6 +1,6 @@
 # Chronos public API
 
-Status: experimental (`0.1.0` development).
+Status: experimental (`0.2.0` development).
 
 Only APIs listed here are intended for public use. Leading-underscore functions and everything under `proofs/` are internal validation artifacts.
 
@@ -19,6 +19,12 @@ Raised when a duration or duration multiplier violates a nonnegative/positive du
 Raised before a timestamp or duration operation would overflow, underflow, reverse a monotonic interval, or construct an invalid monotonic value.
 
 Callers should branch on the exception class, not message text.
+
+### Job errors
+
+- `InvalidJobError`: invalid job configuration, bounded resource violation, or registry invariant failure.
+- `DuplicateJobError`: an ID is already present; `job_id` contains the rejected ID.
+- `JobNotFoundError`: an operation targeted an absent ID; `job_id` contains that ID.
 
 ## `chronos.time`
 
@@ -123,13 +129,57 @@ If a syntactically valid expression has no match within eight calendar years or 
 
 `CronField.values` contains normalized sorted unique values. `CronField.wildcard` is true only for a field written exactly as `*`; enumerating a full range remains restricted syntax for DOM/DOW semantics.
 
+### `CronTrigger(schedule)`
+
+Adapts an already parsed `CronSchedule` to the optional-return `UtcTrigger` protocol without parsing the expression again. Search-limit and time-range failures remain explicit exceptions.
+
+## `chronos.job`
+
+### Job construction
+
+- `make_utc_job(job_id, name, trigger, handler, enabled, created_at, metadata) -> Job`
+- `make_monotonic_job(job_id, name, trigger, handler, enabled, created_at, metadata) -> Job`
+
+The factories create the supported UTC or monotonic job subtype. `Job` itself is the shared registry/executor view; direct construction of the base class is internal.
+
+`job_id` is 1–128 ASCII bytes using letters, digits, `.`, `-`, `_`, or `:`. Names are 1–256 UTF-8 bytes. Each job owns a defensive copy of at most 16 `JobMetadata` entries; keys are bounded identifiers and values are at most 256 bytes.
+
+Handlers have the verified type `(JobContext) -> None`. A context carries `job_id`, an explicit `time_domain` (`utc` or `monotonic`), `scheduled_time_ms`, and a positive attempt number. The domain must be checked before interpreting the millisecond value.
+
+`record_success` and `record_failure` retain only the latest fixed status, bounded safe error category, completion timestamp, and total execution count. Arbitrary results, exception messages, and history are not retained.
+
+### Trigger access
+
+- `trigger_kind() -> str`
+- `next_utc_after(reference) -> UtcInstant | None`
+- `next_monotonic_after(reference) -> MonotonicInstant | None`
+
+Calling the wrong-domain method raises `InvalidJobError`.
+
+## `chronos.registry`
+
+### `JobRegistry(max_jobs)`
+
+Creates an application-owned in-memory registry. `max_jobs` must be between 1 and 10,000.
+
+- `add(job)` rejects duplicates; it never replaces implicitly.
+- `find(job_id) -> Job | None` and `get(job_id) -> Job` inspect jobs.
+- `list_jobs() -> list[Job]` returns a new list in lexical job-ID order.
+- `enable(job_id, updated_at)` and `disable(job_id, updated_at)` update scheduling eligibility.
+- `remove(job_id) -> Job` removes future registry ownership and returns the job.
+- `contains(job_id)` and `count()` inspect registry state.
+
+Removal does not interrupt a handler. The standalone registry permits ID reuse after removal; the future scheduler must defer reuse while an execution with that ID remains active.
+
 ## Consumer imports
 
 For a dependency aliased as `chronos`:
 
 ```nox-fragment
 from chronos.clock import Clock, FakeClock
-from chronos.cron import CronSchedule, parse
+from chronos.cron import CronSchedule, CronTrigger, parse
+from chronos.job import Job, JobContext, JobMetadata, make_monotonic_job, make_utc_job
+from chronos.registry import JobRegistry
 from chronos.system_clock import SystemClock
 from chronos.time import Duration, MonotonicInstant, UtcInstant
 from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
