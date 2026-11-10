@@ -1,6 +1,6 @@
 # Manual scheduler
 
-Status: experimental Phase 2 UTC slice for Nox 2.1.0.
+Status: experimental Phase 2 manual scheduler for Nox 2.1.0.
 
 ## Ownership and lifecycle
 
@@ -17,9 +17,14 @@ Lifecycle states are `created`, `running`, `stopping`, `stopped`, and `failed`.
 
 The application decides when to call `tick()`. Chronos does not sleep or busy-loop.
 
-## Current trigger support
+## Trigger support
 
-This slice accepts UTC jobs: one-shot jobs and parsed cron schedules wrapped in `CronTrigger`. Adding a monotonic delay or fixed-rate job raises `InvalidJobError` instead of silently using wall time. Monotonic and fixed-delay scheduler integration remains a Phase 2 task.
+The scheduler accepts:
+
+- UTC one-shot jobs and parsed cron schedules wrapped in `CronTrigger`;
+- monotonic one-shot delays;
+- monotonic fixed-rate recurrence;
+- completion-anchored fixed-delay recurrence.
 
 Initial registration uses the trigger's explicit `next_fire_at_or_after` contract. Therefore a one-shot or cron occurrence exactly equal to registration time remains due, including Unix epoch `0`. Normal recurrence uses strictly-after calculation and cannot repeat the same occurrence.
 
@@ -27,13 +32,17 @@ A past one-shot is retained as completed without execution. A completed job rema
 
 UTC jobs follow wall-clock corrections: a forward jump may make a deadline due on the next tick, while a backward jump cannot make it run before the target wall time. The monotonic counter is not consulted for UTC trigger eligibility.
 
+Elapsed jobs use only the monotonic counter for eligibility. Wall-clock jumps do not make a delay or interval early/late. Fixed-rate next times remain anchored to the original trigger anchor even when a callback advances the clock. Fixed-delay next times are calculated from observed monotonic completion, after either success or handler failure.
+
+If a fixed-delay job's first deadline is already past when it is added or re-enabled, exactly one execution becomes due at the observed monotonic time. Chronos does not generate an unbounded first-run catch-up sequence.
+
 ## Tick and dispatch
 
-Each tick reads the injected clock, builds a finite due snapshot, and orders it by planned UTC timestamp then lexical job ID. Jobs sharing a timestamp therefore have stable total ordering.
+Each tick reads both injected clock domains and builds a finite due snapshot. UTC items are dispatched before monotonic items so unlike numeric domains are never compared. Within each domain, items are ordered by planned timestamp then lexical job ID. Jobs sharing a domain and timestamp therefore have stable total ordering.
 
 The inline executor invokes one trusted handler at a time. It catches handler exceptions and returns the fixed safe category `handler-error`; raw exception text is not retained. The scheduler records the outcome and continues with unrelated due jobs.
 
-When a recurring UTC job is late, this Phase 2 slice dispatches at most one occurrence for that job in the tick and calculates the next occurrence strictly after the later of planned time and observed completion wall time. This bounds catch-up work but is not the final configurable misfire policy; explicit skip/fire-once/catch-up policies belong to Phase 3.
+When a fixed-rate or recurring UTC job is late, this Phase 2 slice dispatches at most one occurrence for that job in the tick and calculates the next anchored occurrence strictly after the later of planned time and observed completion in the matching domain. This bounds catch-up work but is not the final configurable misfire policy; explicit skip/fire-once/catch-up policies belong to Phase 3.
 
 `TickResult` reports succeeded, failed, and stale-snapshot skipped counts. It does not retain handler results.
 

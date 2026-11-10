@@ -153,7 +153,7 @@ Fixed-delay is stateful: its next time is based on actual prior completion plus 
 
 ### Deterministic order
 
-Due work is ordered first by scheduled UTC timestamp and then by lexical job ID. Duplicate job IDs are rejected, so the second key is stable and total for jobs sharing a timestamp.
+UTC and monotonic integers are never compared as if they shared a time scale. A mixed-domain due snapshot dispatches UTC items before monotonic items. Within one domain, due work is ordered first by its scheduled timestamp and then by lexical job ID. Duplicate job IDs are rejected, so the second key is stable and total for jobs sharing a domain and timestamp.
 
 ## ADR-004: numeric and error boundaries
 

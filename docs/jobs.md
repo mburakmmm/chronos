@@ -4,7 +4,7 @@ Status: implemented experimental Phase 2 foundation for Nox 2.1.0.
 
 ## Job identity and construction
 
-Jobs are created with `make_utc_job` or `make_monotonic_job`. The factories keep wall-clock/calendar triggers separate from elapsed-time triggers while exposing a shared `Job` view to registries and executors.
+Jobs are created with `make_utc_job`, `make_monotonic_job`, or `make_fixed_delay_job`. The factories keep wall-clock/calendar triggers separate from elapsed-time triggers while exposing a shared `Job` view to registries and executors.
 
 Job IDs are stable scheduling identities. They are bounded to 128 ASCII bytes and accept letters, digits, `.`, `-`, `_`, and `:`. Names are nonempty and bounded to 256 UTF-8 bytes. Changing `job_id` after registration is unsupported; the registry snapshots the key and reports `InvalidJobError` if mutation is detected.
 
@@ -22,6 +22,8 @@ A handler is a verified Nox function value with type `(JobContext) -> None`. Cap
 - a positive attempt number.
 
 The time domain is never inferred from the integer. Scheduler code must construct the context from the matching trigger domain.
+
+Fixed-delay jobs are a distinct subtype rather than a pure monotonic trigger. Their first deadline is registration plus delay; every later deadline is actual monotonic completion plus delay. An overdue first deadline coalesces into one execution at the observed monotonic time rather than a catch-up loop. The scheduler uses the same completion rule after success or handler failure. Removing the job prevents future runs but cannot interrupt the active inline callback.
 
 Handlers are trusted in-process application code. Chronos does not serialize a closure or function pointer, evaluate strings, or reconstruct executable code. A future persistent definition will store a handler key and require the application to register its trusted implementation.
 

@@ -2,9 +2,9 @@ import nox.strings
 import nox.test
 from cron import CronTrigger, parse
 from errors import InvalidJobError
-from job import Job, JobContext, JobMetadata, make_monotonic_job, make_utc_job
+from job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job
 from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedRateTrigger, OnceTrigger
+from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
 
 class Recorder:
     calls: int
@@ -106,11 +106,21 @@ nox.test.assert_eq_int(utc_job.last_completion_utc_ms, 1300, "latest completion 
 
 monotonic_job: Job = make_monotonic_job("heartbeat", "Heartbeat", FixedRateTrigger(MonotonicInstant(50), Duration(10)), recording_handler(Recorder()), False, UtcInstant(100), [])
 nox.test.assert_eq_str(monotonic_job.trigger_kind(), "monotonic", "monotonic trigger kind")
+nox.test.assert_eq_str(monotonic_job.time_domain(), "monotonic", "monotonic job time domain")
 nox.test.assert_true(not monotonic_job.enabled, "disabled job retained")
 next_monotonic: MonotonicInstant | None = monotonic_job.next_monotonic_after(MonotonicInstant(50))
 nox.test.assert_true(next_monotonic is not None, "monotonic trigger dispatches through job")
 if next_monotonic is not None:
     nox.test.assert_eq_int(next_monotonic.value_ms, 60, "monotonic trigger result")
+
+fixed_delay_job: Job = make_fixed_delay_job("cleanup", "Cleanup", FixedDelay(Duration(40)), MonotonicInstant(100), recording_handler(Recorder()), True, UtcInstant(100), [])
+nox.test.assert_eq_str(fixed_delay_job.trigger_kind(), "fixed-delay", "fixed-delay trigger kind")
+nox.test.assert_eq_str(fixed_delay_job.time_domain(), "monotonic", "fixed-delay time domain")
+fixed_delay_first: MonotonicInstant | None = fixed_delay_job.next_monotonic_at_or_after(MonotonicInstant(120))
+nox.test.assert_true(fixed_delay_first is not None, "fixed-delay first deadline exists")
+if fixed_delay_first is not None:
+    nox.test.assert_eq_int(fixed_delay_first.value_ms, 140, "fixed-delay first deadline uses registration")
+nox.test.assert_eq_int(fixed_delay_job.next_monotonic_after_completion(MonotonicInstant(200)).value_ms, 240, "fixed-delay recurrence uses completion")
 
 cron_job: Job = make_utc_job("weekday.cron", "Weekday cron", CronTrigger(parse("0 9 * * 1-5")), recording_handler(Recorder()), True, UtcInstant(0), [])
 cron_next: UtcInstant | None = cron_job.next_utc_after(UtcInstant(0))

@@ -1,0 +1,19 @@
+from clock import FakeClock
+from job import Job, JobContext, make_monotonic_job
+from scheduler import Scheduler
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger
+
+def heartbeat(context: JobContext) -> None:
+    print("heartbeat", context.scheduled_time_ms)
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 10)
+target: Job = make_monotonic_job("heartbeat", "Heartbeat", FixedRateTrigger(MonotonicInstant(500), Duration(25)), heartbeat, True, UtcInstant(1000), [])
+engine.add(target)
+engine.start()
+
+engine.tick()
+source_clock.advance(Duration(25))
+engine.tick()
+engine.stop()

@@ -28,6 +28,8 @@ The intended delay rule is:
 - Device suspend counts toward an `after(duration)` delay.
 - If the delay expires while the device is suspended, the work becomes due on the first scheduler tick after resume.
 - A wall-clock correction does not lengthen or shorten the delay.
+- Fixed-rate recurrence uses monotonic planned anchors; callback duration does not shift the anchor.
+- Fixed-delay recurrence samples monotonic completion after the callback returns and adds its configured delay.
 
 This choice uses `boot_ms()` because Nox documents it as monotonic and suspend-inclusive across supported platforms. `Instant` remains useful for scoped measurements, but its device-suspend behavior differs between Linux/Android and Darwin platforms.
 

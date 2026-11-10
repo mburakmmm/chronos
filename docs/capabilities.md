@@ -242,3 +242,20 @@ noxc run --backend qbe examples/poll.nox            -> exit 0
 noxc check --profile freestanding executor.nox      -> exit 0
 noxc check --profile freestanding scheduler.nox     -> exit 0
 ```
+
+The monotonic integration extends the same scheduler with elapsed delay, fixed-rate, and fixed-delay coverage. Tests verify that UTC wall jumps do not change monotonic eligibility, fixed-rate anchors do not drift when handlers advance the fake clock, and fixed-delay recurrence uses actual monotonic completion after success or failure. Mixed snapshots use an explicit UTC-before-monotonic domain order rather than comparing unrelated integer clocks.
+
+```text
+noxc run --backend llvm tests/job_test.nox          -> exit 0
+noxc run --backend qbe tests/job_test.nox           -> exit 0
+noxc run --backend llvm tests/scheduler_test.nox    -> exit 0
+noxc run --backend qbe tests/scheduler_test.nox     -> exit 0
+noxc run --backend llvm examples/once.nox           -> exit 0
+noxc run --backend qbe examples/once.nox            -> exit 0
+noxc run --backend llvm examples/every.nox          -> exit 0
+noxc run --backend qbe examples/every.nox           -> exit 0
+noxc run --backend llvm examples/cancel.nox         -> exit 0
+noxc run --backend qbe examples/cancel.nox          -> exit 0
+noxc check --profile freestanding job.nox           -> exit 0
+noxc check --profile freestanding scheduler.nox     -> exit 0
+```

@@ -1,0 +1,18 @@
+from clock import FakeClock
+from job import Job, JobContext, make_utc_job
+from scheduler import Scheduler
+from time import Duration, UtcInstant
+from trigger import OnceTrigger
+
+def greet(context: JobContext) -> None:
+    print("hello from", context.job_id)
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 10)
+target: Job = make_utc_job("greet.once", "One greeting", OnceTrigger(UtcInstant(1200)), greet, True, UtcInstant(1000), [])
+engine.add(target)
+engine.start()
+
+source_clock.advance(Duration(200))
+print(engine.tick().succeeded, engine.is_completed("greet.once"))
+engine.stop()

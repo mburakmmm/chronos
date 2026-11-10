@@ -3,10 +3,10 @@ import nox.time
 from clock import FakeClock
 from cron import CronTrigger, parse
 from errors import DuplicateJobError, InvalidJobError, SchedulerStateError
-from job import Job, JobContext, make_monotonic_job, make_utc_job
+from job import Job, JobContext, make_fixed_delay_job, make_monotonic_job, make_utc_job
 from scheduler import STATE_CREATED, STATE_RUNNING, STATE_STOPPED, Scheduler, TickResult
 from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedRateTrigger, OnceTrigger
+from trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
 
 class Recorder:
     events: list[str]
@@ -50,15 +50,6 @@ def start_rejected(engine: Scheduler, expected_state: str) -> bool:
         return error.state == expected_state
     return False
 
-def monotonic_job_rejected() -> bool:
-    engine: Scheduler = Scheduler(FakeClock(1000, 500), 4)
-    target: Job = make_monotonic_job("rate", "Rate", FixedRateTrigger(MonotonicInstant(500), Duration(10)), record_handler(Recorder(), "rate"), True, UtcInstant(0), [])
-    try:
-        engine.add(target)
-    except InvalidJobError:
-        return True
-    return False
-
 def remove_handler(engine: Scheduler, recorder: Recorder, remove_id: str) -> (JobContext) -> None:
     def handle(context: JobContext) -> None:
         recorder.events.append(context.job_id)
@@ -87,6 +78,20 @@ def stop_handler(engine: Scheduler, recorder: Recorder) -> (JobContext) -> None:
         engine.stop()
 
     return handle
+
+def advancing_handler(source_clock: FakeClock, recorder: Recorder, label: str, advance_ms: int) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.events.append(label)
+        source_clock.advance(Duration(advance_ms))
+
+    return handle
+
+def wrong_utc_accessor_rejected(engine: Scheduler, job_id: str) -> bool:
+    try:
+        engine.next_run_utc(job_id)
+    except InvalidJobError:
+        return True
+    return False
 
 def remove_and_reuse_handler(engine: Scheduler, recorder: Recorder, replacement: Job) -> (JobContext) -> None:
     def handle(context: JobContext) -> None:
@@ -240,4 +245,72 @@ many_engine.start()
 nox.test.assert_eq_int(many_engine.tick().succeeded, 100, "one tick dispatches 100 bounded due jobs")
 nox.test.assert_eq_int(len(many_recorder.events), 100, "all bounded due callbacks invoked once")
 
-nox.test.assert_true(monotonic_job_rejected(), "current UTC scheduler slice rejects monotonic jobs explicitly")
+delay_clock: FakeClock = FakeClock(20000, 2000)
+delay_recorder: Recorder = Recorder()
+delay_engine: Scheduler = Scheduler(delay_clock, 8)
+delay_target: Job = make_monotonic_job("delay", "Delay", DelayTrigger(MonotonicInstant(2000), Duration(50)), record_handler(delay_recorder, "delay"), True, UtcInstant(20000), [])
+delay_engine.add(delay_target)
+delay_next: MonotonicInstant | None = delay_engine.next_run_monotonic("delay")
+nox.test.assert_true(delay_next is not None, "monotonic delay has next run")
+if delay_next is not None:
+    nox.test.assert_eq_int(delay_next.value_ms, 2050, "delay deadline uses monotonic registration")
+nox.test.assert_true(wrong_utc_accessor_rejected(delay_engine, "delay"), "monotonic next run cannot be read as UTC")
+delay_engine.start()
+delay_clock.jump_utc_ms(5000)
+nox.test.assert_eq_int(delay_engine.tick().dispatched(), 0, "wall jump does not make monotonic delay due")
+delay_clock.advance(Duration(50))
+nox.test.assert_eq_int(delay_engine.tick().succeeded, 1, "monotonic delay runs at elapsed deadline")
+nox.test.assert_true(delay_engine.is_completed("delay"), "one-shot delay completes once")
+
+rate_clock: FakeClock = FakeClock(30000, 3000)
+rate_recorder: Recorder = Recorder()
+rate_engine: Scheduler = Scheduler(rate_clock, 8)
+rate_target: Job = make_monotonic_job("rate", "Rate", FixedRateTrigger(MonotonicInstant(3000), Duration(25)), advancing_handler(rate_clock, rate_recorder, "rate", 40), True, UtcInstant(30000), [])
+rate_engine.add(rate_target)
+rate_engine.start()
+nox.test.assert_eq_int(rate_engine.tick().succeeded, 1, "fixed-rate exact anchor runs")
+rate_next: MonotonicInstant | None = rate_engine.next_run_monotonic("rate")
+nox.test.assert_true(rate_next is not None, "fixed-rate recurrence remains pending")
+if rate_next is not None:
+    nox.test.assert_eq_int(rate_next.value_ms, 3050, "fixed-rate callback duration does not shift anchor")
+rate_clock.advance(Duration(10))
+nox.test.assert_eq_int(rate_engine.tick().succeeded, 1, "fixed-rate next anchor runs")
+
+fixed_clock: FakeClock = FakeClock(40000, 4000)
+fixed_recorder: Recorder = Recorder()
+fixed_engine: Scheduler = Scheduler(fixed_clock, 8)
+fixed_target: Job = make_fixed_delay_job("fixed", "Fixed delay", FixedDelay(Duration(40)), MonotonicInstant(4000), advancing_handler(fixed_clock, fixed_recorder, "fixed", 30), True, UtcInstant(40000), [])
+fixed_engine.add(fixed_target)
+fixed_engine.start()
+fixed_clock.advance(Duration(40))
+nox.test.assert_eq_int(fixed_engine.tick().succeeded, 1, "fixed-delay first deadline runs")
+fixed_next: MonotonicInstant | None = fixed_engine.next_run_monotonic("fixed")
+nox.test.assert_true(fixed_next is not None, "fixed-delay recurrence remains pending")
+if fixed_next is not None:
+    nox.test.assert_eq_int(fixed_next.value_ms, 4110, "fixed-delay next run anchors to actual completion")
+
+failure_clock: FakeClock = FakeClock(50000, 5000)
+failure_recorder: Recorder = Recorder()
+failure_engine: Scheduler = Scheduler(failure_clock, 8)
+failure_target: Job = make_fixed_delay_job("fixed-fail", "Failing fixed delay", FixedDelay(Duration(20)), MonotonicInstant(5000), failing_handler(failure_recorder, "fixed-fail"), True, UtcInstant(50000), [])
+failure_engine.add(failure_target)
+failure_engine.start()
+failure_clock.advance(Duration(20))
+nox.test.assert_eq_int(failure_engine.tick().failed, 1, "fixed-delay handler failure is contained")
+failure_next: MonotonicInstant | None = failure_engine.next_run_monotonic("fixed-fail")
+nox.test.assert_true(failure_next is not None, "failed fixed-delay job remains scheduled")
+if failure_next is not None:
+    nox.test.assert_eq_int(failure_next.value_ms, 5040, "fixed-delay failure schedules from completion")
+failure_engine.remove("fixed-fail")
+failure_clock.advance(Duration(100))
+nox.test.assert_eq_int(failure_engine.tick().dispatched(), 0, "removed fixed-delay job has no future callback")
+
+mixed_clock: FakeClock = FakeClock(60000, 6000)
+mixed_recorder: Recorder = Recorder()
+mixed_engine: Scheduler = Scheduler(mixed_clock, 8)
+mixed_engine.add(make_monotonic_job("a-monotonic", "Monotonic", DelayTrigger(MonotonicInstant(6000), Duration(0)), record_handler(mixed_recorder, "monotonic"), True, UtcInstant(60000), []))
+mixed_engine.add(once_job("z-utc", 60000, record_handler(mixed_recorder, "utc")))
+mixed_engine.start()
+nox.test.assert_eq_int(mixed_engine.tick().succeeded, 2, "mixed-domain due jobs both dispatch")
+nox.test.assert_eq_str(mixed_recorder.events[0], "utc", "UTC domain dispatches before monotonic domain")
+nox.test.assert_eq_str(mixed_recorder.events[1], "monotonic", "monotonic domain follows UTC domain")

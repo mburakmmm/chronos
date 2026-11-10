@@ -51,3 +51,5 @@ Until then, manual tick is the supported portable lifecycle.
 ## Reentrancy
 
 User callbacks are invoked without iterating the live registry/schedule collections. A tick dispatches from a finite due snapshot and revalidates generation and current registry state before every callback. Additions become eligible on the next tick; removals invalidate pending snapshot entries. Active ID reuse is rejected until the inline callback returns. See `docs/architecture.md` ADR-002.
+
+Fixed-delay completion is sampled only after the inline callback returns. Chronos therefore does not confuse planned time, UTC completion metadata, and monotonic completion used for the next delay.

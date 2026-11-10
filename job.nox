@@ -1,7 +1,7 @@
 import nox.strings
 from errors import InvalidJobError, TimeRangeError
 from time import MAX_MS, MonotonicInstant, UtcInstant
-from trigger import MonotonicTrigger, UtcTrigger
+from trigger import FixedDelay, MonotonicTrigger, UtcTrigger
 
 MAX_JOB_ID_BYTES: int = 128
 MAX_JOB_NAME_BYTES: int = 256
@@ -46,6 +46,7 @@ class JobContext:
 class Job:
     job_id: str
     name: str
+    time_domain_value: str
     trigger_kind_value: str
     handler: (JobContext) -> None
     enabled: bool
@@ -58,13 +59,20 @@ class Job:
     has_last_completion: bool
     last_completion_utc_ms: int
 
-    def __init__(self, job_id: str, name: str, trigger_kind_value: str, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
+    def __init__(self, job_id: str, name: str, time_domain_value: str, trigger_kind_value: str, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
         _validate_identifier("job ID", job_id, MAX_JOB_ID_BYTES)
         _validate_text("job name", name, MAX_JOB_NAME_BYTES)
-        if trigger_kind_value != "utc" and trigger_kind_value != "monotonic":
+        if time_domain_value != "utc" and time_domain_value != "monotonic":
             raise InvalidJobError("unknown job trigger time domain")
+        if trigger_kind_value != "utc" and trigger_kind_value != "monotonic" and trigger_kind_value != "fixed-delay":
+            raise InvalidJobError("unknown job trigger kind")
+        if trigger_kind_value == "utc" and time_domain_value != "utc":
+            raise InvalidJobError("UTC trigger requires UTC time domain")
+        if trigger_kind_value != "utc" and time_domain_value != "monotonic":
+            raise InvalidJobError("elapsed trigger requires monotonic time domain")
         self.job_id = job_id
         self.name = name
+        self.time_domain_value = time_domain_value
         self.trigger_kind_value = trigger_kind_value
         self.handler = handler
         self.enabled = enabled
@@ -80,6 +88,10 @@ class Job:
     def trigger_kind(self) -> str:
 
         return self.trigger_kind_value
+
+    def time_domain(self) -> str:
+
+        return self.time_domain_value
 
     def next_utc_after(self, reference: UtcInstant) -> UtcInstant | None:
 
@@ -97,11 +109,15 @@ class Job:
 
         raise InvalidJobError("UTC job has no monotonic trigger")
 
+    def next_monotonic_after_completion(self, completed_at: MonotonicInstant) -> MonotonicInstant:
+
+        raise InvalidJobError("job is not completion-anchored fixed-delay")
+
     def run(self, context: JobContext) -> None:
 
         if context.job_id != self.job_id:
             raise InvalidJobError("job context ID does not match handler job")
-        if context.time_domain != self.trigger_kind_value:
+        if context.time_domain != self.time_domain_value:
             raise InvalidJobError("job context time domain does not match trigger")
         self.handler(context)
 
@@ -134,7 +150,7 @@ class UtcJob(Job):
     trigger: UtcTrigger
 
     def __init__(self, job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
-        super().__init__(job_id, name, "utc", handler, enabled, created_at, metadata)
+        super().__init__(job_id, name, "utc", "utc", handler, enabled, created_at, metadata)
         self.trigger = trigger
 
     def next_utc_after(self, reference: UtcInstant) -> UtcInstant | None:
@@ -149,7 +165,7 @@ class MonotonicJob(Job):
     trigger: MonotonicTrigger
 
     def __init__(self, job_id: str, name: str, trigger: MonotonicTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
-        super().__init__(job_id, name, "monotonic", handler, enabled, created_at, metadata)
+        super().__init__(job_id, name, "monotonic", "monotonic", handler, enabled, created_at, metadata)
         self.trigger = trigger
 
     def next_monotonic_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
@@ -160,11 +176,33 @@ class MonotonicJob(Job):
 
         return self.trigger.next_fire_at_or_after(reference)
 
+class FixedDelayJob(Job):
+    schedule: FixedDelay
+    first_deadline: MonotonicInstant
+
+    def __init__(self, job_id: str, name: str, schedule: FixedDelay, registered_at: MonotonicInstant, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
+        super().__init__(job_id, name, "monotonic", "fixed-delay", handler, enabled, created_at, metadata)
+        self.schedule = schedule
+        self.first_deadline = schedule.next_after_completion(registered_at)
+
+    def next_monotonic_at_or_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
+
+        if self.first_deadline.value_ms >= reference.value_ms:
+            return self.first_deadline
+        return reference
+
+    def next_monotonic_after_completion(self, completed_at: MonotonicInstant) -> MonotonicInstant:
+
+        return self.schedule.next_after_completion(completed_at)
+
 def make_utc_job(job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
     return UtcJob(job_id, name, trigger, handler, enabled, created_at, metadata)
 
 def make_monotonic_job(job_id: str, name: str, trigger: MonotonicTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
     return MonotonicJob(job_id, name, trigger, handler, enabled, created_at, metadata)
+
+def make_fixed_delay_job(job_id: str, name: str, schedule: FixedDelay, registered_at: MonotonicInstant, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
+    return FixedDelayJob(job_id, name, schedule, registered_at, handler, enabled, created_at, metadata)
 
 def _copy_metadata(source: list[JobMetadata]) -> list[JobMetadata]:
     if len(source) > MAX_METADATA_ENTRIES:

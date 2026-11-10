@@ -234,9 +234,9 @@ Amaç: Portable, uygulama tarafından sahiplenilen, senkron ve deterministik sch
 ## Trigger integration
 
 - [x] One-shot lifecycle: scheduled, due, completed ve retention davranışını uygula.
-- [ ] Fixed-rate recurring işlerin anchor'ını execution süresinden bağımsız koru.
-- [ ] Fixed-delay next run'ını gerçek completion timestamp'ından üret.
-- [ ] Fixed-delay failure/cancellation sonrası davranışı açıkça tanımla ve test et.
+- [x] Fixed-rate recurring işlerin anchor'ını execution süresinden bağımsız koru.
+- [x] Fixed-delay next run'ını gerçek completion timestamp'ından üret.
+- [x] Fixed-delay failure/cancellation sonrası davranışı açıkça tanımla ve test et.
 - [x] UTC cron trigger'ını parser sonucunu tekrar parse etmeden scheduler'a bağla.
 - [x] Exact-boundary ve clock jump senaryolarını fake clock ile test et.
 
@@ -252,7 +252,7 @@ Amaç: Portable, uygulama tarafından sahiplenilen, senkron ve deterministik sch
 
 - [x] Registry, lifecycle, tick, cancellation, ordering, exception recovery ve reentrancy testlerini ekle.
 - [x] Çok sayıda aynı anda due job senaryosunu test et.
-- [ ] `once`, `every`, `cron_utc`, `cancel` ve `poll` örneklerini gerçek API ile derle/çalıştır.
+- [x] `once`, `every`, `cron_utc`, `cancel` ve `poll` örneklerini gerçek API ile derle/çalıştır.
 - [x] `docs/scheduler.md`, `docs/jobs.md`, `docs/concurrency.md` ve `docs/api.md` güncelle.
 - [x] README'de manual tick'i portable/default mod olarak göster.
 - [x] In-memory ve process restart'ta job kaybı sınırını görünür biçimde yaz.
@@ -495,4 +495,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 2 / `0.2.0`: monotonic fixed-rate/delay ile completion-anchored fixed-delay job state'ini manual scheduler'a bağlamak; ardından temel lifecycle event'lerine geçmek.
+Phase 2 / `0.2.0`: bounded temel lifecycle event modelini eklemek; listener hatasını scheduler state'inden izole etmek ve scheduled/actual/monotonic duration alanlarını doğrulamak.

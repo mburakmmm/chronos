@@ -142,6 +142,7 @@ Adapts an already parsed `CronSchedule` to the optional-return `UtcTrigger` prot
 
 - `make_utc_job(job_id, name, trigger, handler, enabled, created_at, metadata) -> Job`
 - `make_monotonic_job(job_id, name, trigger, handler, enabled, created_at, metadata) -> Job`
+- `make_fixed_delay_job(job_id, name, schedule, registered_at, handler, enabled, created_at, metadata) -> Job`
 
 The factories create the supported UTC or monotonic job subtype. `Job` itself is the shared registry/executor view; direct construction of the base class is internal.
 
@@ -154,12 +155,16 @@ Handlers have the verified type `(JobContext) -> None`. A context carries `job_i
 ### Trigger access
 
 - `trigger_kind() -> str`
+- `time_domain() -> str`
 - `next_utc_after(reference) -> UtcInstant | None`
 - `next_utc_at_or_after(reference) -> UtcInstant | None`
 - `next_monotonic_after(reference) -> MonotonicInstant | None`
 - `next_monotonic_at_or_after(reference) -> MonotonicInstant | None`
+- `next_monotonic_after_completion(completed_at) -> MonotonicInstant`
 
 Calling the wrong-domain method raises `InvalidJobError`.
+
+`make_fixed_delay_job` stores a `FixedDelay` configuration and calculates its first monotonic deadline from `registered_at`. Only fixed-delay jobs support `next_monotonic_after_completion`; the manual scheduler calls it after both successful and failed handlers.
 
 ## `chronos.registry`
 
@@ -194,12 +199,13 @@ Creates an application-owned manual scheduler with injected `Clock`, bounded `Jo
 - `enable(job_id)` / `disable(job_id)`
 - `list_jobs() -> list[Job]`
 - `next_run_utc(job_id) -> UtcInstant | None`
+- `next_run_monotonic(job_id) -> MonotonicInstant | None`
 - `is_completed(job_id) -> bool`
 - `tick() -> TickResult`
 
 `TickResult` exposes `succeeded`, `failed`, `skipped`, and `dispatched()`.
 
-The current scheduler slice accepts UTC jobs only. Exact registration boundaries are inclusive; recurring calculation is exclusive. Due work is ordered by planned UTC time then lexical job ID. See `docs/scheduler.md` for lifecycle, mutation, shutdown, and provisional missed-run behavior.
+Exact registration boundaries are inclusive; recurring calculation is exclusive. UTC eligibility uses wall time, while delay/interval eligibility and fixed-delay completion use monotonic time. Due work is ordered UTC-domain first, then monotonic-domain; within a domain it uses planned time then lexical job ID. See `docs/scheduler.md` for lifecycle, mutation, shutdown, and provisional missed-run behavior.
 
 ## Consumer imports
 
@@ -209,7 +215,7 @@ For a dependency aliased as `chronos`:
 from chronos.clock import Clock, FakeClock
 from chronos.cron import CronSchedule, CronTrigger, parse
 from chronos.executor import InlineExecutor
-from chronos.job import Job, JobContext, JobMetadata, make_monotonic_job, make_utc_job
+from chronos.job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job
 from chronos.registry import JobRegistry
 from chronos.scheduler import Scheduler, TickResult
 from chronos.system_clock import SystemClock

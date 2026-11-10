@@ -3,7 +3,7 @@ from errors import DuplicateJobError, InvalidJobError, JobNotFoundError, Schedul
 from executor import ExecutionOutcome, InlineExecutor
 from job import Job, JobContext
 from registry import JobRegistry
-from time import MAX_MS, UtcInstant
+from time import MAX_MS, MonotonicInstant, UtcInstant
 
 STATE_CREATED: str = "created"
 STATE_RUNNING: str = "running"
@@ -14,32 +14,38 @@ STATE_FAILED: str = "failed"
 class ScheduledEntry:
     job_id: str
     generation: int
+    time_domain: str
     has_next: bool
-    next_utc_ms: int
+    next_time_ms: int
     completed: bool
 
-    def __init__(self, job_id: str, generation: int, has_next: bool, next_utc_ms: int) -> None:
+    def __init__(self, job_id: str, generation: int, time_domain: str, has_next: bool, next_time_ms: int) -> None:
+        if time_domain != "utc" and time_domain != "monotonic":
+            raise InvalidJobError("unknown schedule time domain")
         self.job_id = job_id
         self.generation = generation
+        self.time_domain = time_domain
         self.has_next = has_next
-        self.next_utc_ms = next_utc_ms
+        self.next_time_ms = next_time_ms
         self.completed = not has_next
 
-    def set_next(self, has_next: bool, next_utc_ms: int) -> None:
+    def set_next(self, has_next: bool, next_time_ms: int) -> None:
 
         self.has_next = has_next
-        self.next_utc_ms = next_utc_ms
+        self.next_time_ms = next_time_ms
         self.completed = not has_next
 
 class DueItem:
     job_id: str
     generation: int
-    scheduled_utc_ms: int
+    time_domain: str
+    scheduled_time_ms: int
 
-    def __init__(self, job_id: str, generation: int, scheduled_utc_ms: int) -> None:
+    def __init__(self, job_id: str, generation: int, time_domain: str, scheduled_time_ms: int) -> None:
         self.job_id = job_id
         self.generation = generation
-        self.scheduled_utc_ms = scheduled_utc_ms
+        self.time_domain = time_domain
+        self.scheduled_time_ms = scheduled_time_ms
 
 class TickResult:
     succeeded: int
@@ -104,8 +110,6 @@ class Scheduler:
     def add(self, target: Job) -> None:
 
         self._require_mutable()
-        if target.trigger_kind() != "utc":
-            raise InvalidJobError("manual scheduler currently supports UTC jobs only")
         if self.has_active_job and self.active_job_id == target.job_id:
             raise DuplicateJobError(target.job_id)
         if self.registry.contains(target.job_id):
@@ -113,14 +117,22 @@ class Scheduler:
         if self.generation_counter == MAX_MS:
             raise InvalidJobError("scheduler generation limit exceeded")
 
-        next_run: UtcInstant | None = target.next_utc_at_or_after(self.clock.now_utc())
+        time_domain: str = target.time_domain()
+        has_next: bool = False
+        next_time_ms: int = 0
+        if time_domain == "utc":
+            next_utc: UtcInstant | None = target.next_utc_at_or_after(self.clock.now_utc())
+            has_next = next_utc is not None
+            if next_utc is not None:
+                next_time_ms = next_utc.epoch_ms
+        else:
+            next_monotonic: MonotonicInstant | None = target.next_monotonic_at_or_after(self.clock.now_monotonic())
+            has_next = next_monotonic is not None
+            if next_monotonic is not None:
+                next_time_ms = next_monotonic.value_ms
         self.registry.add(target)
         self.generation_counter += 1
-        has_next: bool = next_run is not None
-        next_utc_ms: int = 0
-        if next_run is not None:
-            next_utc_ms = next_run.epoch_ms
-        self.schedules.append(ScheduledEntry(target.job_id, self.generation_counter, has_next, next_utc_ms))
+        self.schedules.append(ScheduledEntry(target.job_id, self.generation_counter, time_domain, has_next, next_time_ms))
 
     def remove(self, job_id: str) -> Job:
 
@@ -137,10 +149,15 @@ class Scheduler:
         self._require_mutable()
         target: Job = self.registry.get(job_id)
         index: int = self._required_schedule(job_id)
-        now: UtcInstant = self.clock.now_utc()
-        next_run: UtcInstant | None = target.next_utc_at_or_after(now)
-        target.set_enabled(True, now)
-        self._set_entry_next(self.schedules[index], next_run)
+        updated_at: UtcInstant = self.clock.now_utc()
+        target.set_enabled(True, updated_at)
+        entry: ScheduledEntry = self.schedules[index]
+        if entry.time_domain == "utc":
+            next_utc: UtcInstant | None = target.next_utc_at_or_after(updated_at)
+            self._set_entry_next_utc(entry, next_utc)
+        else:
+            next_monotonic: MonotonicInstant | None = target.next_monotonic_at_or_after(self.clock.now_monotonic())
+            self._set_entry_next_monotonic(entry, next_monotonic)
 
     def disable(self, job_id: str) -> None:
 
@@ -155,9 +172,21 @@ class Scheduler:
 
         index: int = self._required_schedule(job_id)
         entry: ScheduledEntry = self.schedules[index]
+        if entry.time_domain != "utc":
+            raise InvalidJobError("monotonic schedule has no UTC next run")
         if not entry.has_next:
             return None
-        return UtcInstant(entry.next_utc_ms)
+        return UtcInstant(entry.next_time_ms)
+
+    def next_run_monotonic(self, job_id: str) -> MonotonicInstant | None:
+
+        index: int = self._required_schedule(job_id)
+        entry: ScheduledEntry = self.schedules[index]
+        if entry.time_domain != "monotonic":
+            raise InvalidJobError("UTC schedule has no monotonic next run")
+        if not entry.has_next:
+            return None
+        return MonotonicInstant(entry.next_time_ms)
 
     def is_completed(self, job_id: str) -> bool:
 
@@ -169,8 +198,9 @@ class Scheduler:
         if self.state_value != STATE_RUNNING:
             raise SchedulerStateError(self.state_value, "tick requires running state")
 
-        now: UtcInstant = self.clock.now_utc()
-        due_items: list[DueItem] = self._collect_due(now)
+        now_utc: UtcInstant = self.clock.now_utc()
+        now_monotonic: MonotonicInstant = self.clock.now_monotonic()
+        due_items: list[DueItem] = self._collect_due(now_utc, now_monotonic)
         result: TickResult = TickResult()
 
         for due in due_items:
@@ -182,7 +212,7 @@ class Scheduler:
                 result.skipped += 1
                 continue
             scheduled: ScheduledEntry = self.schedules[schedule_index]
-            if scheduled.generation != due.generation or not scheduled.has_next or scheduled.next_utc_ms != due.scheduled_utc_ms:
+            if scheduled.generation != due.generation or scheduled.time_domain != due.time_domain or not scheduled.has_next or scheduled.next_time_ms != due.scheduled_time_ms:
                 result.skipped += 1
                 continue
 
@@ -193,18 +223,19 @@ class Scheduler:
 
             self.has_active_job = True
             self.active_job_id = due.job_id
-            context: JobContext = JobContext(due.job_id, "utc", due.scheduled_utc_ms, 1)
+            context: JobContext = JobContext(due.job_id, due.time_domain, due.scheduled_time_ms, 1)
             outcome: ExecutionOutcome = self.executor.execute(selected, context)
             self.has_active_job = False
             self.active_job_id = ""
 
-            completed_at: UtcInstant = self.clock.now_utc()
+            completed_utc: UtcInstant = self.clock.now_utc()
+            completed_monotonic: MonotonicInstant = self.clock.now_monotonic()
             try:
                 if outcome.succeeded:
-                    selected.record_success(completed_at)
+                    selected.record_success(completed_utc)
                     result.succeeded += 1
                 else:
-                    selected.record_failure(outcome.error_category, completed_at)
+                    selected.record_failure(outcome.error_category, completed_utc)
                     result.failed += 1
             except Exception:
                 self.state_value = STATE_FAILED
@@ -219,27 +250,41 @@ class Scheduler:
             if current_index >= 0 and current_job is not None and current_job.enabled:
                 current: ScheduledEntry = self.schedules[current_index]
                 if current.generation == due.generation:
-                    reference_ms: int = due.scheduled_utc_ms
-                    if completed_at.epoch_ms > reference_ms:
-                        reference_ms = completed_at.epoch_ms
-                    self._set_entry_next(current, current_job.next_utc_after(UtcInstant(reference_ms)))
+                    if current.time_domain == "utc":
+                        utc_reference_ms: int = due.scheduled_time_ms
+                        if completed_utc.epoch_ms > utc_reference_ms:
+                            utc_reference_ms = completed_utc.epoch_ms
+                        self._set_entry_next_utc(current, current_job.next_utc_after(UtcInstant(utc_reference_ms)))
+                    elif current_job.trigger_kind() == "fixed-delay":
+                        fixed_delay_next: MonotonicInstant = current_job.next_monotonic_after_completion(completed_monotonic)
+                        current.set_next(True, fixed_delay_next.value_ms)
+                    else:
+                        monotonic_reference_ms: int = due.scheduled_time_ms
+                        if completed_monotonic.value_ms > monotonic_reference_ms:
+                            monotonic_reference_ms = completed_monotonic.value_ms
+                        self._set_entry_next_monotonic(current, current_job.next_monotonic_after(MonotonicInstant(monotonic_reference_ms)))
 
         return result
 
-    def _collect_due(self, now: UtcInstant) -> list[DueItem]:
+    def _collect_due(self, now_utc: UtcInstant, now_monotonic: MonotonicInstant) -> list[DueItem]:
 
         result: list[DueItem] = []
         for scheduled in self.schedules:
-            if scheduled.has_next and scheduled.next_utc_ms <= now.epoch_ms:
+            now_ms: int = now_utc.epoch_ms
+            if scheduled.time_domain == "monotonic":
+                now_ms = now_monotonic.value_ms
+            if scheduled.has_next and scheduled.next_time_ms <= now_ms:
                 target: Job | None = self.registry.find(scheduled.job_id)
                 if target is not None and target.enabled:
-                    candidate: DueItem = DueItem(scheduled.job_id, scheduled.generation, scheduled.next_utc_ms)
+                    candidate: DueItem = DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.next_time_ms)
                     insertion_index: int = len(result)
                     for i in range(len(result)):
                         existing: DueItem = result[i]
-                        earlier_time: bool = candidate.scheduled_utc_ms < existing.scheduled_utc_ms
-                        same_time_earlier_id: bool = candidate.scheduled_utc_ms == existing.scheduled_utc_ms and candidate.job_id < existing.job_id
-                        if earlier_time or same_time_earlier_id:
+                        earlier_domain: bool = candidate.time_domain == "utc" and existing.time_domain == "monotonic"
+                        same_domain: bool = candidate.time_domain == existing.time_domain
+                        earlier_time: bool = same_domain and candidate.scheduled_time_ms < existing.scheduled_time_ms
+                        same_time_earlier_id: bool = same_domain and candidate.scheduled_time_ms == existing.scheduled_time_ms and candidate.job_id < existing.job_id
+                        if earlier_domain or earlier_time or same_time_earlier_id:
                             insertion_index = i
                             break
                     result.insert(insertion_index, candidate)
@@ -252,12 +297,19 @@ class Scheduler:
                 return i
         return -1
 
-    def _set_entry_next(self, entry: ScheduledEntry, next_run: UtcInstant | None) -> None:
+    def _set_entry_next_utc(self, entry: ScheduledEntry, next_run: UtcInstant | None) -> None:
 
         if next_run is None:
             entry.set_next(False, 0)
         else:
             entry.set_next(True, next_run.epoch_ms)
+
+    def _set_entry_next_monotonic(self, entry: ScheduledEntry, next_run: MonotonicInstant | None) -> None:
+
+        if next_run is None:
+            entry.set_next(False, 0)
+        else:
+            entry.set_next(True, next_run.value_ms)
 
     def _required_schedule(self, job_id: str) -> int:
 

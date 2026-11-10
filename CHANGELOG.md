@@ -35,9 +35,12 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Inline synchronous executor that contains handler failures without retaining exception payloads or stopping unrelated jobs.
 - Reentrant add/remove support through generation-checked snapshot dispatch, including active job-ID reuse protection and stop-during-callback behavior.
 - Deterministic scheduler/executor tests and a compiling manual polling example for LLVM and QBE.
+- Manual scheduler integration for monotonic one-shot delays and anchor-preserving fixed-rate jobs.
+- Dedicated completion-anchored fixed-delay jobs with identical rescheduling after success or handler failure and explicit removal semantics.
+- Deterministic mixed-domain ordering that never compares UTC and monotonic integers, plus compiling `once`, `every`, and `cancel` examples.
 
 ### Limitations
 
-- The current manual scheduler accepts UTC jobs only; monotonic delay/fixed-rate and completion-based fixed-delay integration remain incomplete.
+- Lifecycle events and configurable execution policies remain incomplete.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.

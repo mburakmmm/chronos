@@ -1,0 +1,19 @@
+from clock import FakeClock
+from job import Job, JobContext, make_fixed_delay_job
+from scheduler import Scheduler
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import FixedDelay
+
+def cleanup(context: JobContext) -> None:
+    print("cleanup", context.scheduled_time_ms)
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 10)
+target: Job = make_fixed_delay_job("cleanup", "Cleanup", FixedDelay(Duration(40)), MonotonicInstant(500), cleanup, True, UtcInstant(1000), [])
+engine.add(target)
+engine.start()
+
+engine.remove("cleanup")
+source_clock.advance(Duration(100))
+print("dispatched after cancellation", engine.tick().dispatched())
+engine.stop()
