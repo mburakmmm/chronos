@@ -79,6 +79,36 @@ Production `Clock` implementation:
 
 This module requires Nox's hosted `clock` capability and is unavailable in the freestanding profile.
 
+## `chronos.trigger`
+
+Calendar and elapsed-time triggers use distinct protocols so UTC and monotonic values cannot be mixed.
+
+### `UtcTrigger`
+
+Structural protocol with `next_fire_after(reference: UtcInstant) -> UtcInstant | None`.
+
+### `MonotonicTrigger`
+
+Structural protocol with `next_fire_after(reference: MonotonicInstant) -> MonotonicInstant | None`.
+
+Both contracts are strictly exclusive: every returned value is greater than the reference.
+
+### `OnceTrigger(target)`
+
+Returns its UTC target only when the target is strictly after the reference, otherwise `None`.
+
+### `DelayTrigger(registered_at, delay)`
+
+Calculates one monotonic deadline from registration time plus a nonnegative duration. It returns that deadline only while it remains strictly after the reference.
+
+### `FixedRateTrigger(anchor, interval)`
+
+Produces monotonic occurrences anchored to the original start. The interval must be greater than zero. The next occurrence is calculated mathematically without repeated addition, so callback duration and long gaps do not shift the anchor.
+
+### `FixedDelay(delay)`
+
+Stores a positive fixed-delay configuration. `next_after_completion(completed_at)` returns completion plus delay. Scheduler state owns the completion timestamp; fixed-delay is not treated as fixed-rate recurrence.
+
 ## Consumer imports
 
 For a dependency aliased as `chronos`:
@@ -87,4 +117,5 @@ For a dependency aliased as `chronos`:
 from chronos.clock import Clock, FakeClock
 from chronos.system_clock import SystemClock
 from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
 ```

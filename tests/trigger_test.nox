@@ -1,0 +1,24 @@
+import nox.test
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import DelayTrigger, OnceTrigger
+
+once: OnceTrigger = OnceTrigger(UtcInstant(1000))
+future: UtcInstant | None = once.next_fire_after(UtcInstant(999))
+nox.test.assert_true(future is not None, "one-shot future exists")
+if future is not None:
+    nox.test.assert_eq_int(future.as_epoch_ms(), 1000, "one-shot target")
+
+nox.test.assert_true(once.next_fire_after(UtcInstant(1000)) is None, "one-shot exact boundary excluded")
+nox.test.assert_true(once.next_fire_after(UtcInstant(1001)) is None, "one-shot past exhausted")
+
+delay: DelayTrigger = DelayTrigger(MonotonicInstant(500), Duration(250))
+due: MonotonicInstant | None = delay.next_fire_after(MonotonicInstant(749))
+nox.test.assert_true(due is not None, "delay future exists")
+if due is not None:
+    nox.test.assert_eq_int(due.as_ms(), 750, "delay deadline")
+
+nox.test.assert_true(delay.next_fire_after(MonotonicInstant(750)) is None, "delay exact boundary excluded")
+nox.test.assert_true(delay.next_fire_after(MonotonicInstant(800)) is None, "elapsed delay exhausted")
+
+zero_delay: DelayTrigger = DelayTrigger(MonotonicInstant(20), Duration(0))
+nox.test.assert_true(zero_delay.next_fire_after(MonotonicInstant(20)) is None, "zero delay does not repeat")

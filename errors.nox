@@ -9,3 +9,7 @@ class InvalidDurationError(ChronosError):
 class TimeRangeError(ChronosError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+class InvalidTriggerError(ChronosError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

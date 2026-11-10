@@ -1,0 +1,20 @@
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
+
+once: OnceTrigger = OnceTrigger(UtcInstant(2000))
+once_next: UtcInstant | None = once.next_fire_after(UtcInstant(1500))
+if once_next is not None:
+    print("once UTC ms", once_next.as_epoch_ms())
+
+delay: DelayTrigger = DelayTrigger(MonotonicInstant(100), Duration(50))
+delay_next: MonotonicInstant | None = delay.next_fire_after(MonotonicInstant(120))
+if delay_next is not None:
+    print("delay monotonic ms", delay_next.as_ms())
+
+rate: FixedRateTrigger = FixedRateTrigger(MonotonicInstant(100), Duration(25))
+rate_next: MonotonicInstant | None = rate.next_fire_after(MonotonicInstant(163))
+if rate_next is not None:
+    print("fixed-rate monotonic ms", rate_next.as_ms())
+
+fixed_delay: FixedDelay = FixedDelay(Duration(40))
+print("fixed-delay monotonic ms", fixed_delay.next_after_completion(MonotonicInstant(700)).as_ms())

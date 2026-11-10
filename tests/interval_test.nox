@@ -1,0 +1,65 @@
+import nox.test
+from errors import InvalidDurationError, TimeRangeError
+from time import Duration, MAX_MS, MonotonicInstant
+from trigger import FixedDelay, FixedRateTrigger
+
+def rejects_zero_interval() -> bool:
+    try:
+        FixedRateTrigger(MonotonicInstant(0), Duration(0))
+    except InvalidDurationError:
+        return True
+    return False
+
+def rejects_rate_overflow() -> bool:
+    rate_trigger: FixedRateTrigger = FixedRateTrigger(MonotonicInstant(MAX_MS), Duration(1))
+    try:
+        rate_trigger.next_fire_after(MonotonicInstant(MAX_MS))
+    except TimeRangeError:
+        return True
+    return False
+
+def recurring_results_increase() -> bool:
+    sample: FixedRateTrigger = FixedRateTrigger(MonotonicInstant(1), Duration(7))
+    reference: MonotonicInstant = MonotonicInstant(0)
+    for i in range(100):
+        following: MonotonicInstant | None = sample.next_fire_after(reference)
+        if following is None:
+            return False
+        if following.value_ms <= reference.value_ms:
+            return False
+        reference = following
+    return True
+
+rate: FixedRateTrigger = FixedRateTrigger(MonotonicInstant(100), Duration(25))
+
+before: MonotonicInstant | None = rate.next_fire_after(MonotonicInstant(99))
+nox.test.assert_true(before is not None, "fixed-rate anchor returned before start")
+if before is not None:
+    nox.test.assert_eq_int(before.as_ms(), 100, "fixed-rate anchor")
+
+at_anchor: MonotonicInstant | None = rate.next_fire_after(MonotonicInstant(100))
+nox.test.assert_true(at_anchor is not None, "fixed-rate next after anchor")
+if at_anchor is not None:
+    nox.test.assert_eq_int(at_anchor.as_ms(), 125, "fixed-rate strict anchor boundary")
+
+between: MonotonicInstant | None = rate.next_fire_after(MonotonicInstant(136))
+nox.test.assert_true(between is not None, "fixed-rate next after partial interval")
+if between is not None:
+    nox.test.assert_eq_int(between.as_ms(), 150, "fixed-rate mathematical jump")
+
+exact: MonotonicInstant | None = rate.next_fire_after(MonotonicInstant(150))
+nox.test.assert_true(exact is not None, "fixed-rate next after exact occurrence")
+if exact is not None:
+    nox.test.assert_eq_int(exact.as_ms(), 175, "fixed-rate exact boundary excluded")
+
+far: MonotonicInstant | None = rate.next_fire_after(MonotonicInstant(1000100))
+nox.test.assert_true(far is not None, "fixed-rate far reference")
+if far is not None:
+    nox.test.assert_eq_int(far.as_ms(), 1000125, "fixed-rate no drift")
+
+fixed_delay: FixedDelay = FixedDelay(Duration(40))
+nox.test.assert_eq_int(fixed_delay.next_after_completion(MonotonicInstant(700)).as_ms(), 740, "fixed-delay completion anchor")
+
+nox.test.assert_true(rejects_zero_interval(), "zero recurring interval rejected")
+nox.test.assert_true(rejects_rate_overflow(), "fixed-rate overflow rejected")
+nox.test.assert_true(recurring_results_increase(), "recurring results strictly increase")

@@ -154,14 +154,14 @@ Amaç: Scheduler veya gerçek sleep olmadan çalışan deterministik scheduling 
 
 ## 0.1.0 — One-shot ve interval trigger'ları
 
-- [ ] Tek UTC timestamp için one-shot trigger uygula.
-- [ ] Exact boundary, past, future ve completed/no-next durumlarını test et.
-- [ ] Elapsed delay başlangıç/registration semantiğini uygula ve test et.
-- [ ] Fixed-rate trigger'ı initial anchor üzerinden matematiksel hesapla; uzun tekrar döngüsü kullanma.
-- [ ] Interval `<= 0`, çok büyük interval ve overflow durumlarını reddet.
-- [ ] Missed fixed-rate occurrence hesabının schedule anchor'ı kaydırmadığını test et.
-- [ ] Tüm recurring sonuçların strictly increasing olduğunu property benzeri geniş veri setiyle test et.
-- [ ] Fixed-delay için yalnızca saf tanım/configuration oluştur; completion tabanlı state transition Phase 2'de scheduler ile tamamlanır.
+- [x] Tek UTC timestamp için one-shot trigger uygula.
+- [x] Exact boundary, past, future ve completed/no-next durumlarını test et.
+- [x] Elapsed delay başlangıç/registration semantiğini uygula ve test et.
+- [x] Fixed-rate trigger'ı initial anchor üzerinden matematiksel hesapla; uzun tekrar döngüsü kullanma.
+- [x] Interval `<= 0`, çok büyük interval ve overflow durumlarını reddet.
+- [x] Missed fixed-rate occurrence hesabının schedule anchor'ı kaydırmadığını test et.
+- [x] Tüm recurring sonuçların strictly increasing olduğunu property benzeri geniş veri setiyle test et.
+- [x] Fixed-delay için yalnızca saf tanım/configuration oluştur; completion tabanlı state transition Phase 2'de scheduler ile tamamlanır.
 
 ## 0.1.0 — Beş alanlı UTC cron parser
 
@@ -495,4 +495,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 1 / `0.1.0`: one-shot, elapsed delay ve fixed-rate trigger hesaplarını strict/exclusive contract ile uygulamak.
+Phase 1 / `0.1.0`: bounded beş alanlı UTC cron parser ve next-fire algoritmasını uygulamak.

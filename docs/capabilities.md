@@ -176,3 +176,18 @@ noxc run --backend qbe examples/clock.nox            -> exit 0
 ```
 
 The pure time/FakeClock modules remain freestanding-compatible. The production adapter is isolated in `system_clock.nox` so its required `clock` capability does not leak into pure trigger tests.
+
+The pure trigger slice was verified with:
+
+```text
+noxc test tests                                       -> 5 passed, 0 failed
+noxc run --backend llvm tests/trigger_test.nox        -> exit 0
+noxc run --backend qbe tests/trigger_test.nox         -> exit 0
+noxc run --backend llvm tests/interval_test.nox       -> exit 0
+noxc run --backend qbe tests/interval_test.nox        -> exit 0
+noxc run --backend llvm examples/triggers.nox         -> exit 0
+noxc run --backend qbe examples/triggers.nox          -> exit 0
+noxc check --profile freestanding trigger.nox         -> exit 0
+```
+
+UTC one-shot values and monotonic interval values are separated by type and protocol. A 100-step deterministic recurrence test confirms strictly increasing fixed-rate results.
