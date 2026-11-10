@@ -1,0 +1,80 @@
+from errors import InvalidDurationError, TimeRangeError
+
+MIN_MS: int = -9223372036854775807 - 1
+MAX_MS: int = 9223372036854775807
+
+class UtcInstant:
+    epoch_ms: int
+
+    def __init__(self, epoch_ms: int) -> None:
+        self.epoch_ms = epoch_ms
+
+    def as_epoch_ms(self) -> int:
+
+        return self.epoch_ms
+
+class MonotonicInstant:
+    value_ms: int
+
+    def __init__(self, value_ms: int) -> None:
+        if value_ms < 0:
+            raise TimeRangeError("monotonic milliseconds must be nonnegative")
+        self.value_ms = value_ms
+
+    def as_ms(self) -> int:
+
+        return self.value_ms
+
+class Duration:
+    value_ms: int
+
+    def __init__(self, value_ms: int) -> None:
+        if value_ms < 0:
+            raise InvalidDurationError("duration milliseconds must be nonnegative")
+        self.value_ms = value_ms
+
+    def as_ms(self) -> int:
+
+        return self.value_ms
+
+def _checked_add_int64(left: int, right: int) -> int:
+    if right > 0 and left > MAX_MS - right:
+        raise TimeRangeError("millisecond addition overflow")
+    if right < 0 and left < MIN_MS - right:
+        raise TimeRangeError("millisecond addition underflow")
+    return left + right
+
+def _checked_sub_int64(left: int, right: int) -> int:
+    if right > 0 and left < MIN_MS + right:
+        raise TimeRangeError("millisecond subtraction underflow")
+    if right < 0 and left > MAX_MS + right:
+        raise TimeRangeError("millisecond subtraction overflow")
+    return left - right
+
+def add_duration(instant: UtcInstant, duration: Duration) -> UtcInstant:
+    return UtcInstant(_checked_add_int64(instant.epoch_ms, duration.value_ms))
+
+def subtract_duration(instant: UtcInstant, duration: Duration) -> UtcInstant:
+    return UtcInstant(_checked_sub_int64(instant.epoch_ms, duration.value_ms))
+
+def add_monotonic_duration(instant: MonotonicInstant, duration: Duration) -> MonotonicInstant:
+    return MonotonicInstant(_checked_add_int64(instant.value_ms, duration.value_ms))
+
+def elapsed_between(start: MonotonicInstant, end: MonotonicInstant) -> Duration:
+    if end.value_ms < start.value_ms:
+        raise TimeRangeError("monotonic end precedes start")
+    return Duration(_checked_sub_int64(end.value_ms, start.value_ms))
+
+def multiply_duration(duration: Duration, factor: int) -> Duration:
+    if factor < 0:
+        raise InvalidDurationError("duration multiplier must be nonnegative")
+    if duration.value_ms == 0 or factor == 0:
+        return Duration(0)
+    if factor > MAX_MS // duration.value_ms:
+        raise TimeRangeError("duration multiplication overflow")
+    return Duration(duration.value_ms * factor)
+
+def require_positive_interval(duration: Duration) -> Duration:
+    if duration.value_ms == 0:
+        raise InvalidDurationError("recurring interval must be greater than zero")
+    return duration

@@ -1,7 +1,7 @@
 # Nox capability matrix
 
 Last updated: 2026-11-10  
-Chronos phase: 0 (`0.0.x`)
+Chronos phase: 1 (`0.1.0` development)
 
 This document separates documentation findings from executable verification. A documented API is not marked fully verified until an appropriate Chronos proof of concept compiles and runs.
 
@@ -157,3 +157,22 @@ A spawned task with a class argument ran on LLVM and was rejected by QBE. Chrono
 ## Minimum Nox version
 
 Not decided. Development currently uses Nox 2.1.0. A minimum supported version will be published only after compatibility tests.
+
+## Phase 1 implementation evidence
+
+The typed time and clock slice was verified with:
+
+```text
+noxc test tests                                      -> 3 passed, 0 failed
+noxc run --backend llvm tests/time_test.nox          -> exit 0
+noxc run --backend qbe tests/time_test.nox           -> exit 0
+noxc run --backend llvm tests/clock_test.nox         -> exit 0
+noxc run --backend qbe tests/clock_test.nox          -> exit 0
+noxc check --profile freestanding time.nox           -> exit 0
+noxc check --profile freestanding clock.nox          -> exit 0
+noxc check --profile freestanding system_clock.nox   -> expected CapabilityNotGranted
+noxc run --backend llvm examples/clock.nox           -> exit 0
+noxc run --backend qbe examples/clock.nox            -> exit 0
+```
+
+The pure time/FakeClock modules remain freestanding-compatible. The production adapter is isolated in `system_clock.nox` so its required `clock` capability does not leak into pure trigger tests.

@@ -54,7 +54,7 @@ Amaç: Ürün koduna başlamadan önce Nox 2.1.0 gerçeklerini derlenebilir kan�
 ## 0.0.1 — Depo ve paket iskeleti
 
 - [x] Git kullanım biçimini netleştir ve `main` branch ile yerel depoyu başlat.
-- [ ] Phase 0 dosyaları gözden geçirildikten sonra başlangıç commit'ini oluştur.
+- [x] Phase 0 dosyaları gözden geçirildikten sonra başlangıç commit'ini oluştur (`1870ec1`).
 - [x] Gerçek Nox paket formatına uygun en küçük `nox.json` dosyasını oluştur.
 - [x] Harici bağımlılık yoksa `requires` alanını boş tut; gereksiz `nox.lock` üretme.
 - [x] Library package için `entry` gereksinimini ve doğru entry dosyasını derleme POC'siyle belirle.
@@ -143,14 +143,14 @@ Amaç: Scheduler veya gerçek sleep olmadan çalışan deterministik scheduling 
 
 ## 0.1.0 — Zaman modeli ve fake clock
 
-- [ ] Doğrulanan Nox tipleriyle UTC epoch timestamp ve nonnegative duration temsilini uygula.
-- [ ] Duvar saati ile monoton elapsed time değerlerinin isim ve tür düzeyinde karışmasını engelle.
-- [ ] Overflow/underflow kontrollü millisecond arithmetic yardımcılarını uygula.
-- [ ] Timestamp destek aralığını ve hata davranışını tanımla.
-- [ ] Production clock adapter'ını uygula.
-- [ ] Kontrollü advance edilebilen `FakeClock` uygula.
-- [ ] Wall-clock forward/backward jump senaryoları için deterministik test ekle.
-- [ ] Monotonic delay ve calendar deadline farkını test et.
+- [x] Doğrulanan Nox tipleriyle UTC epoch timestamp ve nonnegative duration temsilini uygula.
+- [x] Duvar saati ile monoton elapsed time değerlerinin isim ve tür düzeyinde karışmasını engelle.
+- [x] Overflow/underflow kontrollü millisecond arithmetic yardımcılarını uygula.
+- [x] Timestamp destek aralığını ve hata davranışını tanımla.
+- [x] Production clock adapter'ını uygula.
+- [x] Kontrollü advance edilebilen `FakeClock` uygula.
+- [x] Wall-clock forward/backward jump senaryoları için deterministik test ekle.
+- [x] Monotonic delay ve calendar deadline farkını test et.
 
 ## 0.1.0 — One-shot ve interval trigger'ları
 
@@ -495,4 +495,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 1 / `0.1.0`: checked time arithmetic, clock abstraction ve fake clock ile saf zaman modelini uygulamak. Phase 0'dan kalan lisans seçimi ve başlangıç commit'i ayrıca kapatılacak.
+Phase 1 / `0.1.0`: one-shot, elapsed delay ve fixed-rate trigger hesaplarını strict/exclusive contract ile uygulamak.

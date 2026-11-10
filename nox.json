@@ -1,6 +1,6 @@
 {
   "name": "chronos",
   "version": "0.0.0",
-  "entry": "examples/calendar_probe.nox",
+  "entry": "examples/clock.nox",
   "requires": []
 }

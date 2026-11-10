@@ -1,0 +1,10 @@
+import nox.time as nox_time
+from time import MonotonicInstant, UtcInstant
+
+class SystemClock:
+    def now_utc(self) -> UtcInstant:
+        return UtcInstant(nox_time.now_ms())
+
+    def now_monotonic(self) -> MonotonicInstant:
+
+        return MonotonicInstant(nox_time.boot_ms())

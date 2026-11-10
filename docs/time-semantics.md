@@ -4,6 +4,8 @@ Status: Phase 0 design record for Nox 2.1.0.
 
 Chronos treats calendar deadlines, elapsed delays, and calendar field values as different concepts. Values are not converted between clock domains implicitly.
 
+The implemented experimental types are `UtcInstant`, `MonotonicInstant`, and `Duration`. Checked arithmetic raises a Chronos error before Nox's wrapping `int` operations can overflow.
+
 ## UTC calendar time
 
 Absolute deadlines and cron fire times use signed 64-bit Unix epoch milliseconds in UTC.
@@ -18,7 +20,7 @@ Absolute deadlines and cron fire times use signed 64-bit Unix epoch milliseconds
 
 Elapsed delays must not be represented as `now_ms() + delay`, because that makes them sensitive to wall-clock corrections.
 
-Chronos will use a monotonic clock abstraction for delays and scheduler waiting. The production elapsed clock will be backed by `nox.time.boot_ms()` when the implementation POC confirms the final abstraction shape.
+Chronos uses a `Clock` protocol for UTC and monotonic readings. `SystemClock` backs its monotonic reading with `nox.time.boot_ms()`, while `FakeClock` exposes controlled UTC jumps and elapsed advancement for deterministic tests.
 
 The intended delay rule is:
 

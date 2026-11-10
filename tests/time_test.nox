@@ -1,0 +1,59 @@
+import nox.test
+from errors import InvalidDurationError, TimeRangeError
+from time import Duration, MAX_MS, MIN_MS, MonotonicInstant, UtcInstant, add_duration, add_monotonic_duration, elapsed_between, multiply_duration, require_positive_interval, subtract_duration
+
+def rejects_negative_duration() -> bool:
+    try:
+        Duration(-1)
+    except InvalidDurationError:
+        return True
+    return False
+
+def rejects_zero_interval() -> bool:
+    try:
+        require_positive_interval(Duration(0))
+    except InvalidDurationError:
+        return True
+    return False
+
+def rejects_add_overflow() -> bool:
+    try:
+        add_duration(UtcInstant(MAX_MS), Duration(1))
+    except TimeRangeError:
+        return True
+    return False
+
+def rejects_subtract_underflow() -> bool:
+    try:
+        subtract_duration(UtcInstant(MIN_MS), Duration(1))
+    except TimeRangeError:
+        return True
+    return False
+
+def rejects_monotonic_reverse() -> bool:
+    try:
+        elapsed_between(MonotonicInstant(10), MonotonicInstant(9))
+    except TimeRangeError:
+        return True
+    return False
+
+def rejects_multiply_overflow() -> bool:
+    try:
+        multiply_duration(Duration(MAX_MS), 2)
+    except TimeRangeError:
+        return True
+    return False
+
+nox.test.assert_eq_int(Duration(0).as_ms(), 0, "zero duration")
+nox.test.assert_true(rejects_negative_duration(), "negative duration rejected")
+nox.test.assert_eq_int(add_duration(UtcInstant(100), Duration(25)).as_epoch_ms(), 125, "UTC add")
+nox.test.assert_eq_int(subtract_duration(UtcInstant(100), Duration(25)).as_epoch_ms(), 75, "UTC subtract")
+nox.test.assert_eq_int(add_monotonic_duration(MonotonicInstant(10), Duration(5)).as_ms(), 15, "monotonic add")
+nox.test.assert_eq_int(elapsed_between(MonotonicInstant(10), MonotonicInstant(35)).as_ms(), 25, "monotonic elapsed")
+nox.test.assert_eq_int(multiply_duration(Duration(7), 3).as_ms(), 21, "duration multiply")
+nox.test.assert_eq_int(multiply_duration(Duration(7), 0).as_ms(), 0, "zero multiplier")
+nox.test.assert_true(rejects_zero_interval(), "zero recurring interval rejected")
+nox.test.assert_true(rejects_add_overflow(), "UTC add overflow rejected")
+nox.test.assert_true(rejects_subtract_underflow(), "UTC subtract underflow rejected")
+nox.test.assert_true(rejects_monotonic_reverse(), "monotonic reversal rejected")
+nox.test.assert_true(rejects_multiply_overflow(), "duration multiply overflow rejected")

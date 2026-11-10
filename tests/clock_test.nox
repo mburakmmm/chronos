@@ -1,0 +1,31 @@
+import nox.test
+from clock import Clock, FakeClock
+from errors import TimeRangeError
+from time import Duration, MAX_MS
+
+def read_utc_ms(source: Clock) -> int:
+    return source.now_utc().as_epoch_ms()
+
+def overflow_is_atomic() -> bool:
+    source: FakeClock = FakeClock(MAX_MS, MAX_MS)
+    try:
+        source.advance(Duration(1))
+    except TimeRangeError:
+        return source.now_utc().as_epoch_ms() == MAX_MS and source.now_monotonic().as_ms() == MAX_MS
+    return False
+
+fake_clock: FakeClock = FakeClock(1000, 500)
+nox.test.assert_eq_int(read_utc_ms(fake_clock), 1000, "fake UTC start")
+nox.test.assert_eq_int(fake_clock.now_monotonic().as_ms(), 500, "fake monotonic start")
+
+fake_clock.advance(Duration(250))
+nox.test.assert_eq_int(fake_clock.now_utc().as_epoch_ms(), 1250, "advance UTC")
+nox.test.assert_eq_int(fake_clock.now_monotonic().as_ms(), 750, "advance monotonic")
+
+fake_clock.jump_utc_ms(-500)
+nox.test.assert_eq_int(fake_clock.now_utc().as_epoch_ms(), 750, "wall clock backward jump")
+nox.test.assert_eq_int(fake_clock.now_monotonic().as_ms(), 750, "wall jump preserves monotonic")
+
+fake_clock.set_utc_ms(5000)
+nox.test.assert_eq_int(fake_clock.now_utc().as_epoch_ms(), 5000, "set fake UTC")
+nox.test.assert_true(overflow_is_atomic(), "failed advance preserves both clock values")

@@ -1,0 +1,14 @@
+from clock import Clock, FakeClock
+from system_clock import SystemClock
+from time import Duration
+
+def utc_ms(source: Clock) -> int:
+    return source.now_utc().as_epoch_ms()
+
+fake: FakeClock = FakeClock(1704067200000, 100)
+fake.advance(Duration(250))
+fake.jump_utc_ms(-50)
+print(utc_ms(fake), fake.now_monotonic().as_ms())
+
+system: SystemClock = SystemClock()
+print(utc_ms(system) > 0, system.now_monotonic().as_ms() >= 0)
