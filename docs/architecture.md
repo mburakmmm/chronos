@@ -155,7 +155,7 @@ Due work is ordered first by scheduled UTC timestamp and then by lexical job ID.
 
 ## ADR-004: numeric and error boundaries
 
-Timestamps use signed 64-bit epoch milliseconds and durations use nonnegative signed 64-bit milliseconds. All additions and multiplications are checked before evaluation because Nox plain `int` wraps.
+UTC timestamps use epoch milliseconds from `0` through signed `int64` maximum. Durations use nonnegative signed 64-bit milliseconds. All additions and multiplications are checked before evaluation because Nox plain `int` wraps.
 
 - Negative durations are rejected.
 - A zero one-shot delay is valid and becomes due once.

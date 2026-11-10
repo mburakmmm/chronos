@@ -1,0 +1,280 @@
+import nox.strings
+import nox.time
+from errors import CronParseError, CronSearchLimitError, TimeRangeError
+from time import MAX_MS, UtcInstant, _checked_add_int64
+
+MAX_EXPRESSION_BYTES: int = 256
+MAX_ITEMS: int = 128
+MAX_TRANSITIONS: int = 100000
+SEARCH_HORIZON_YEARS: int = 8
+MINUTE_MS: int = 60000
+HOUR_MS: int = 3600000
+DAY_MS: int = 86400000
+
+class CronField:
+    name: str
+    minimum: int
+    maximum: int
+    allowed: list[bool]
+    values: list[int]
+    wildcard: bool
+
+    def __init__(self, name: str, minimum: int, maximum: int, allowed: list[bool], values: list[int], wildcard: bool) -> None:
+        self.name = name
+        self.minimum = minimum
+        self.maximum = maximum
+        self.allowed = allowed
+        self.values = values
+        self.wildcard = wildcard
+
+    def contains(self, value: int) -> bool:
+
+        if value < self.minimum or value > self.maximum:
+            return False
+        return self.allowed[value - self.minimum]
+
+    def first(self) -> int:
+
+        return self.values[0]
+
+    def next_at_or_after(self, value: int) -> int | None:
+
+        for candidate in self.values:
+            if candidate >= value:
+                return candidate
+        return None
+
+class CronSchedule:
+    minute: CronField
+    hour: CronField
+    day_of_month: CronField
+    month: CronField
+    day_of_week: CronField
+
+    def __init__(self, minute: CronField, hour: CronField, day_of_month: CronField, month: CronField, day_of_week: CronField) -> None:
+        self.minute = minute
+        self.hour = hour
+        self.day_of_month = day_of_month
+        self.month = month
+        self.day_of_week = day_of_week
+
+    def next_fire_after(self, reference: UtcInstant) -> UtcInstant:
+
+        candidate_ms: int = _next_minute_boundary(reference.epoch_ms)
+        start: nox.time.DateTime = nox.time.from_epoch_ms(candidate_ms)
+        if start.year > MAX_MS - SEARCH_HORIZON_YEARS:
+            raise TimeRangeError("cron search year overflow")
+        last_year: int = start.year + SEARCH_HORIZON_YEARS
+        transitions: int = 0
+
+        while transitions < MAX_TRANSITIONS:
+            transitions += 1
+            current: nox.time.DateTime = nox.time.from_epoch_ms(candidate_ms)
+            if current.year > last_year:
+                raise CronSearchLimitError("no cron match within search horizon")
+
+            next_month: int | None = self.month.next_at_or_after(current.month)
+            if next_month is None:
+                candidate_ms = _calendar_ms(_checked_add_int64(current.year, 1), self.month.first(), 1, 0, 0)
+                continue
+            if next_month > current.month:
+                candidate_ms = _calendar_ms(current.year, next_month, 1, 0, 0)
+                continue
+
+            if not self._day_matches(current, candidate_ms):
+                candidate_ms = _next_day_start(current)
+                continue
+
+            next_hour: int | None = self.hour.next_at_or_after(current.hour)
+            if next_hour is None:
+                candidate_ms = _next_day_start(current)
+                continue
+            if next_hour > current.hour:
+                candidate_ms = _calendar_ms(current.year, current.month, current.day, next_hour, 0)
+                continue
+
+            next_minute: int | None = self.minute.next_at_or_after(current.minute)
+            if next_minute is None:
+                candidate_ms = _next_hour_start(current)
+                continue
+            if next_minute > current.minute:
+                candidate_ms = _calendar_ms(current.year, current.month, current.day, current.hour, next_minute)
+                continue
+
+            return UtcInstant(candidate_ms)
+
+        raise CronSearchLimitError("cron transition limit exceeded")
+
+    def _day_matches(self, current: nox.time.DateTime, epoch_ms: int) -> bool:
+
+        dom_matches: bool = self.day_of_month.contains(current.day)
+        dow_matches: bool = self.day_of_week.contains(_day_of_week(epoch_ms))
+        if self.day_of_month.wildcard and self.day_of_week.wildcard:
+            return True
+        if self.day_of_month.wildcard:
+            return dow_matches
+        if self.day_of_week.wildcard:
+            return dom_matches
+        return dom_matches or dow_matches
+
+def parse(expression: str) -> CronSchedule:
+    byte_count: int = nox.strings.byte_len(expression)
+    if byte_count == 0:
+        raise CronParseError("expression", "", "expression is empty")
+    if byte_count > MAX_EXPRESSION_BYTES:
+        raise CronParseError("expression", "", "expression exceeds 256 bytes")
+    _require_ascii(expression)
+
+    fields: list[str] = _split_fields(expression)
+    if len(fields) != 5:
+        raise CronParseError("expression", "", "expected exactly five fields")
+    if _item_count(fields) > MAX_ITEMS:
+        raise CronParseError("expression", "", "expression has too many list items")
+
+    minute: CronField = _parse_field("minute", fields[0], 0, 59)
+    hour: CronField = _parse_field("hour", fields[1], 0, 23)
+    day_of_month: CronField = _parse_field("day-of-month", fields[2], 1, 31)
+    month: CronField = _parse_field("month", fields[3], 1, 12)
+    day_of_week: CronField = _parse_field("day-of-week", fields[4], 0, 6)
+    return CronSchedule(minute, hour, day_of_month, month, day_of_week)
+
+def _require_ascii(expression: str) -> None:
+    count: int = nox.strings.byte_len(expression)
+    for i in range(count):
+        if nox.strings.byte_at(expression, i) > 127:
+            raise CronParseError("expression", "", "only ASCII syntax is supported")
+
+def _is_separator(byte: int) -> bool:
+    return byte == 32 or byte == 9
+
+def _split_fields(expression: str) -> list[str]:
+    fields: list[str] = []
+    current: str = ""
+    count: int = nox.strings.byte_len(expression)
+    for i in range(count):
+        byte: int = nox.strings.byte_at(expression, i)
+        if _is_separator(byte):
+            if current != "":
+                fields.append(current)
+                current = ""
+        else:
+            current = current + nox.strings.char_from_byte(byte)
+    if current != "":
+        fields.append(current)
+    return fields
+
+def _item_count(fields: list[str]) -> int:
+    count: int = 0
+    for field in fields:
+        count += len(nox.strings.split(field, ","))
+    return count
+
+def _empty_bitmap(size: int) -> list[bool]:
+    result: list[bool] = []
+    for i in range(size):
+        result.append(False)
+    return result
+
+def _parse_field(name: str, text: str, minimum: int, maximum: int) -> CronField:
+    if text == "":
+        raise CronParseError(name, text, "field is empty")
+
+    allowed: list[bool] = _empty_bitmap(maximum - minimum + 1)
+    items: list[str] = nox.strings.split(text, ",")
+    for item in items:
+        if item == "":
+            raise CronParseError(name, item, "empty list item")
+        _expand_item(name, item, minimum, maximum, allowed)
+
+    values: list[int] = []
+    for value in range(minimum, maximum + 1):
+        if allowed[value - minimum]:
+            values.append(value)
+    if len(values) == 0:
+        raise CronParseError(name, text, "field selects no values")
+    wildcard: bool = text == "*"
+    return CronField(name, minimum, maximum, allowed, values, wildcard)
+
+def _expand_item(name: str, item: str, minimum: int, maximum: int, allowed: list[bool]) -> None:
+    slash_parts: list[str] = nox.strings.split(item, "/")
+    if len(slash_parts) > 2:
+        raise CronParseError(name, item, "multiple step separators")
+
+    base: str = slash_parts[0]
+    step: int = 1
+    has_step: bool = len(slash_parts) == 2
+    if has_step:
+        if slash_parts[1] == "":
+            raise CronParseError(name, item, "step is empty")
+        step = _parse_positive(name, item, slash_parts[1])
+
+    start: int = minimum
+    end: int = maximum
+    if base == "*":
+        pass
+    elif nox.strings.contains(base, "-"):
+        range_parts: list[str] = nox.strings.split(base, "-")
+        if len(range_parts) != 2 or range_parts[0] == "" or range_parts[1] == "":
+            raise CronParseError(name, item, "invalid range")
+        start = _parse_bounded(name, item, range_parts[0], minimum, maximum)
+        end = _parse_bounded(name, item, range_parts[1], minimum, maximum)
+        if start > end:
+            raise CronParseError(name, item, "range is reversed")
+    else:
+        if has_step:
+            raise CronParseError(name, item, "step requires '*' or a range")
+        start = _parse_bounded(name, item, base, minimum, maximum)
+        end = start
+
+    value: int = start
+    while value <= end:
+        allowed[value - minimum] = True
+        if value > end - step:
+            break
+        value += step
+
+def _parse_positive(name: str, item: str, text: str) -> int:
+    value: int = _parse_digits(name, item, text, MAX_MS)
+    if value <= 0:
+        raise CronParseError(name, item, "step must be greater than zero")
+    return value
+
+def _parse_bounded(name: str, item: str, text: str, minimum: int, maximum: int) -> int:
+    value: int = _parse_digits(name, item, text, maximum)
+    if value < minimum or value > maximum:
+        raise CronParseError(name, item, "value is outside field range")
+    return value
+
+def _parse_digits(name: str, item: str, text: str, maximum: int) -> int:
+    count: int = nox.strings.byte_len(text)
+    if count == 0:
+        raise CronParseError(name, item, "number is empty")
+    value: int = 0
+    for i in range(count):
+        byte: int = nox.strings.byte_at(text, i)
+        if byte < 48 or byte > 57:
+            raise CronParseError(name, item, "expected an unsigned decimal number")
+        digit: int = byte - 48
+        if value > (maximum - digit) // 10:
+            raise CronParseError(name, item, "number is outside allowed range")
+        value = value * 10 + digit
+    return value
+
+def _next_minute_boundary(reference_ms: int) -> int:
+    remainder: int = reference_ms % MINUTE_MS
+    return _checked_add_int64(reference_ms, MINUTE_MS - remainder)
+
+def _calendar_ms(year: int, month: int, day: int, hour: int, minute: int) -> int:
+    return nox.time.DateTime(year, month, day, hour, minute, 0).to_epoch_ms()
+
+def _next_day_start(current: nox.time.DateTime) -> int:
+    start: int = _calendar_ms(current.year, current.month, current.day, 0, 0)
+    return _checked_add_int64(start, DAY_MS)
+
+def _next_hour_start(current: nox.time.DateTime) -> int:
+    start: int = _calendar_ms(current.year, current.month, current.day, current.hour, 0)
+    return _checked_add_int64(start, HOUR_MS)
+
+def _day_of_week(epoch_ms: int) -> int:
+    days: int = epoch_ms // DAY_MS
+    return (days + 4) % 7

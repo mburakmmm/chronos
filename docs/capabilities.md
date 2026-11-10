@@ -136,6 +136,8 @@ The freestanding check rejected every clock-reading/sleeping call with `Capabili
 
 The invalid-date proof established that Nox 2.1.0 `DateTime` construction does not validate calendar fields. Chronos must validate them before conversion. The integer proof established signed 64-bit wrapping behavior for plain `int`, so Chronos timestamp arithmetic requires explicit overflow checks.
 
+A later pre-epoch proof using `DateTime(1969, 12, 27, ...).to_epoch_ms()` did not complete on the installed toolchain. Chronos therefore rejects negative epoch milliseconds and supports UTC timestamps from Unix epoch `0` forward. This is a reduced, explicit compatibility boundary rather than an unverified historical-date claim.
+
 ### P0-HANDLER-001 — handler and trigger representation
 
 Source: `proofs/handler_model.nox`.
@@ -191,3 +193,16 @@ noxc check --profile freestanding trigger.nox         -> exit 0
 ```
 
 UTC one-shot values and monotonic interval values are separated by type and protocol. A 100-step deterministic recurrence test confirms strictly increasing fixed-rate results.
+
+The UTC cron slice was verified with:
+
+```text
+noxc test tests                                      -> 7 passed, 0 failed
+noxc run --backend llvm tests/cron_test.nox          -> exit 0
+noxc run --backend qbe tests/cron_test.nox           -> exit 0
+noxc run --backend llvm examples/cron_utc.nox        -> exit 0
+noxc run --backend qbe examples/cron_utc.nox         -> exit 0
+noxc check --profile freestanding cron.nox           -> exit 0
+```
+
+Golden tests cover lists, ranges, steps, malformed tokens, expression bounds, minute/hour/day/month/weekday transitions, DOM/DOW combinations, leap day, month length, year rollover, unsatisfiable schedules, overflow, and 50 successive increasing results.

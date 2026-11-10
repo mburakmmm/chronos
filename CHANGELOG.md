@@ -23,8 +23,12 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Strict/exclusive UTC one-shot and monotonic delay triggers.
 - Drift-free fixed-rate calculation and completion-anchored fixed-delay configuration.
 - Deterministic trigger/interval tests and compiling examples for LLVM, QBE, and freestanding type-checking.
+- Bounded five-field UTC cron parser with normalized fields and precise parse errors.
+- Calendar-jumping, strictly-after cron next-fire calculation with DOM/DOW OR semantics, leap-year handling, search horizon, and transition cap.
+- Regression coverage for pre-epoch rejection and syntax-based DOM/DOW wildcard behavior.
 
 ### Limitations
 
 - No public scheduling API exists yet.
 - Platform and backend compatibility work is incomplete.
+- UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.

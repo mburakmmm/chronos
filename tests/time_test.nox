@@ -9,6 +9,13 @@ def rejects_negative_duration() -> bool:
         return True
     return False
 
+def rejects_negative_utc() -> bool:
+    try:
+        UtcInstant(-1)
+    except TimeRangeError:
+        return True
+    return False
+
 def rejects_zero_interval() -> bool:
     try:
         require_positive_interval(Duration(0))
@@ -46,6 +53,7 @@ def rejects_multiply_overflow() -> bool:
 
 nox.test.assert_eq_int(Duration(0).as_ms(), 0, "zero duration")
 nox.test.assert_true(rejects_negative_duration(), "negative duration rejected")
+nox.test.assert_true(rejects_negative_utc(), "pre-epoch UTC rejected")
 nox.test.assert_eq_int(add_duration(UtcInstant(100), Duration(25)).as_epoch_ms(), 125, "UTC add")
 nox.test.assert_eq_int(subtract_duration(UtcInstant(100), Duration(25)).as_epoch_ms(), 75, "UTC subtract")
 nox.test.assert_eq_int(add_monotonic_duration(MonotonicInstant(10), Duration(5)).as_ms(), 15, "monotonic add")

@@ -1,12 +1,15 @@
 from errors import InvalidDurationError, TimeRangeError
 
-MIN_MS: int = -9223372036854775807 - 1
+_MIN_INT64: int = -9223372036854775807 - 1
+MIN_MS: int = 0
 MAX_MS: int = 9223372036854775807
 
 class UtcInstant:
     epoch_ms: int
 
     def __init__(self, epoch_ms: int) -> None:
+        if epoch_ms < MIN_MS:
+            raise TimeRangeError("UTC epoch milliseconds must be nonnegative")
         self.epoch_ms = epoch_ms
 
     def as_epoch_ms(self) -> int:
@@ -40,12 +43,12 @@ class Duration:
 def _checked_add_int64(left: int, right: int) -> int:
     if right > 0 and left > MAX_MS - right:
         raise TimeRangeError("millisecond addition overflow")
-    if right < 0 and left < MIN_MS - right:
+    if right < 0 and left < _MIN_INT64 - right:
         raise TimeRangeError("millisecond addition underflow")
     return left + right
 
 def _checked_sub_int64(left: int, right: int) -> int:
-    if right > 0 and left < MIN_MS + right:
+    if right > 0 and left < _MIN_INT64 + right:
         raise TimeRangeError("millisecond subtraction underflow")
     if right < 0 and left > MAX_MS + right:
         raise TimeRangeError("millisecond subtraction overflow")

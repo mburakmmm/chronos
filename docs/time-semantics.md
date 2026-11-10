@@ -8,13 +8,14 @@ The implemented experimental types are `UtcInstant`, `MonotonicInstant`, and `Du
 
 ## UTC calendar time
 
-Absolute deadlines and cron fire times use signed 64-bit Unix epoch milliseconds in UTC.
+Absolute deadlines and cron fire times use nonnegative Unix epoch milliseconds in UTC, from `0` (1970-01-01 00:00:00 UTC) through signed `int64` maximum.
 
 - `nox.time.now_ms()` is the production wall-clock source.
 - The wall clock can move forward or backward when the operating system clock changes.
 - `nox.time.now()` and `nox.time.from_epoch_ms()` produce UTC `DateTime` values.
 - A wall-clock jump changes when an absolute UTC deadline becomes due.
 - Cron calculations operate on UTC calendar fields and never infer the machine's local timezone.
+- Pre-1970 timestamps are rejected before Nox calendar conversion. The installed Nox 2.1.0 toolchain did not complete the tested negative-epoch conversion path, so Chronos does not advertise that range.
 
 ## Elapsed time and delays
 

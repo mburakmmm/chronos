@@ -4,7 +4,7 @@ Chronos is a Nox-native scheduling library under development. Its planned MVP co
 
 ## Current status
 
-Chronos is in Phase 1 (`0.1.0` development). The experimental typed time model, checked arithmetic, clock adapters, UTC one-shot trigger, monotonic delay, fixed-rate trigger, and fixed-delay calculation are implemented. Cron is not implemented yet.
+Chronos Phase 1 (`0.1.0`) implementation is complete but unreleased. The experimental typed time model, checked arithmetic, clock adapters, UTC one-shot trigger, monotonic intervals, and bounded five-field UTC cron parser/next-fire calculator are implemented. The in-process scheduler begins in Phase 2.
 
 The currently verified development compiler is Nox 2.1.0 on macOS arm64. This is not yet a support commitment; backend and platform claims will be added only after executable tests.
 
@@ -23,16 +23,17 @@ The currently verified development compiler is Nox 2.1.0 on macOS arm64. This is
 
 Nox package modules intended for consumers will live at the repository root. This allows a dependency aliased as `chronos` to expose modules such as `chronos.cron`. The decision and its compiling proof are recorded in [docs/architecture.md](docs/architecture.md).
 
-The current manifest entry demonstrates the real and fake clock implementations:
+The current manifest entry demonstrates UTC cron calculation:
 
 ```sh
-noxc check examples/clock.nox
-noxc run examples/clock.nox
+noxc check examples/cron_utc.nox
+noxc run examples/cron_utc.nox
 ```
 
-Pure trigger calculations are demonstrated separately:
+Clock and non-cron trigger calculations are demonstrated separately:
 
 ```sh
+noxc run examples/clock.nox
 noxc run examples/triggers.nox
 ```
 

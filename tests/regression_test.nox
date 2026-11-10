@@ -1,0 +1,21 @@
+import nox.test
+import nox.time
+from cron import CronSchedule, parse
+from errors import TimeRangeError
+from time import UtcInstant
+
+def rejects_pre_epoch_utc() -> bool:
+    try:
+        UtcInstant(-1)
+    except TimeRangeError:
+        return True
+    return False
+
+def epoch(year: int, month: int, day: int, hour: int, minute: int) -> int:
+    return nox.time.DateTime(year, month, day, hour, minute, 0).to_epoch_ms()
+
+nox.test.assert_true(rejects_pre_epoch_utc(), "regression: pre-epoch values never enter Nox DateTime")
+
+full_dom_range: CronSchedule = parse("0 0 1-31 * 1")
+next_fire: UtcInstant = full_dom_range.next_fire_after(UtcInstant(epoch(2024, 1, 2, 0, 0)))
+nox.test.assert_eq_int(next_fire.as_epoch_ms(), epoch(2024, 1, 3, 0, 0), "regression: full range is restricted syntax")

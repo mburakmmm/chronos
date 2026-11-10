@@ -1,0 +1,112 @@
+import nox.strings
+import nox.test
+import nox.time
+from cron import CronSchedule, parse
+from errors import CronParseError, CronSearchLimitError, TimeRangeError
+from time import UtcInstant
+
+def epoch(year: int, month: int, day: int, hour: int, minute: int, second: int = 0) -> int:
+    return nox.time.DateTime(year, month, day, hour, minute, second).to_epoch_ms()
+
+def next_text(expression: str, reference_ms: int) -> str:
+    schedule: CronSchedule = parse(expression)
+    return nox.time.from_epoch_ms(schedule.next_fire_after(UtcInstant(reference_ms)).as_epoch_ms()).to_str()
+
+def rejects(expression: str) -> bool:
+    try:
+        parse(expression)
+    except CronParseError:
+        return True
+    return False
+
+def precise_minute_error() -> bool:
+    try:
+        parse("60 * * * *")
+    except CronParseError as error:
+        return error.field_name == "minute" and error.token == "60"
+    return False
+
+def rejects_long_expression() -> bool:
+    expression: str = nox.strings.repeat("0", 257)
+    return rejects(expression)
+
+def reports_unsatisfiable() -> bool:
+    schedule: CronSchedule = parse("0 0 31 2 *")
+    try:
+        schedule.next_fire_after(UtcInstant(epoch(2024, 1, 1, 0, 0)))
+    except CronSearchLimitError:
+        return True
+    return False
+
+def reports_timestamp_overflow() -> bool:
+    schedule: CronSchedule = parse("* * * * *")
+    try:
+        schedule.next_fire_after(UtcInstant(9223372036854775807))
+    except TimeRangeError:
+        return True
+    return False
+
+def successive_results_increase() -> bool:
+    schedule: CronSchedule = parse("*/7 * * * *")
+    reference: UtcInstant = UtcInstant(epoch(2024, 1, 1, 0, 0))
+    for i in range(50):
+        following: UtcInstant = schedule.next_fire_after(reference)
+        if following.epoch_ms <= reference.epoch_ms:
+            return False
+        reference = following
+    return True
+
+quarters: CronSchedule = parse("*/15 * * * *")
+nox.test.assert_eq_int(len(quarters.minute.values), 4, "quarter-hour value count")
+nox.test.assert_eq_int(quarters.minute.values[0], 0, "quarter-hour first")
+nox.test.assert_eq_int(quarters.minute.values[1], 15, "quarter-hour second")
+nox.test.assert_eq_int(quarters.minute.values[2], 30, "quarter-hour third")
+nox.test.assert_eq_int(quarters.minute.values[3], 45, "quarter-hour fourth")
+nox.test.assert_true(parse("* * * * *").minute.wildcard, "literal star is wildcard")
+nox.test.assert_true(not parse("0 * * * *").minute.wildcard, "literal value is restricted")
+nox.test.assert_true(not parse("*/1 * * * *").minute.wildcard, "stepped star is explicit restriction")
+
+normalized: CronSchedule = parse("5,1,5,3 1-5/2 * * *")
+nox.test.assert_eq_int(len(normalized.minute.values), 3, "list values are unique")
+nox.test.assert_eq_int(normalized.minute.values[0], 1, "list sorted first")
+nox.test.assert_eq_int(normalized.minute.values[1], 3, "list sorted second")
+nox.test.assert_eq_int(normalized.minute.values[2], 5, "list sorted third")
+nox.test.assert_eq_int(len(normalized.hour.values), 3, "range step count")
+nox.test.assert_eq_int(normalized.hour.values[0], 1, "range step first")
+nox.test.assert_eq_int(normalized.hour.values[1], 3, "range step second")
+nox.test.assert_eq_int(normalized.hour.values[2], 5, "range step third")
+
+nox.test.assert_true(rejects(""), "empty expression rejected")
+nox.test.assert_true(rejects("0 0 * *"), "four fields rejected")
+nox.test.assert_true(rejects("0 0 * * * *"), "six fields rejected")
+nox.test.assert_true(rejects("0 0 * * * * *"), "seven fields rejected")
+nox.test.assert_true(rejects("0, * * * *"), "trailing comma rejected")
+nox.test.assert_true(rejects("0,,1 * * * *"), "duplicate separator rejected")
+nox.test.assert_true(rejects("*/0 * * * *"), "zero step rejected")
+nox.test.assert_true(rejects("*/-1 * * * *"), "negative step rejected")
+nox.test.assert_true(rejects("5-1 * * * *"), "reversed range rejected")
+nox.test.assert_true(rejects("1//2 * * * *"), "duplicate step separator rejected")
+nox.test.assert_true(rejects("1/2 * * * *"), "literal step rejected")
+nox.test.assert_true(rejects("0 0 ? * *"), "Quartz question mark rejected")
+nox.test.assert_true(rejects("0 0 L * *"), "Quartz L rejected")
+nox.test.assert_true(rejects("0 0 * * 7"), "Sunday seven rejected")
+nox.test.assert_true(rejects("0 0 * JAN *"), "month names rejected")
+nox.test.assert_true(rejects_long_expression(), "expression length bounded")
+nox.test.assert_true(precise_minute_error(), "parse error records field and token")
+nox.test.assert_eq_int(len(parse("  0\t9 * * 1-5  ").hour.values), 1, "space and tab separators")
+
+nox.test.assert_eq_str(next_text("*/15 * * * *", epoch(2024, 1, 1, 0, 0)), "2024-01-01 00:15:00", "strict quarter hour")
+nox.test.assert_eq_str(next_text("*/15 * * * *", epoch(2024, 1, 1, 0, 14, 59) + 999), "2024-01-01 00:15:00", "sub-minute reference")
+nox.test.assert_eq_str(next_text("0 9 * * 1-5", epoch(2024, 1, 1, 8, 0)), "2024-01-01 09:00:00", "weekday same day")
+nox.test.assert_eq_str(next_text("0 9 * * 1-5", epoch(2024, 1, 5, 9, 0)), "2024-01-08 09:00:00", "weekday weekend jump")
+nox.test.assert_eq_str(next_text("0 0 1 * *", epoch(2024, 1, 2, 0, 0)), "2024-02-01 00:00:00", "day-of-month only")
+nox.test.assert_eq_str(next_text("0 0 * * 1", epoch(2024, 1, 2, 0, 0)), "2024-01-08 00:00:00", "day-of-week only")
+nox.test.assert_eq_str(next_text("0 0 1 * 1", epoch(2024, 1, 2, 0, 0)), "2024-01-08 00:00:00", "DOM DOW OR")
+nox.test.assert_eq_str(next_text("0 0 1-31 * 1", epoch(2024, 1, 2, 0, 0)), "2024-01-03 00:00:00", "full range remains restricted syntax")
+nox.test.assert_eq_str(next_text("0 0 29 2 *", epoch(2023, 3, 1, 0, 0)), "2024-02-29 00:00:00", "leap day")
+nox.test.assert_eq_str(next_text("0 0 * * 0", epoch(2024, 1, 6, 0, 0)), "2024-01-07 00:00:00", "Sunday zero")
+nox.test.assert_eq_str(next_text("0 0 1 1 *", epoch(2024, 12, 31, 23, 59)), "2025-01-01 00:00:00", "year rollover")
+nox.test.assert_eq_str(next_text("0 0 31 * *", epoch(2024, 4, 1, 0, 0)), "2024-05-31 00:00:00", "month length skip")
+nox.test.assert_true(reports_unsatisfiable(), "unsatisfiable schedule reports search limit")
+nox.test.assert_true(reports_timestamp_overflow(), "minute boundary overflow rejected")
+nox.test.assert_true(successive_results_increase(), "successive cron results increase")

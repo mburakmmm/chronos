@@ -34,7 +34,7 @@ Steps must be positive. A step attached to a single literal is rejected because 
 
 Whitespace separates fields. Empty fields, leading/trailing commas, duplicate separators, signed numbers, non-ASCII digits, reversed ranges, out-of-range values, and trailing text are errors.
 
-Repeated values are normalized into sorted unique allowed-value sets. The parser never calls a shell, operating-system cron, evaluator, or callback.
+Repeated values are normalized into sorted unique allowed-value sets. Leading/trailing spaces and tabs are accepted; spaces and tabs separate fields. Newlines are not field separators. The parser never calls a shell, operating-system cron, evaluator, or callback.
 
 ## Day-of-month and day-of-week
 
@@ -45,7 +45,7 @@ Chronos uses traditional cron OR semantics when both day fields are restricted:
 - only day-of-week restricted: day-of-week must match;
 - both restricted: either field may match.
 
-This rule is fixed for the MVP and covered by contract tests.
+Only a field written exactly as `*` is treated as wildcard for this rule. `*/1` and a full explicit range such as `1-31` remain restricted syntax. This rule is fixed for the MVP and covered by contract tests.
 
 ## Next-fire contract
 
@@ -53,7 +53,9 @@ This rule is fixed for the MVP and covered by contract tests.
 
 The implementation advances calendar fields rather than performing an unbounded minute-by-minute scan. It checks leap years, month lengths, February 29, and year rollover.
 
-Malformed input is a parse error. A valid expression that has no match inside the search bounds returns a distinct no-next-fire/search-horizon result.
+Malformed input raises `CronParseError`. A valid expression that has no match inside the search bounds raises `CronSearchLimitError`; timestamp overflow raises `TimeRangeError`.
+
+The supported reference range begins at Unix epoch `0`. Pre-1970 references are rejected by `UtcInstant` before calendar conversion.
 
 ## Resource bounds
 

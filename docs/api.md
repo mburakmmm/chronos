@@ -24,7 +24,7 @@ Callers should branch on the exception class, not message text.
 
 ### `UtcInstant(epoch_ms)`
 
-A signed 64-bit Unix epoch millisecond value. `as_epoch_ms()` returns the raw value.
+A Unix epoch millisecond value from `0` through signed `int64` maximum. Negative/pre-1970 values raise `TimeRangeError`. `as_epoch_ms()` returns the raw value.
 
 ### `MonotonicInstant(value_ms)`
 
@@ -45,7 +45,7 @@ A nonnegative elapsed duration in milliseconds. Negative input raises `InvalidDu
 
 All operations reject invalid input or overflow before Nox's wrapping integer arithmetic can occur.
 
-`MIN_MS` and `MAX_MS` expose the supported signed 64-bit millisecond bounds.
+`MIN_MS` (`0`) and `MAX_MS` expose the supported UTC/duration millisecond bounds.
 
 ## `chronos.clock`
 
@@ -109,12 +109,27 @@ Produces monotonic occurrences anchored to the original start. The interval must
 
 Stores a positive fixed-delay configuration. `next_after_completion(completed_at)` returns completion plus delay. Scheduler state owns the completion timestamp; fixed-delay is not treated as fixed-rate recurrence.
 
+## `chronos.cron`
+
+### `parse(expression) -> CronSchedule`
+
+Parses the bounded five-field UTC dialect documented in `docs/cron.md`. Malformed input raises `CronParseError`, which records the field name and bounded offending token.
+
+### `CronSchedule.next_fire_after(reference) -> UtcInstant`
+
+Returns the first UTC minute boundary strictly after `reference`. The algorithm jumps calendar fields and days rather than scanning every minute.
+
+If a syntactically valid expression has no match within eight calendar years or 100,000 transitions, it raises `CronSearchLimitError`. Timestamp overflow raises `TimeRangeError` and is distinct from both parse and search errors.
+
+`CronField.values` contains normalized sorted unique values. `CronField.wildcard` is true only for a field written exactly as `*`; enumerating a full range remains restricted syntax for DOM/DOW semantics.
+
 ## Consumer imports
 
 For a dependency aliased as `chronos`:
 
 ```nox-fragment
 from chronos.clock import Clock, FakeClock
+from chronos.cron import CronSchedule, parse
 from chronos.system_clock import SystemClock
 from chronos.time import Duration, MonotonicInstant, UtcInstant
 from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger

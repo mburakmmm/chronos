@@ -13,3 +13,16 @@ class TimeRangeError(ChronosError):
 class InvalidTriggerError(ChronosError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+class CronParseError(ChronosError):
+    field_name: str
+    token: str
+
+    def __init__(self, field_name: str, token: str, message: str) -> None:
+        super().__init__("cron " + field_name + " token '" + token + "': " + message)
+        self.field_name = field_name
+        self.token = token
+
+class CronSearchLimitError(ChronosError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

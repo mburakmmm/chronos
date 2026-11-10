@@ -14,6 +14,7 @@ class FakeClock:
     monotonic_ms: int
 
     def __init__(self, utc_ms: int, monotonic_ms: int) -> None:
+        UtcInstant(utc_ms)
         if monotonic_ms < 0:
             raise TimeRangeError("fake monotonic milliseconds must be nonnegative")
         self.utc_ms = utc_ms
@@ -30,14 +31,18 @@ class FakeClock:
     def advance(self, duration: Duration) -> None:
 
         next_utc: int = _checked_add_int64(self.utc_ms, duration.value_ms)
+        UtcInstant(next_utc)
         next_monotonic: MonotonicInstant = add_monotonic_duration(MonotonicInstant(self.monotonic_ms), duration)
         self.utc_ms = next_utc
         self.monotonic_ms = next_monotonic.value_ms
 
     def jump_utc_ms(self, delta_ms: int) -> None:
 
-        self.utc_ms = _checked_add_int64(self.utc_ms, delta_ms)
+        next_utc: int = _checked_add_int64(self.utc_ms, delta_ms)
+        UtcInstant(next_utc)
+        self.utc_ms = next_utc
 
     def set_utc_ms(self, utc_ms: int) -> None:
 
+        UtcInstant(utc_ms)
         self.utc_ms = utc_ms

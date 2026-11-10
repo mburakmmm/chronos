@@ -165,42 +165,42 @@ Amaç: Scheduler veya gerçek sleep olmadan çalışan deterministik scheduling 
 
 ## 0.1.0 — Beş alanlı UTC cron parser
 
-- [ ] `minute hour day-of-month month day-of-week` alanlarını uygula.
-- [ ] `*`, literal, comma list, inclusive range, `*/step` ve `range/step` desteğini uygula.
-- [ ] Allowed values koleksiyonlarını sorted/unique hale getir.
-- [ ] Yanlış alan sayısı, boş alan, trailing comma, duplicate separator ve invalid token'ları reddet.
-- [ ] Step `0`/negatif, reversed range ve out-of-range değerleri reddet.
-- [ ] Her parser hatasında alan ve problemli token bilgisini güvenli biçimde döndür.
-- [ ] Expression uzunluğu ve expansion sınırlarını uygula.
-- [ ] Altı/yedi alanlı ve Quartz `? L W #` ifadelerini açıkça reddet.
-- [ ] Parser'ın shell, OS cron, eval veya user code çalıştırmadığını test/inceleme ile doğrula.
+- [x] `minute hour day-of-month month day-of-week` alanlarını uygula.
+- [x] `*`, literal, comma list, inclusive range, `*/step` ve `range/step` desteğini uygula.
+- [x] Allowed values koleksiyonlarını sorted/unique hale getir.
+- [x] Yanlış alan sayısı, boş alan, trailing comma, duplicate separator ve invalid token'ları reddet.
+- [x] Step `0`/negatif, reversed range ve out-of-range değerleri reddet.
+- [x] Her parser hatasında alan ve problemli token bilgisini güvenli biçimde döndür.
+- [x] Expression uzunluğu ve expansion sınırlarını uygula.
+- [x] Altı/yedi alanlı ve Quartz `? L W #` ifadelerini açıkça reddet.
+- [x] Parser'ın shell, OS cron, eval veya user code çalıştırmadığını test/inceleme ile doğrula.
 
 ## 0.1.0 — Bounded cron next-fire hesabı
 
-- [ ] Strictly-after referanstan bir sonraki minute boundary hesabını uygula.
-- [ ] Month/day/hour/minute alanlarında bounded calendar jump yaklaşımı kullan; sınırsız minute scan yapma.
-- [ ] Leap year, February 29, month length ve year rollover hesaplarını test et.
-- [ ] DOM/DOW OR semantiğinin wildcard/restricted kombinasyonlarını test et.
-- [ ] Seconds/milliseconds içeren reference değerlerinde doğru exclusive sonucu test et.
-- [ ] Search horizon aşımı ile malformed expression hatasını ayır.
-- [ ] Unsatisfiable schedule'ın sonlu sürede `none`/tanımlı hata döndürdüğünü test et.
-- [ ] Ardışık next-fire sonuçlarının monoton arttığını golden testlerle doğrula.
+- [x] Strictly-after referanstan bir sonraki minute boundary hesabını uygula.
+- [x] Month/day/hour/minute alanlarında bounded calendar jump yaklaşımı kullan; sınırsız minute scan yapma.
+- [x] Leap year, February 29, month length ve year rollover hesaplarını test et.
+- [x] DOM/DOW OR semantiğinin wildcard/restricted kombinasyonlarını test et.
+- [x] Seconds/milliseconds içeren reference değerlerinde doğru exclusive sonucu test et.
+- [x] Search horizon aşımı ile malformed expression hatasını ayır.
+- [x] Unsatisfiable schedule'ın sonlu sürede tanımlı `CronSearchLimitError` döndürdüğünü test et.
+- [x] Ardışık next-fire sonuçlarının monoton arttığını golden testlerle doğrula.
 
 ## 0.1.0 — Test, örnek ve belge
 
-- [ ] `clock_test.nox`, `trigger_test.nox`, `interval_test.nox`, `cron_test.nox` ve regression testlerini ekle.
-- [ ] Saf unit testlerde gerçek sleep ve gerçek sistem saatine bağımlılık bırakma.
-- [ ] Derlenen one-shot calculation, fixed-rate calculation ve UTC cron örneklerini ekle.
-- [ ] `docs/api.md`, `docs/time-semantics.md` ve `docs/cron.md` içeriklerini gerçek API ile güncelle.
-- [ ] `README.md` içine yalnızca 0.1.0'da gerçekten çalışan özellikleri koy.
-- [ ] `CHANGELOG.md` içine 0.1.0 değişikliklerini ve bilinen kısıtları yaz.
+- [x] `clock_test.nox`, `trigger_test.nox`, `interval_test.nox`, `cron_test.nox` ve regression testlerini ekle.
+- [x] Saf unit testlerde gerçek sleep ve gerçek sistem saatine bağımlılık bırakma.
+- [x] Derlenen one-shot calculation, fixed-rate calculation ve UTC cron örneklerini ekle.
+- [x] `docs/api.md`, `docs/time-semantics.md` ve `docs/cron.md` içeriklerini gerçek API ile güncelle.
+- [x] `README.md` içine yalnızca 0.1.0'da gerçekten çalışan özellikleri koy.
+- [x] `CHANGELOG.md` içine 0.1.0 değişikliklerini ve bilinen kısıtları yaz.
 
 ### `0.1.0` çıkış kapısı
 
-- [ ] Core testlerin tamamı fake clock/deterministik veriyle geçsin; gerçek sleep gerektirmesin.
-- [ ] Cron parser ve next-fire araması tüm belirlenmiş resource sınırlarını uygulasın.
-- [ ] LLVM ve QBE üzerinde saf testler geçsin.
-- [ ] Tüm public 0.1 API'leri belgeli, testli ve en az bir derlenen örnekle kanıtlı olsun.
+- [x] Core testlerin tamamı fake clock/deterministik veriyle geçsin; gerçek sleep gerektirmesin.
+- [x] Cron parser ve next-fire araması tüm belirlenmiş resource sınırlarını uygulasın.
+- [x] LLVM ve QBE üzerinde saf testler geçsin.
+- [x] Tüm public 0.1 API'leri belgeli, testli ve en az bir derlenen örnekle kanıtlı olsun.
 
 ---
 
@@ -495,4 +495,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 1 / `0.1.0`: bounded beş alanlı UTC cron parser ve next-fire algoritmasını uygulamak.
+Phase 2 / `0.2.0`: job modeli, registry ve manual-tick scheduler için en küçük deterministic dilimi uygulamak. `0.1.0` yayınlanmış değildir; yalnızca implementation gate tamamlanmıştır.

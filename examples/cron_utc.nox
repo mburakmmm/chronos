@@ -1,0 +1,12 @@
+import nox.time
+from cron import CronSchedule, parse
+from time import UtcInstant
+
+reference: UtcInstant = UtcInstant(nox.time.DateTime(2024, 1, 1, 8, 30, 0).to_epoch_ms())
+weekdays: CronSchedule = parse("0 9 * * 1-5")
+next_weekday: UtcInstant = weekdays.next_fire_after(reference)
+print(nox.time.from_epoch_ms(next_weekday.as_epoch_ms()).to_str(), "UTC")
+
+leap_day: CronSchedule = parse("0 0 29 2 *")
+next_leap_day: UtcInstant = leap_day.next_fire_after(reference)
+print(nox.time.from_epoch_ms(next_leap_day.as_epoch_ms()).to_str(), "UTC")
