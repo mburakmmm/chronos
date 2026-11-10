@@ -1,0 +1,19 @@
+import nox.time
+
+wall_before: int = nox.time.now_ms()
+boot_before: int = nox.time.boot_ms()
+instant: nox.time.Instant = nox.time.instant_now()
+current: nox.time.DateTime = nox.time.now()
+
+nox.time.sleep_ms(10)
+
+elapsed_ms: int = instant.elapsed_ms()
+elapsed: nox.time.Duration = instant.elapsed()
+boot_after: int = nox.time.boot_ms()
+wall_after: int = nox.time.now_ms()
+
+print(wall_after >= wall_before)
+print(boot_after >= boot_before)
+print(elapsed_ms >= 0)
+print(elapsed.as_ms() >= 0)
+print(current.to_epoch_ms() <= wall_after)

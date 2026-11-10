@@ -1,0 +1,12 @@
+import nox.time
+
+valid: nox.time.DateTime = nox.time.DateTime(2024, 2, 29, 23, 59, 59)
+invalid_day: nox.time.DateTime = nox.time.DateTime(2023, 2, 29, 0, 0, 0)
+invalid_month: nox.time.DateTime = nox.time.DateTime(2024, 13, 1, 0, 0, 0)
+invalid_hour: nox.time.DateTime = nox.time.DateTime(2024, 1, 1, 24, 0, 0)
+
+print(valid.to_str(), valid.to_epoch_ms())
+print(valid.year, valid.month, valid.day, valid.hour, valid.minute, valid.second)
+print(invalid_day.to_str(), invalid_day.to_epoch_ms())
+print(invalid_month.to_str(), invalid_month.to_epoch_ms())
+print(invalid_hour.to_str(), invalid_hour.to_epoch_ms())

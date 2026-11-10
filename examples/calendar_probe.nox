@@ -1,0 +1,7 @@
+import nox.time
+
+epoch_ms: int = 1704067200000
+calendar: nox.time.DateTime = nox.time.from_epoch_ms(epoch_ms)
+
+print(calendar.to_str())
+print(calendar.to_epoch_ms() == epoch_ms)

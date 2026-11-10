@@ -1,0 +1,5 @@
+def add_one(value: int) -> int:
+    return value + 1
+
+maximum: int = 9223372036854775807
+print(add_one(maximum))

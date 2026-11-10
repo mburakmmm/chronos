@@ -1,0 +1,103 @@
+class HandlerContext:
+    pending_adds: list[str]
+    pending_removes: list[str]
+
+    def __init__(self) -> None:
+        self.pending_adds = []
+        self.pending_removes = []
+
+    def request_add(self, job_id: str) -> None:
+
+        self.pending_adds.append(job_id)
+
+    def request_remove(self, job_id: str) -> None:
+
+        self.pending_removes.append(job_id)
+
+class HandlerError(Exception):
+    job_id: str
+
+    def __init__(self, job_id: str, message: str) -> None:
+        super().__init__(message)
+        self.job_id = job_id
+
+class Job:
+    job_id: str
+    handler: (HandlerContext, int) -> int
+
+    def __init__(self, job_id: str, handler: (HandlerContext, int) -> int) -> None:
+        self.job_id = job_id
+        self.handler = handler
+
+    def run(self, context: HandlerContext, value: int) -> int:
+
+        return self.handler(context, value)
+
+protocol Trigger:
+    def next_after(self, reference_ms: int) -> int | None:
+        pass
+
+class OnceTrigger:
+    target_ms: int
+
+    def __init__(self, target_ms: int) -> None:
+        self.target_ms = target_ms
+
+    def next_after(self, reference_ms: int) -> int | None:
+
+        if self.target_ms > reference_ms:
+            return self.target_ms
+        return None
+
+class IntervalTrigger:
+    interval_ms: int
+
+    def __init__(self, interval_ms: int) -> None:
+        self.interval_ms = interval_ms
+
+    def next_after(self, reference_ms: int) -> int | None:
+
+        return reference_ms + self.interval_ms
+
+def make_adder(amount: int) -> (HandlerContext, int) -> int:
+    def add(context: HandlerContext, value: int) -> int:
+        return value + amount
+
+    return add
+
+def mutate(context: HandlerContext, value: int) -> int:
+    context.request_add("late")
+    context.request_remove("old")
+    return value
+
+def fail(context: HandlerContext, value: int) -> int:
+    raise HandlerError("bad", "handler failed")
+
+def identity[T](value: T) -> T:
+    return value
+
+context: HandlerContext = HandlerContext()
+jobs: list[Job] = [Job("add", make_adder(5)), Job("mutate", mutate), Job("bad", fail)]
+jobs_by_id: dict[str, Job] = {}
+for job in jobs:
+    jobs_by_id[job.job_id] = job
+
+selected: Job | None = None
+if "add" in jobs_by_id:
+    selected = jobs_by_id["add"]
+if selected is not None:
+    print(selected.run(context, 7))
+
+print(jobs_by_id["mutate"].run(context, 9))
+print(context.pending_adds, context.pending_removes)
+
+try:
+    jobs_by_id["bad"].run(context, 0)
+except HandlerError as error:
+    print(error.job_id, error.message)
+
+triggers: list[Trigger] = [OnceTrigger(100), IntervalTrigger(25)]
+for trigger in triggers:
+    print(trigger.next_after(50))
+
+print(identity("ok"))

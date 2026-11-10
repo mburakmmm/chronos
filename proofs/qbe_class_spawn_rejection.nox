@@ -1,0 +1,13 @@
+# Expected capability difference: this runs on LLVM and is rejected by QBE.
+
+class Payload:
+    value: int
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+async def read_payload(payload: Payload) -> int:
+    return payload.value
+
+task: Task[int] = spawn read_payload(Payload(7))
+print(await task)

@@ -1,0 +1,21 @@
+import nox.time
+
+async def sleeper(channel: Channel[str]) -> None:
+    nox.time.sleep_ms(100)
+    await channel.send("sleeper")
+
+async def fast(channel: Channel[str]) -> None:
+    await channel.send("fast")
+
+async def run() -> None:
+    channel: Channel[str] = Channel[str](2)
+    sleeping: Task[None] = spawn sleeper(channel)
+    immediate: Task[None] = spawn fast(channel)
+    first: str = await channel.recv()
+    second: str = await channel.recv()
+    print(first, second)
+    await sleeping
+    await immediate
+
+main_task: Task[None] = spawn run()
+await main_task

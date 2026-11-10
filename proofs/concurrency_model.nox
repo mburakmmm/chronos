@@ -1,0 +1,57 @@
+class TaskFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+async def producer(channel: Channel[int]) -> None:
+    await channel.send(2)
+    await channel.send(3)
+
+async def consumer(channel: Channel[int]) -> int:
+    first: int = await channel.recv()
+    second: int = await channel.recv()
+    return first + second
+
+async def fail_task() -> int:
+    raise TaskFailure("task failed")
+
+async def step() -> int:
+    return 1
+
+async def cancellable_worker() -> int:
+    total: int = 0
+    while True:
+        total += await spawn step()
+    return total
+
+async def pure_work(limit: int) -> int:
+    total: int = 0
+    for i in range(limit):
+        total += i
+    return total
+
+async def run() -> None:
+    channel: Channel[int] = Channel[int](2)
+    producer_task: Task[None] = spawn producer(channel)
+    consumer_task: Task[int] = spawn consumer(channel)
+    await producer_task
+    print(await consumer_task)
+
+    failed: Task[int] = spawn fail_task()
+    try:
+        await failed
+    except TaskFailure as error:
+        print(error.message)
+
+    worker: Task[int] = spawn cancellable_worker()
+    worker.cancel()
+    try:
+        await worker
+    except CancelledError:
+        print("cancelled at await")
+
+    pure: Task[int] = spawn pure_work(10000)
+    pure.cancel()
+    print(await pure)
+
+main_task: Task[None] = spawn run()
+await main_task

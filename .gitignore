@@ -1,0 +1,9 @@
+.nox/
+.DS_Store
+*.ll
+*.ssa
+*.dSYM/
+test-results.xml
+
+# Known local example/test binaries.
+/examples/calendar_probe

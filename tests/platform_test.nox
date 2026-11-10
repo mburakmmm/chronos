@@ -1,0 +1,8 @@
+import nox.test
+import nox.time
+
+epoch_ms: int = 1704067200000
+calendar: nox.time.DateTime = nox.time.from_epoch_ms(epoch_ms)
+
+nox.test.assert_eq_str(calendar.to_str(), "2024-01-01 00:00:00", "epoch converts to UTC calendar")
+nox.test.assert_eq_int(calendar.to_epoch_ms(), epoch_ms, "UTC calendar round trip")
