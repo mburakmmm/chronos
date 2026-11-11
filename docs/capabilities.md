@@ -275,3 +275,16 @@ noxc run --backend qbe examples/events.nox          -> exit 0
 noxc check --profile freestanding events.nox        -> exit 0
 noxc check --profile freestanding scheduler.nox     -> exit 0
 ```
+
+## Phase 3 pure-policy evidence
+
+The first Phase 3 slice verifies bounded misfire decisions, inclusive millisecond grace, separate catch-up dispatch/evaluation caps, forbid/queue-one overlap configuration, rejection of concurrent allow mode, total-attempt retry semantics, and overflow-safe capped exponential delay. The module is pure and does not yet alter scheduler dispatch.
+
+```text
+noxc test tests                                      -> 14 passed, 0 failed
+noxc run --backend llvm tests/policy_test.nox       -> exit 0
+noxc run --backend qbe tests/policy_test.nox        -> exit 0
+noxc run --backend llvm examples/policies.nox       -> exit 0
+noxc run --backend qbe examples/policies.nox        -> exit 0
+noxc check --profile freestanding policy.nox        -> exit 0
+```

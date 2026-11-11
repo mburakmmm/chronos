@@ -41,9 +41,13 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Bounded synchronous lifecycle listeners for registration, scheduling, execution, cancellation, and scheduler start/stop transitions.
 - Separate planned, actual UTC, actual monotonic, and monotonic-duration event fields with safe failure categories.
 - Listener exception isolation, aggregate failure counting, reentrant event-mutation rejection, deterministic tests, and a compiling events example.
+- Pure bounded misfire policies for skip, fire-once, and catch-up decisions with explicit millisecond grace and evaluation limits.
+- Portable overlap configuration for forbid and queue-one, with unverified concurrent allow mode rejected.
+- No-retry, fixed-delay retry, and capped exponential retry configuration with at most 64 total attempts and overflow-safe delay calculation.
 
 ### Limitations
 
 - Configurable execution policies remain incomplete.
+- Policy configuration is not yet attached to jobs or scheduler dispatch; retry, catch-up, and queue-one do not execute yet.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.

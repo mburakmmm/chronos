@@ -1,0 +1,162 @@
+from errors import InvalidPolicyError
+from time import Duration
+
+MISFIRE_SKIP: str = "skip"
+MISFIRE_FIRE_ONCE: str = "fire-once"
+MISFIRE_CATCH_UP: str = "catch-up"
+
+OVERLAP_FORBID: str = "forbid"
+OVERLAP_QUEUE_ONE: str = "queue-one"
+
+RETRY_NONE: str = "none"
+RETRY_FIXED: str = "fixed"
+RETRY_EXPONENTIAL: str = "exponential"
+
+MAX_CATCH_UP_COUNT: int = 1024
+MAX_CATCH_UP_EVALUATION_STEPS: int = 10000
+MAX_RETRY_ATTEMPTS: int = 64
+
+class MisfirePolicy:
+    kind: str
+    grace_period_ms: int
+    max_catch_up_count: int
+    max_evaluation_steps: int
+
+    def __init__(self, kind: str, grace_period: Duration, max_catch_up_count: int, max_evaluation_steps: int) -> None:
+        if kind != MISFIRE_SKIP and kind != MISFIRE_FIRE_ONCE and kind != MISFIRE_CATCH_UP:
+            raise InvalidPolicyError("unknown misfire policy")
+        if kind == MISFIRE_CATCH_UP:
+            if max_catch_up_count < 1 or max_catch_up_count > MAX_CATCH_UP_COUNT:
+                raise InvalidPolicyError("catch-up count must be between 1 and 1024")
+            if max_evaluation_steps < max_catch_up_count or max_evaluation_steps > MAX_CATCH_UP_EVALUATION_STEPS:
+                raise InvalidPolicyError("catch-up evaluation steps must cover the count and not exceed 10000")
+        elif max_catch_up_count != 0 or max_evaluation_steps != 0:
+            raise InvalidPolicyError("non-catch-up policy cannot configure catch-up limits")
+        self.kind = kind
+        self.grace_period_ms = grace_period.value_ms
+        self.max_catch_up_count = max_catch_up_count
+        self.max_evaluation_steps = max_evaluation_steps
+
+    def action_for_lateness(self, lateness: Duration) -> str:
+
+        if lateness.value_ms > self.grace_period_ms:
+            return MISFIRE_SKIP
+        return self.kind
+
+    def dispatch_limit(self, available_occurrences: int, lateness: Duration) -> int:
+
+        if available_occurrences < 0:
+            raise InvalidPolicyError("available occurrence count must be nonnegative")
+        if available_occurrences == 0:
+            return 0
+        action: str = self.action_for_lateness(lateness)
+        if action == MISFIRE_SKIP:
+            return 0
+        if action == MISFIRE_FIRE_ONCE:
+            return 1
+        if available_occurrences < self.max_catch_up_count:
+            return available_occurrences
+        return self.max_catch_up_count
+
+    def evaluation_limit(self, available_occurrences: int) -> int:
+
+        if available_occurrences < 0:
+            raise InvalidPolicyError("available occurrence count must be nonnegative")
+        if self.kind != MISFIRE_CATCH_UP:
+            return 0
+        if available_occurrences < self.max_evaluation_steps:
+            return available_occurrences
+        return self.max_evaluation_steps
+
+class OverlapPolicy:
+    kind: str
+    max_concurrent_runs: int
+    max_pending_runs: int
+
+    def __init__(self, kind: str) -> None:
+        if kind == "allow":
+            raise InvalidPolicyError("overlap allow requires a verified concurrent executor")
+        if kind != OVERLAP_FORBID and kind != OVERLAP_QUEUE_ONE:
+            raise InvalidPolicyError("unknown overlap policy")
+        self.kind = kind
+        self.max_concurrent_runs = 1
+        self.max_pending_runs = 0
+        if kind == OVERLAP_QUEUE_ONE:
+            self.max_pending_runs = 1
+
+class RetryPolicy:
+    kind: str
+    max_attempts: int
+    base_delay_ms: int
+    maximum_delay_ms: int
+
+    def __init__(self, kind: str, max_attempts: int, base_delay: Duration, maximum_delay: Duration) -> None:
+        if kind != RETRY_NONE and kind != RETRY_FIXED and kind != RETRY_EXPONENTIAL:
+            raise InvalidPolicyError("unknown retry policy")
+        if max_attempts < 1 or max_attempts > MAX_RETRY_ATTEMPTS:
+            raise InvalidPolicyError("retry attempts must be between 1 and 64")
+        if kind == RETRY_NONE:
+            if max_attempts != 1 or base_delay.value_ms != 0 or maximum_delay.value_ms != 0:
+                raise InvalidPolicyError("no-retry policy must use one attempt and zero delays")
+        else:
+            if max_attempts < 2:
+                raise InvalidPolicyError("retry policy requires at least two total attempts")
+            if base_delay.value_ms == 0:
+                raise InvalidPolicyError("retry delay must be greater than zero")
+            if maximum_delay.value_ms < base_delay.value_ms:
+                raise InvalidPolicyError("maximum retry delay cannot be less than base delay")
+            if kind == RETRY_FIXED and maximum_delay.value_ms != base_delay.value_ms:
+                raise InvalidPolicyError("fixed retry must use one delay value")
+        self.kind = kind
+        self.max_attempts = max_attempts
+        self.base_delay_ms = base_delay.value_ms
+        self.maximum_delay_ms = maximum_delay.value_ms
+
+    def should_retry_after(self, completed_attempt: int) -> bool:
+
+        if completed_attempt < 1 or completed_attempt > self.max_attempts:
+            raise InvalidPolicyError("completed attempt is outside retry policy")
+        return completed_attempt < self.max_attempts
+
+    def delay_before_attempt(self, attempt: int) -> Duration:
+
+        if self.kind == RETRY_NONE:
+            raise InvalidPolicyError("no-retry policy has no retry delay")
+        if attempt < 2 or attempt > self.max_attempts:
+            raise InvalidPolicyError("retry attempt is outside policy")
+        if self.kind == RETRY_FIXED:
+            return Duration(self.base_delay_ms)
+
+        delay_ms: int = self.base_delay_ms
+        for i in range(attempt - 2):
+            if delay_ms >= self.maximum_delay_ms:
+                return Duration(self.maximum_delay_ms)
+            if delay_ms > self.maximum_delay_ms // 2:
+                delay_ms = self.maximum_delay_ms
+            else:
+                delay_ms *= 2
+        return Duration(delay_ms)
+
+def skip_misfires(grace_period: Duration) -> MisfirePolicy:
+    return MisfirePolicy(MISFIRE_SKIP, grace_period, 0, 0)
+
+def fire_once_misfires(grace_period: Duration) -> MisfirePolicy:
+    return MisfirePolicy(MISFIRE_FIRE_ONCE, grace_period, 0, 0)
+
+def catch_up_misfires(grace_period: Duration, max_catch_up_count: int, max_evaluation_steps: int) -> MisfirePolicy:
+    return MisfirePolicy(MISFIRE_CATCH_UP, grace_period, max_catch_up_count, max_evaluation_steps)
+
+def forbid_overlap() -> OverlapPolicy:
+    return OverlapPolicy(OVERLAP_FORBID)
+
+def queue_one_overlap() -> OverlapPolicy:
+    return OverlapPolicy(OVERLAP_QUEUE_ONE)
+
+def no_retry() -> RetryPolicy:
+    return RetryPolicy(RETRY_NONE, 1, Duration(0), Duration(0))
+
+def fixed_retry(delay: Duration, max_attempts: int) -> RetryPolicy:
+    return RetryPolicy(RETRY_FIXED, max_attempts, delay, delay)
+
+def exponential_retry(base_delay: Duration, maximum_delay: Duration, max_attempts: int) -> RetryPolicy:
+    return RetryPolicy(RETRY_EXPONENTIAL, max_attempts, base_delay, maximum_delay)

@@ -28,6 +28,7 @@ Callers should branch on the exception class, not message text.
 - `SchedulerStateError`: an operation is invalid for the scheduler lifecycle; `state` contains the observed state.
 - `InvalidEventError`: an event or listener-capacity configuration violates the event contract.
 - `EventListenerLimitError`: listener registration exceeded the scheduler's configured capacity; `limit` contains that capacity.
+- `InvalidPolicyError`: a policy kind, bound, attempt, delay, or occurrence count violates the finite policy contract.
 
 ## `chronos.time`
 
@@ -211,6 +212,35 @@ Stores zero through `MAX_EVENT_LISTENERS` (64) synchronous listeners. `add_liste
 
 See `docs/events.md` for field semantics, ordering, reentrancy, retention, and security boundaries.
 
+## `chronos.policy`
+
+This is a pure configuration/calculation surface. Jobs and scheduler dispatch do not consume these types yet.
+
+### `MisfirePolicy`
+
+- `skip_misfires(grace_period)`
+- `fire_once_misfires(grace_period)`
+- `catch_up_misfires(grace_period, max_catch_up_count, max_evaluation_steps)`
+- `action_for_lateness(lateness) -> str`
+- `dispatch_limit(available_occurrences, lateness) -> int`
+- `evaluation_limit(available_occurrences) -> int`
+
+Grace uses milliseconds and an inclusive boundary. Catch-up dispatch is capped by `MAX_CATCH_UP_COUNT` (1,024) and evaluation by `MAX_CATCH_UP_EVALUATION_STEPS` (10,000).
+
+### `OverlapPolicy`
+
+`forbid_overlap()` retains no pending occurrence. `queue_one_overlap()` retains at most one. Both have `max_concurrent_runs = 1`; an `allow` configuration is rejected until a concurrent executor and shared-state safety are verified.
+
+### `RetryPolicy`
+
+- `no_retry()`
+- `fixed_retry(delay, max_attempts)`
+- `exponential_retry(base_delay, maximum_delay, max_attempts)`
+- `should_retry_after(completed_attempt) -> bool`
+- `delay_before_attempt(attempt) -> Duration`
+
+Attempts include the initial execution and are capped by `MAX_RETRY_ATTEMPTS` (64). Exponential delay saturates at the configured maximum without integer overflow. See `docs/policies.md` for exact semantics and current non-integration limits.
+
 ## `chronos.scheduler`
 
 ### `Scheduler(clock, max_jobs, max_listeners=16)`
@@ -244,6 +274,7 @@ from chronos.cron import CronSchedule, CronTrigger, parse
 from chronos.events import ChronosEvent, EventDispatcher
 from chronos.executor import InlineExecutor
 from chronos.job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job
+from chronos.policy import MisfirePolicy, OverlapPolicy, RetryPolicy
 from chronos.registry import JobRegistry
 from chronos.scheduler import Scheduler, TickResult
 from chronos.system_clock import SystemClock

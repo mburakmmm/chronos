@@ -270,6 +270,14 @@ Amaç: Portable, uygulama tarafından sahiplenilen, senkron ve deterministik sch
 
 Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırlı hale getirmek.
 
+## Saf policy yapılandırma temeli
+
+- [x] Misfire policy kind, grace, catch-up dispatch ve evaluation sınırlarını saf Nox tipleriyle doğrula.
+- [x] `forbid` ve `queue_one` overlap kapasitelerini modelle; doğrulanmamış `allow` modunu reddet.
+- [x] No-retry, fixed ve exponential retry yapılandırmasını toplam attempt sınırıyla modelle.
+- [x] Exponential delay cap hesabının integer overflow üretmediğini test et.
+- [x] Saf policy modülünü LLVM, QBE, freestanding testleri ve derlenen örnekle kanıtla.
+
 ## Misfire ve coalescing
 
 - [ ] `skip`, `fire_once` ve bounded `catch_up` policy'lerini uygula.
@@ -495,4 +503,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 3 / `0.3.0`: misfire, overlap ve retry policy tiplerini gerçek Nox API'si olarak tasarlamak; önce saf policy doğrulaması ve scheduler entegrasyon sınırlarını test etmek.
+Phase 3 / `0.3.0`: saf policy tiplerini job yapılandırmasına bağlamak; ardından misfire `skip`/`fire_once` dispatch entegrasyonunu anchor'ı bozmadan fake clock testleriyle uygulamak.

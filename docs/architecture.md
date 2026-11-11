@@ -191,3 +191,13 @@ The portable scheduler delivers lifecycle events synchronously through a bounded
 Event payloads separate scheduled time from actual UTC and monotonic observations. Duration is derived only from monotonic start/end values. Job name, metadata, arguments, results, and raw exception text are excluded.
 
 Event listeners are observational callbacks. Scheduler mutation, lifecycle transitions, and nested ticks during delivery are rejected so event reentrancy cannot invalidate scheduler collections. Inline job handlers keep their generation-checked mutation contract.
+
+## ADR-007: policy configuration precedes dispatch integration
+
+Decision date: 2026-11-11
+
+Status: accepted for the first Phase 3 slice
+
+Misfire, overlap, and retry configuration is implemented first as a pure bounded module. This isolates validation, grace boundaries, attempt semantics, and overflow-safe backoff from scheduler mutation.
+
+Catch-up has separate dispatch-count and evaluation-work caps. Retry counts the initial execution as attempt one. Overlap `allow` is rejected because the current executor is synchronous and no shared-state concurrent execution claim has been verified. Attaching these policies to jobs does not happen until their interaction rules are tested.

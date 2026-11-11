@@ -62,3 +62,7 @@ class EventListenerLimitError(ChronosError):
     def __init__(self, limit: int) -> None:
         super().__init__("event listener limit reached")
         self.limit = limit
+
+class InvalidPolicyError(ChronosError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

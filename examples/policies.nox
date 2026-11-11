@@ -1,0 +1,10 @@
+from policy import MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, exponential_retry, forbid_overlap
+from time import Duration
+
+misfire: MisfirePolicy = catch_up_misfires(Duration(60000), 3, 16)
+overlap: OverlapPolicy = forbid_overlap()
+retry: RetryPolicy = exponential_retry(Duration(1000), Duration(30000), 5)
+
+print("misfire", misfire.kind, misfire.dispatch_limit(20, Duration(5000)))
+print("overlap", overlap.kind, overlap.max_concurrent_runs)
+print("retry", retry.kind, retry.delay_before_attempt(4).value_ms)

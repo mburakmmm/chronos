@@ -1,0 +1,69 @@
+import nox.test
+from errors import InvalidPolicyError
+from policy import MISFIRE_CATCH_UP, MISFIRE_FIRE_ONCE, MISFIRE_SKIP, OVERLAP_FORBID, OVERLAP_QUEUE_ONE, RETRY_EXPONENTIAL, RETRY_FIXED, RETRY_NONE, MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
+from time import Duration, MAX_MS
+
+def invalid_catch_up_rejected() -> bool:
+    try:
+        catch_up_misfires(Duration(100), 5, 4)
+    except InvalidPolicyError:
+        return True
+    return False
+
+def overlap_allow_rejected() -> bool:
+    try:
+        OverlapPolicy("allow")
+    except InvalidPolicyError:
+        return True
+    return False
+
+def no_retry_delay_rejected(target: RetryPolicy) -> bool:
+    try:
+        target.delay_before_attempt(2)
+    except InvalidPolicyError:
+        return True
+    return False
+
+skip: MisfirePolicy = skip_misfires(Duration(100))
+nox.test.assert_eq_str(skip.kind, MISFIRE_SKIP, "skip policy kind")
+nox.test.assert_eq_int(skip.dispatch_limit(4, Duration(20)), 0, "skip never dispatches missed occurrence")
+
+fire_once: MisfirePolicy = fire_once_misfires(Duration(100))
+nox.test.assert_eq_str(fire_once.action_for_lateness(Duration(100)), MISFIRE_FIRE_ONCE, "grace boundary is inclusive")
+nox.test.assert_eq_int(fire_once.dispatch_limit(5, Duration(100)), 1, "fire-once coalesces to one")
+nox.test.assert_eq_str(fire_once.action_for_lateness(Duration(101)), MISFIRE_SKIP, "lateness beyond grace skips")
+
+catch_up: MisfirePolicy = catch_up_misfires(Duration(1000), 3, 8)
+nox.test.assert_eq_str(catch_up.kind, MISFIRE_CATCH_UP, "catch-up policy kind")
+nox.test.assert_eq_int(catch_up.dispatch_limit(9, Duration(100)), 3, "catch-up dispatch count bounded")
+nox.test.assert_eq_int(catch_up.evaluation_limit(20), 8, "catch-up evaluation work bounded")
+nox.test.assert_true(invalid_catch_up_rejected(), "catch-up work must cover dispatch count")
+
+forbid: OverlapPolicy = forbid_overlap()
+nox.test.assert_eq_str(forbid.kind, OVERLAP_FORBID, "forbid overlap kind")
+nox.test.assert_eq_int(forbid.max_concurrent_runs, 1, "forbid allows one active run")
+nox.test.assert_eq_int(forbid.max_pending_runs, 0, "forbid retains no pending run")
+queue_one: OverlapPolicy = queue_one_overlap()
+nox.test.assert_eq_str(queue_one.kind, OVERLAP_QUEUE_ONE, "queue-one overlap kind")
+nox.test.assert_eq_int(queue_one.max_pending_runs, 1, "queue-one retains one pending run")
+nox.test.assert_true(overlap_allow_rejected(), "allow rejected without concurrent executor")
+
+none: RetryPolicy = no_retry()
+nox.test.assert_eq_str(none.kind, RETRY_NONE, "no-retry policy kind")
+nox.test.assert_true(not none.should_retry_after(1), "one initial attempt only")
+nox.test.assert_true(no_retry_delay_rejected(none), "no-retry has no delay")
+
+fixed: RetryPolicy = fixed_retry(Duration(25), 3)
+nox.test.assert_eq_str(fixed.kind, RETRY_FIXED, "fixed retry kind")
+nox.test.assert_true(fixed.should_retry_after(1), "fixed retry permits second attempt")
+nox.test.assert_eq_int(fixed.delay_before_attempt(2).value_ms, 25, "fixed retry delay")
+nox.test.assert_true(not fixed.should_retry_after(3), "fixed retry exhausts at max attempts")
+
+exponential: RetryPolicy = exponential_retry(Duration(10), Duration(25), 6)
+nox.test.assert_eq_str(exponential.kind, RETRY_EXPONENTIAL, "exponential retry kind")
+nox.test.assert_eq_int(exponential.delay_before_attempt(2).value_ms, 10, "first retry uses base delay")
+nox.test.assert_eq_int(exponential.delay_before_attempt(3).value_ms, 20, "second retry doubles delay")
+nox.test.assert_eq_int(exponential.delay_before_attempt(4).value_ms, 25, "exponential retry caps delay")
+
+large: RetryPolicy = exponential_retry(Duration(MAX_MS - 1), Duration(MAX_MS), 3)
+nox.test.assert_eq_int(large.delay_before_attempt(3).value_ms, MAX_MS, "exponential cap avoids overflow")
