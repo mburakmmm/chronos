@@ -1,0 +1,6 @@
+from clock import FakeClock
+from time import Duration
+
+clock: FakeClock = FakeClock(0, 0)
+clock.advance(Duration(1))
+print(clock.now_utc().epoch_ms)

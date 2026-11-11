@@ -146,8 +146,11 @@ Adapts an already parsed `CronSchedule` to the optional-return `UtcTrigger` prot
 - `make_utc_job(job_id, name, trigger, handler, enabled, created_at, metadata) -> Job`
 - `make_monotonic_job(job_id, name, trigger, handler, enabled, created_at, metadata) -> Job`
 - `make_fixed_delay_job(job_id, name, schedule, registered_at, handler, enabled, created_at, metadata) -> Job`
+- `make_utc_job_with_policies(..., policy_config) -> Job`
+- `make_monotonic_job_with_policies(..., policy_config) -> Job`
+- `make_fixed_delay_job_with_policies(..., policy_config) -> Job`
 
-The factories create the supported UTC or monotonic job subtype. `Job` itself is the shared registry/executor view; direct construction of the base class is internal.
+The factories create the supported UTC or monotonic job subtype. Original factories install default policies; `_with_policies` variants require `JobPolicies`. `Job.policy_config()` returns a defensive copy. `Job` itself is the shared registry/executor view; direct construction of the base class is internal.
 
 `job_id` is 1–128 ASCII bytes using letters, digits, `.`, `-`, `_`, or `:`. Names are 1–256 UTF-8 bytes. Each job owns a defensive copy of at most 16 `JobMetadata` entries; keys are bounded identifiers and values are at most 256 bytes.
 
@@ -204,7 +207,7 @@ A validated lifecycle payload with:
 - `attempt`;
 - safe `error_category`.
 
-Kinds are exported as `EVENT_REGISTERED`, `EVENT_SCHEDULED`, `EVENT_STARTED`, `EVENT_SUCCEEDED`, `EVENT_FAILED`, `EVENT_CANCELLED`, `EVENT_SCHEDULER_STARTED`, and `EVENT_SCHEDULER_STOPPED`.
+Kinds are exported as `EVENT_REGISTERED`, `EVENT_SCHEDULED`, `EVENT_STARTED`, `EVENT_SUCCEEDED`, `EVENT_FAILED`, `EVENT_MISFIRED`, `EVENT_SKIPPED`, `EVENT_CANCELLED`, `EVENT_SCHEDULER_STARTED`, and `EVENT_SCHEDULER_STOPPED`.
 
 ### `EventDispatcher(max_listeners)`
 
@@ -214,7 +217,7 @@ See `docs/events.md` for field semantics, ordering, reentrancy, retention, and s
 
 ## `chronos.policy`
 
-This is a pure configuration/calculation surface. Jobs and scheduler dispatch do not consume these types yet.
+This configuration/calculation surface remains pure. `JobPolicies` bundles misfire, overlap, and retry settings. Explicit job factories accept the bundle; scheduler dispatch currently implements only skip/fire-once with forbid/no-retry.
 
 ### `MisfirePolicy`
 
@@ -226,6 +229,8 @@ This is a pure configuration/calculation surface. Jobs and scheduler dispatch do
 - `evaluation_limit(available_occurrences) -> int`
 
 Grace uses milliseconds and an inclusive boundary. Catch-up dispatch is capped by `MAX_CATCH_UP_COUNT` (1,024) and evaluation by `MAX_CATCH_UP_EVALUATION_STEPS` (10,000).
+
+`default_job_policies()` returns fire-once with maximum grace, forbid, and no-retry. `copy_job_policies(source)` makes a defensive copy. Catch-up, queue-one, and retry-configured jobs are rejected by the scheduler until their execution paths exist.
 
 ### `OverlapPolicy`
 
@@ -260,7 +265,7 @@ Creates an application-owned manual scheduler with injected `Clock`, bounded `Jo
 - `listener_failure_count() -> int`
 - `tick() -> TickResult`
 
-`TickResult` exposes `succeeded`, `failed`, `skipped`, and `dispatched()`.
+`TickResult` exposes `succeeded`, `failed`, `skipped`, `misfired`, `policy_skipped`, and `dispatched()`.
 
 Exact registration boundaries are inclusive; recurring calculation is exclusive. UTC eligibility uses wall time, while delay/interval eligibility and fixed-delay completion use monotonic time. Due work is ordered UTC-domain first, then monotonic-domain; within a domain it uses planned time then lexical job ID. See `docs/scheduler.md` for lifecycle, mutation, shutdown, and provisional missed-run behavior.
 
@@ -273,8 +278,8 @@ from chronos.clock import Clock, FakeClock
 from chronos.cron import CronSchedule, CronTrigger, parse
 from chronos.events import ChronosEvent, EventDispatcher
 from chronos.executor import InlineExecutor
-from chronos.job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job
-from chronos.policy import MisfirePolicy, OverlapPolicy, RetryPolicy
+from chronos.job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_fixed_delay_job_with_policies, make_monotonic_job, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
+from chronos.policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy
 from chronos.registry import JobRegistry
 from chronos.scheduler import Scheduler, TickResult
 from chronos.system_clock import SystemClock

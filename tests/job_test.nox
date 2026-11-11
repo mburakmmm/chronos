@@ -2,8 +2,9 @@ import nox.strings
 import nox.test
 from cron import CronTrigger, parse
 from errors import InvalidJobError
-from job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job
-from time import Duration, MonotonicInstant, UtcInstant
+from job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job, make_utc_job_with_policies
+from policy import MISFIRE_FIRE_ONCE, OVERLAP_FORBID, RETRY_NONE, JobPolicies, fire_once_misfires, forbid_overlap, no_retry, skip_misfires
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
 from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
 
 class Recorder:
@@ -82,6 +83,19 @@ nox.test.assert_eq_str(utc_job.trigger_kind(), "utc", "UTC trigger kind")
 nox.test.assert_eq_int(len(utc_job.metadata), 1, "metadata copied")
 nox.test.assert_eq_str(utc_job.metadata[0].value, "payments", "metadata copy is isolated")
 nox.test.assert_eq_str(utc_job.last_status, "never", "initial result status")
+default_policies: JobPolicies = utc_job.policy_config()
+nox.test.assert_eq_str(default_policies.misfire.kind, MISFIRE_FIRE_ONCE, "default misfire coalesces one late run")
+nox.test.assert_eq_int(default_policies.misfire.grace_period_ms, MAX_MS, "default misfire preserves prior late-run behavior")
+nox.test.assert_eq_str(default_policies.overlap.kind, OVERLAP_FORBID, "default overlap forbids concurrent run")
+nox.test.assert_eq_str(default_policies.retry.kind, RETRY_NONE, "default retry is disabled")
+
+source_policies: JobPolicies = JobPolicies(skip_misfires(Duration(25)), forbid_overlap(), no_retry())
+configured_job: Job = make_utc_job_with_policies("configured", "Configured", OnceTrigger(UtcInstant(2000)), recording_handler(Recorder()), True, UtcInstant(100), [], source_policies)
+source_policies.misfire.grace_period_ms = 999
+stored_policies: JobPolicies = configured_job.policy_config()
+nox.test.assert_eq_int(stored_policies.misfire.grace_period_ms, 25, "job copies supplied policy configuration")
+stored_policies.misfire.grace_period_ms = 777
+nox.test.assert_eq_int(configured_job.policy_config().misfire.grace_period_ms, 25, "policy accessor returns a defensive copy")
 
 next_utc: UtcInstant | None = utc_job.next_utc_after(UtcInstant(999))
 nox.test.assert_true(next_utc is not None, "UTC trigger dispatches through job")

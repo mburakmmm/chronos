@@ -44,10 +44,14 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Pure bounded misfire policies for skip, fire-once, and catch-up decisions with explicit millisecond grace and evaluation limits.
 - Portable overlap configuration for forbid and queue-one, with unverified concurrent allow mode rejected.
 - No-retry, fixed-delay retry, and capped exponential retry configuration with at most 64 total attempts and overflow-safe delay calculation.
+- Defensive `JobPolicies` attachment through explicit policy-aware job factories with source-compatible default factories.
+- Manual scheduler `skip` and grace-bounded `fire-once` misfire dispatch, misfired/skipped events, and separate tick counters.
+- Anchor-preserving rescheduling after policy skip and per-dispatch clock revalidation after backward UTC corrections.
+- Root `NOX_LIMITATIONS.md` ledger for actionable Nox compiler/runtime limitations discovered during Chronos work.
 
 ### Limitations
 
 - Configurable execution policies remain incomplete.
-- Policy configuration is not yet attached to jobs or scheduler dispatch; retry, catch-up, and queue-one do not execute yet.
+- Retry, catch-up, and queue-one do not execute yet; scheduler registration rejects those configurations.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.

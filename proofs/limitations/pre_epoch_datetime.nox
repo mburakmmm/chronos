@@ -1,0 +1,4 @@
+import nox.time
+
+historical: nox.time.DateTime = nox.time.DateTime(1969, 12, 27, 0, 0, 0)
+print(historical.to_epoch_ms())

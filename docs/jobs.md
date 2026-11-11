@@ -6,6 +6,8 @@ Status: implemented experimental Phase 2 foundation for Nox 2.1.0.
 
 Jobs are created with `make_utc_job`, `make_monotonic_job`, or `make_fixed_delay_job`. The factories keep wall-clock/calendar triggers separate from elapsed-time triggers while exposing a shared `Job` view to registries and executors.
 
+The companion `make_utc_job_with_policies`, `make_monotonic_job_with_policies`, and `make_fixed_delay_job_with_policies` factories require an explicit `JobPolicies`. The original factories install fire-once/max-grace, forbid-overlap, and no-retry defaults. Construction and `policy_config()` both make defensive copies so later mutation of the supplied or returned configuration does not alter the stored job policy.
+
 Job IDs are stable scheduling identities. They are bounded to 128 ASCII bytes and accept letters, digits, `.`, `-`, `_`, and `:`. Names are nonempty and bounded to 256 UTF-8 bytes. Changing `job_id` after registration is unsupported; the registry snapshots the key and reports `InvalidJobError` if mutation is detected.
 
 Duplicate IDs raise `DuplicateJobError`. There is no implicit replacement.

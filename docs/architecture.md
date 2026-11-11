@@ -200,4 +200,6 @@ Status: accepted for the first Phase 3 slice
 
 Misfire, overlap, and retry configuration is implemented first as a pure bounded module. This isolates validation, grace boundaries, attempt semantics, and overflow-safe backoff from scheduler mutation.
 
-Catch-up has separate dispatch-count and evaluation-work caps. Retry counts the initial execution as attempt one. Overlap `allow` is rejected because the current executor is synchronous and no shared-state concurrent execution claim has been verified. Attaching these policies to jobs does not happen until their interaction rules are tested.
+Catch-up has separate dispatch-count and evaluation-work caps. Retry counts the initial execution as attempt one. Overlap `allow` is rejected because the current executor is synchronous and no shared-state concurrent execution claim has been verified.
+
+Jobs now own a defensive `JobPolicies` copy. The first scheduler integration accepts only skip/fire-once, forbid, and no-retry; unsupported combinations fail atomically at registration. Misfire rescheduling queries the existing trigger strictly after observed time, preserving cron and fixed-rate anchors instead of synthesizing a new anchor.

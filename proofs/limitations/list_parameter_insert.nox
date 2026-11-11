@@ -1,0 +1,12 @@
+class Item:
+    value: int
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+def insert_item(items: list[Item], candidate: Item) -> None:
+    items.insert(0, candidate)
+
+values: list[Item] = []
+insert_item(values, Item(7))
+print(values[0].value)

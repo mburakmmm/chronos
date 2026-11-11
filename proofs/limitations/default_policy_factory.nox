@@ -1,0 +1,10 @@
+from job import Job, JobContext, JobMetadata, make_utc_job_with_policies
+from policy import JobPolicies, default_job_policies
+from time import UtcInstant
+from trigger import UtcTrigger
+
+def make_repro(job_id: str, trigger: UtcTrigger, handler: (JobContext) -> None, metadata: list[JobMetadata], policy_config: JobPolicies | None = None) -> Job:
+    selected: JobPolicies = default_job_policies()
+    if policy_config is not None:
+        selected = policy_config
+    return make_utc_job_with_policies(job_id, "Reproducer", trigger, handler, True, UtcInstant(0), metadata, selected)

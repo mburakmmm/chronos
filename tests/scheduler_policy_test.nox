@@ -1,0 +1,144 @@
+import nox.test
+from clock import FakeClock
+from errors import InvalidPolicyError
+from events import ChronosEvent, EVENT_MISFIRED, EVENT_SKIPPED
+from job import Job, JobContext, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
+from policy import JobPolicies, catch_up_misfires, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
+from scheduler import STATE_RUNNING, Scheduler, TickResult
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger, OnceTrigger
+
+class Recorder:
+    calls: list[str]
+    events: list[ChronosEvent]
+
+    def __init__(self) -> None:
+        self.calls = []
+        self.events = []
+
+def record_handler(recorder: Recorder, label: str) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls.append(label)
+
+    return handle
+
+def jump_back_handler(source_clock: FakeClock, recorder: Recorder, label: str) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls.append(label)
+        source_clock.jump_utc_ms(-100)
+
+    return handle
+
+def record_event(recorder: Recorder) -> (ChronosEvent) -> None:
+    def observe(occurrence: ChronosEvent) -> None:
+        recorder.events.append(occurrence)
+
+    return observe
+
+def count_events(recorder: Recorder, kind: str) -> int:
+    count: int = 0
+    for occurrence in recorder.events:
+        if occurrence.kind == kind:
+            count += 1
+    return count
+
+def config_with_misfire(misfire_kind: str, grace_ms: int) -> JobPolicies:
+    if misfire_kind == "skip":
+        return JobPolicies(skip_misfires(Duration(grace_ms)), forbid_overlap(), no_retry())
+    return JobPolicies(fire_once_misfires(Duration(grace_ms)), forbid_overlap(), no_retry())
+
+def unsupported_add_rejected(engine: Scheduler, target: Job) -> bool:
+    try:
+        engine.add(target)
+    except InvalidPolicyError:
+        return True
+    return False
+
+exact_clock: FakeClock = FakeClock(1000, 100)
+exact_recorder: Recorder = Recorder()
+exact_engine: Scheduler = Scheduler(exact_clock, 4)
+exact_engine.add(make_utc_job_with_policies("exact", "Exact", OnceTrigger(UtcInstant(1000)), record_handler(exact_recorder, "exact"), True, UtcInstant(1000), [], config_with_misfire("skip", 0)))
+exact_engine.start()
+nox.test.assert_eq_int(exact_engine.tick().succeeded, 1, "exact occurrence is not a misfire")
+nox.test.assert_eq_int(len(exact_recorder.calls), 1, "skip policy does not drop exact boundary")
+
+skip_clock: FakeClock = FakeClock(2000, 200)
+skip_recorder: Recorder = Recorder()
+skip_engine: Scheduler = Scheduler(skip_clock, 4, 1)
+skip_engine.add_listener(record_event(skip_recorder))
+skip_engine.add(make_utc_job_with_policies("late-skip", "Late skip", OnceTrigger(UtcInstant(2100)), record_handler(skip_recorder, "late-skip"), True, UtcInstant(2000), [], config_with_misfire("skip", 100)))
+skip_engine.start()
+skip_clock.advance(Duration(150))
+skipped_tick: TickResult = skip_engine.tick()
+nox.test.assert_eq_int(skipped_tick.dispatched(), 0, "skip misfire does not execute handler")
+nox.test.assert_eq_int(skipped_tick.misfired, 1, "late occurrence counted as misfire")
+nox.test.assert_eq_int(skipped_tick.policy_skipped, 1, "policy skip counted separately")
+nox.test.assert_true(skip_engine.is_completed("late-skip"), "skipped one-shot completes")
+nox.test.assert_eq_int(count_events(skip_recorder, EVENT_MISFIRED), 1, "misfire event emitted")
+nox.test.assert_eq_int(count_events(skip_recorder, EVENT_SKIPPED), 1, "skip event emitted")
+
+fire_clock: FakeClock = FakeClock(3000, 300)
+fire_recorder: Recorder = Recorder()
+fire_engine: Scheduler = Scheduler(fire_clock, 4)
+fire_engine.add(make_utc_job_with_policies("late-fire", "Late fire", OnceTrigger(UtcInstant(3100)), record_handler(fire_recorder, "late-fire"), True, UtcInstant(3000), [], config_with_misfire("fire-once", 50)))
+fire_engine.start()
+fire_clock.advance(Duration(125))
+fire_tick: TickResult = fire_engine.tick()
+nox.test.assert_eq_int(fire_tick.succeeded, 1, "fire-once dispatches within grace")
+nox.test.assert_eq_int(fire_tick.misfired, 1, "fire-once still records misfire")
+
+expired_clock: FakeClock = FakeClock(4000, 400)
+expired_recorder: Recorder = Recorder()
+expired_engine: Scheduler = Scheduler(expired_clock, 4)
+expired_engine.add(make_utc_job_with_policies("expired", "Expired", OnceTrigger(UtcInstant(4100)), record_handler(expired_recorder, "expired"), True, UtcInstant(4000), [], config_with_misfire("fire-once", 50)))
+expired_engine.start()
+expired_clock.advance(Duration(200))
+nox.test.assert_eq_int(expired_engine.tick().policy_skipped, 1, "fire-once beyond grace becomes skip")
+nox.test.assert_eq_int(len(expired_recorder.calls), 0, "expired handler is not invoked")
+
+rate_clock: FakeClock = FakeClock(5000, 500)
+rate_recorder: Recorder = Recorder()
+rate_engine: Scheduler = Scheduler(rate_clock, 4)
+rate_engine.add(make_monotonic_job_with_policies("rate", "Rate", FixedRateTrigger(MonotonicInstant(500), Duration(100)), record_handler(rate_recorder, "rate"), True, UtcInstant(5000), [], config_with_misfire("skip", 1000)))
+rate_engine.start()
+rate_clock.advance(Duration(250))
+nox.test.assert_eq_int(rate_engine.tick().policy_skipped, 1, "late fixed-rate occurrence skipped")
+rate_next: MonotonicInstant | None = rate_engine.next_run_monotonic("rate")
+nox.test.assert_true(rate_next is not None, "fixed-rate remains scheduled after skip")
+if rate_next is not None:
+    nox.test.assert_eq_int(rate_next.value_ms, 800, "skip preserves fixed-rate anchor")
+
+unsupported_clock: FakeClock = FakeClock(6000, 600)
+unsupported_engine: Scheduler = Scheduler(unsupported_clock, 4)
+catch_up_job: Job = make_utc_job_with_policies("catch-up", "Catch up", OnceTrigger(UtcInstant(6000)), record_handler(Recorder(), "catch-up"), True, UtcInstant(6000), [], JobPolicies(catch_up_misfires(Duration(100), 2, 4), forbid_overlap(), no_retry()))
+nox.test.assert_true(unsupported_add_rejected(unsupported_engine, catch_up_job), "catch-up rejected until scheduler integration")
+queue_job: Job = make_utc_job_with_policies("queue", "Queue", OnceTrigger(UtcInstant(6000)), record_handler(Recorder(), "queue"), True, UtcInstant(6000), [], JobPolicies(fire_once_misfires(Duration(100)), queue_one_overlap(), no_retry()))
+nox.test.assert_true(unsupported_add_rejected(unsupported_engine, queue_job), "queue-one rejected until scheduler integration")
+retry_job: Job = make_utc_job_with_policies("retry", "Retry", OnceTrigger(UtcInstant(6000)), record_handler(Recorder(), "retry"), True, UtcInstant(6000), [], JobPolicies(fire_once_misfires(Duration(100)), forbid_overlap(), fixed_retry(Duration(10), 2)))
+nox.test.assert_true(unsupported_add_rejected(unsupported_engine, retry_job), "retry rejected until scheduler integration")
+nox.test.assert_eq_int(len(unsupported_engine.list_jobs()), 0, "unsupported policy add is atomic")
+
+backward_clock: FakeClock = FakeClock(7000, 700)
+backward_recorder: Recorder = Recorder()
+backward_engine: Scheduler = Scheduler(backward_clock, 4)
+backward_engine.add(make_utc_job("a-jump", "Jump", OnceTrigger(UtcInstant(7000)), jump_back_handler(backward_clock, backward_recorder, "a-jump"), True, UtcInstant(7000), []))
+backward_engine.add(make_utc_job("z-wait", "Wait", OnceTrigger(UtcInstant(7000)), record_handler(backward_recorder, "z-wait"), True, UtcInstant(7000), []))
+backward_engine.start()
+backward_tick: TickResult = backward_engine.tick()
+nox.test.assert_eq_int(backward_tick.succeeded, 1, "first callback succeeds before wall-clock correction")
+nox.test.assert_eq_int(backward_tick.skipped, 1, "due snapshot rechecks backward wall correction")
+nox.test.assert_eq_str(backward_engine.state(), STATE_RUNNING, "backward correction preserves scheduler state")
+backward_clock.advance(Duration(100))
+nox.test.assert_eq_int(backward_engine.tick().succeeded, 1, "deferred job runs when wall time reaches target again")
+nox.test.assert_eq_str(backward_recorder.calls[1], "z-wait", "deferred callback retains deterministic identity")
+
+suspend_clock: FakeClock = FakeClock(8000, 800)
+suspend_recorder: Recorder = Recorder()
+suspend_engine: Scheduler = Scheduler(suspend_clock, 2)
+suspend_engine.add(make_utc_job_with_policies("suspend", "Suspend", OnceTrigger(UtcInstant(9000)), record_handler(suspend_recorder, "suspend"), True, UtcInstant(8000), [], config_with_misfire("fire-once", 1000)))
+suspend_engine.start()
+suspend_clock.advance(Duration(86400000))
+suspend_tick: TickResult = suspend_engine.tick()
+nox.test.assert_eq_int(suspend_tick.misfired, 1, "day-long suspension becomes one bounded misfire decision")
+nox.test.assert_eq_int(suspend_tick.policy_skipped, 1, "day-long suspension beyond grace skips")
+nox.test.assert_eq_int(len(suspend_recorder.calls), 0, "long suspension creates no catch-up storm")

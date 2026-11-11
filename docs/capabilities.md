@@ -288,3 +288,21 @@ noxc run --backend llvm examples/policies.nox       -> exit 0
 noxc run --backend qbe examples/policies.nox        -> exit 0
 noxc check --profile freestanding policy.nox        -> exit 0
 ```
+
+## Phase 3 job-policy and misfire evidence
+
+Jobs defensively copy `JobPolicies`; legacy factories install fire-once/max-grace, forbid, and no-retry defaults, while explicit policy-aware factories accept custom bundles. Scheduler tests verify exact-boundary dispatch, skip, fire-once inside/outside grace, day-long forward jumps, fixed-rate anchor preservation, unsupported-policy atomic rejection, misfired/skipped events, and a per-item wall-clock recheck after a callback moves UTC backward.
+
+Attempting to add a trailing optional `JobPolicies | None = None` argument to the exported job factories exposed a new cross-module default-argument `TypeMismatch` despite `job.nox` itself passing type checking. Chronos retained the existing factory signatures and added explicit `_with_policies` variants. This and earlier Nox issues are tracked in `NOX_LIMITATIONS.md`.
+
+```text
+noxc test tests                                      -> 15 passed, 0 failed
+noxc run --backend llvm tests/job_test.nox          -> exit 0
+noxc run --backend qbe tests/job_test.nox           -> exit 0
+noxc run --backend llvm tests/scheduler_policy_test.nox -> exit 0
+noxc run --backend qbe tests/scheduler_policy_test.nox  -> exit 0
+noxc run --backend llvm examples/misfire.nox        -> exit 0
+noxc run --backend qbe examples/misfire.nox         -> exit 0
+noxc check --profile freestanding job.nox           -> exit 0
+noxc check --profile freestanding scheduler.nox     -> exit 0
+```

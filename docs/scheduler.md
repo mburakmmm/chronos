@@ -1,6 +1,6 @@
 # Manual scheduler
 
-Status: experimental Phase 2 manual scheduler for Nox 2.1.0.
+Status: experimental Phase 3 manual scheduler for Nox 2.1.0.
 
 ## Ownership and lifecycle
 
@@ -44,9 +44,11 @@ The inline executor invokes one trusted handler at a time. It catches handler ex
 
 Bounded synchronous listeners observe registration, scheduling, execution, cancellation, and scheduler start/stop transitions. Listener failures are counted and isolated from scheduler state and handler outcomes. See `docs/events.md` for payload, ordering, retention, and reentrancy rules.
 
-When a fixed-rate or recurring UTC job is late, this Phase 2 slice dispatches at most one occurrence for that job in the tick and calculates the next anchored occurrence strictly after the later of planned time and observed completion in the matching domain. This bounds catch-up work but is not the final configurable misfire policy; explicit skip/fire-once/catch-up policies belong to Phase 3.
+An exact-boundary occurrence is not a misfire. A late occurrence uses the job's millisecond-grace policy: `skip` records no execution and advances to the first future anchored occurrence, while `fire-once` dispatches one occurrence when within grace and otherwise skips. Fixed-rate and cron anchors are not shifted. A skipped fixed-delay occurrence uses observed skip time as its next delay base because there is no completion timestamp.
 
-`TickResult` reports succeeded, failed, and stale-snapshot skipped counts. It does not retain handler results.
+The default job configuration preserves the earlier bounded behavior by firing one late occurrence with maximum grace. Runtime catch-up, queue-one overlap, and retry are not yet implemented; `Scheduler.add` rejects those configurations before mutating the registry. Every due snapshot item is rechecked against its matching clock immediately before dispatch, so a backward UTC correction caused by an earlier callback cannot start a later callback early.
+
+`TickResult` reports `succeeded`, `failed`, total `skipped`, `misfired`, and `policy_skipped` counts. `skipped` also includes stale/deferred snapshot items, while `policy_skipped` identifies only a misfire-policy decision. It does not retain handler results.
 
 ## Mutations during callbacks
 

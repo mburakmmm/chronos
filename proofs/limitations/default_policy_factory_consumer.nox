@@ -1,0 +1,10 @@
+from job import Job, JobContext
+from proofs.limitations.default_policy_factory import make_repro
+from time import UtcInstant
+from trigger import OnceTrigger
+
+def handle(context: JobContext) -> None:
+    pass
+
+target: Job = make_repro("default-argument", OnceTrigger(UtcInstant(10)), handle, [])
+print(target.job_id)

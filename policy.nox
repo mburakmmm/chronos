@@ -1,5 +1,5 @@
 from errors import InvalidPolicyError
-from time import Duration
+from time import Duration, MAX_MS
 
 MISFIRE_SKIP: str = "skip"
 MISFIRE_FIRE_ONCE: str = "fire-once"
@@ -137,6 +137,16 @@ class RetryPolicy:
                 delay_ms *= 2
         return Duration(delay_ms)
 
+class JobPolicies:
+    misfire: MisfirePolicy
+    overlap: OverlapPolicy
+    retry: RetryPolicy
+
+    def __init__(self, misfire: MisfirePolicy, overlap: OverlapPolicy, retry: RetryPolicy) -> None:
+        self.misfire = MisfirePolicy(misfire.kind, Duration(misfire.grace_period_ms), misfire.max_catch_up_count, misfire.max_evaluation_steps)
+        self.overlap = OverlapPolicy(overlap.kind)
+        self.retry = RetryPolicy(retry.kind, retry.max_attempts, Duration(retry.base_delay_ms), Duration(retry.maximum_delay_ms))
+
 def skip_misfires(grace_period: Duration) -> MisfirePolicy:
     return MisfirePolicy(MISFIRE_SKIP, grace_period, 0, 0)
 
@@ -160,3 +170,9 @@ def fixed_retry(delay: Duration, max_attempts: int) -> RetryPolicy:
 
 def exponential_retry(base_delay: Duration, maximum_delay: Duration, max_attempts: int) -> RetryPolicy:
     return RetryPolicy(RETRY_EXPONENTIAL, max_attempts, base_delay, maximum_delay)
+
+def default_job_policies() -> JobPolicies:
+    return JobPolicies(fire_once_misfires(Duration(MAX_MS)), forbid_overlap(), no_retry())
+
+def copy_job_policies(source: JobPolicies) -> JobPolicies:
+    return JobPolicies(source.misfire, source.overlap, source.retry)

@@ -1,10 +1,11 @@
 from clock import Clock
-from errors import DuplicateJobError, InvalidJobError, JobNotFoundError, SchedulerStateError
-from events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
+from errors import DuplicateJobError, InvalidJobError, InvalidPolicyError, JobNotFoundError, SchedulerStateError
+from events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_MISFIRED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
 from executor import ExecutionOutcome, InlineExecutor
 from job import Job, JobContext
+from policy import MISFIRE_CATCH_UP, MISFIRE_SKIP, OVERLAP_FORBID, RETRY_NONE, JobPolicies
 from registry import JobRegistry
-from time import MAX_MS, MonotonicInstant, UtcInstant
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
 
 STATE_CREATED: str = "created"
 STATE_RUNNING: str = "running"
@@ -52,11 +53,15 @@ class TickResult:
     succeeded: int
     failed: int
     skipped: int
+    misfired: int
+    policy_skipped: int
 
     def __init__(self) -> None:
         self.succeeded = 0
         self.failed = 0
         self.skipped = 0
+        self.misfired = 0
+        self.policy_skipped = 0
 
     def dispatched(self) -> int:
 
@@ -138,6 +143,7 @@ class Scheduler:
             raise DuplicateJobError(target.job_id)
         if self.generation_counter == MAX_MS:
             raise InvalidJobError("scheduler generation limit exceeded")
+        self._validate_supported_policies(target)
 
         time_domain: str = target.time_domain()
         has_next: bool = False
@@ -251,6 +257,27 @@ class Scheduler:
                 result.skipped += 1
                 continue
 
+            dispatch_now_ms: int = self.clock.now_utc().epoch_ms
+            if due.time_domain == "monotonic":
+                dispatch_now_ms = self.clock.now_monotonic().value_ms
+            if dispatch_now_ms < due.scheduled_time_ms:
+                result.skipped += 1
+                continue
+            if dispatch_now_ms > due.scheduled_time_ms:
+                policy_config: JobPolicies = selected.policy_config()
+                lateness: Duration = Duration(dispatch_now_ms - due.scheduled_time_ms)
+                action: str = policy_config.misfire.action_for_lateness(lateness)
+                result.misfired += 1
+                self._emit_job_event(EVENT_MISFIRED, due.job_id, due.time_domain, True, due.scheduled_time_ms)
+                if action == MISFIRE_SKIP:
+                    result.skipped += 1
+                    result.policy_skipped += 1
+                    self._emit_job_event(EVENT_SKIPPED, due.job_id, due.time_domain, True, due.scheduled_time_ms)
+                    self._advance_after_skip(scheduled, selected, dispatch_now_ms)
+                    if scheduled.has_next:
+                        self._emit_job_event(EVENT_SCHEDULED, scheduled.job_id, scheduled.time_domain, True, scheduled.next_time_ms)
+                    continue
+
             self.has_active_job = True
             self.active_job_id = due.job_id
             context: JobContext = JobContext(due.job_id, due.time_domain, due.scheduled_time_ms, 1)
@@ -348,6 +375,26 @@ class Scheduler:
             entry.set_next(False, 0)
         else:
             entry.set_next(True, next_run.value_ms)
+
+    def _advance_after_skip(self, entry: ScheduledEntry, target: Job, observed_time_ms: int) -> None:
+
+        if entry.time_domain == "utc":
+            self._set_entry_next_utc(entry, target.next_utc_after(UtcInstant(observed_time_ms)))
+        elif target.trigger_kind() == "fixed-delay":
+            next_run: MonotonicInstant = target.next_monotonic_after_completion(MonotonicInstant(observed_time_ms))
+            entry.set_next(True, next_run.value_ms)
+        else:
+            self._set_entry_next_monotonic(entry, target.next_monotonic_after(MonotonicInstant(observed_time_ms)))
+
+    def _validate_supported_policies(self, target: Job) -> None:
+
+        policy_config: JobPolicies = target.policy_config()
+        if policy_config.misfire.kind == MISFIRE_CATCH_UP:
+            raise InvalidPolicyError("catch-up scheduler integration is not implemented")
+        if policy_config.overlap.kind != OVERLAP_FORBID:
+            raise InvalidPolicyError("queue-one scheduler integration is not implemented")
+        if policy_config.retry.kind != RETRY_NONE:
+            raise InvalidPolicyError("retry scheduler integration is not implemented")
 
     def _required_schedule(self, job_id: str) -> int:
 

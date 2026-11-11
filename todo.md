@@ -280,10 +280,11 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 
 ## Misfire ve coalescing
 
-- [ ] `skip`, `fire_once` ve bounded `catch_up` policy'lerini uygula.
-- [ ] Misfire grace period birimini millisecond olarak açıkça tanımla.
+- [x] `skip` ve grace-bounded `fire_once` policy'lerini scheduler dispatch'e bağla.
+- [ ] Bounded `catch_up` policy'sini scheduler dispatch'e bağla.
+- [x] Misfire grace period birimini millisecond olarak açıkça tanımla.
 - [ ] `max_catch_up_count` ve catch-up time/work budget sınırlarını uygula.
-- [ ] Laptop sleep/uzun downtime benzeri büyük ileri saat sıçramasını fake clock ile test et.
+- [x] Laptop sleep/uzun downtime benzeri büyük ileri saat sıçramasını fake clock ile test et.
 - [ ] Coalesced occurrence sayısını bounded metadata/event içinde kaydet.
 - [ ] Catch-up'ın cron/fixed-rate anchor'ını değiştirmediğini test et.
 
@@ -298,7 +299,7 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 
 ## Retry ve failure
 
-- [ ] Default `no retry` davranışını uygula.
+- [x] Default `no retry` davranışını uygula; desteklenmeyen retry konfigürasyonunu registration'da atomik reddet.
 - [ ] Bounded fixed-delay retry uygula.
 - [ ] Bounded exponential backoff ve maximum delay uygula.
 - [ ] Maximum attempt sınırı ve attempt count semantiğini tanımla.
@@ -503,4 +504,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 3 / `0.3.0`: saf policy tiplerini job yapılandırmasına bağlamak; ardından misfire `skip`/`fire_once` dispatch entegrasyonunu anchor'ı bozmadan fake clock testleriyle uygulamak.
+Phase 3 / `0.3.0`: bounded `catch_up` occurrence keşfi/coalescing event modelini anchor'ı bozmadan uygulamak; ardından `queue_one` overlap state'ine geçmek.

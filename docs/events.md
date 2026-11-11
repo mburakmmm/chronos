@@ -13,11 +13,13 @@ Chronos exposes synchronous lifecycle observation without retaining an event his
 | `started` | Inline dispatch is beginning | present |
 | `succeeded` | The handler returned normally | present |
 | `failed` | The handler raised an exception | present |
+| `misfired` | A planned occurrence was observed late | present |
+| `skipped` | Misfire policy discarded the occurrence | present |
 | `cancelled` | Scheduler ownership was removed | present only if a run remained pending |
 | `scheduler-started` | Lifecycle entered `running` | absent |
 | `scheduler-stopped` | Lifecycle entered `stopped` | absent |
 
-Initial registration emits `registered` and, when a next occurrence exists, `scheduled`. Successful and failed recurring executions emit another `scheduled` event after their next time is calculated. Removing a completed job still emits `cancelled`, but without a pending planned time.
+Initial registration emits `registered` and, when a next occurrence exists, `scheduled`. Successful and failed recurring executions emit another `scheduled` event after their next time is calculated. A late occurrence emits `misfired`; policy rejection then emits `skipped` and, for a recurring job, the next `scheduled` event. Removing a completed job still emits `cancelled`, but without a pending planned time.
 
 ## Timestamp fields
 

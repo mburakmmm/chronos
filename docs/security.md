@@ -33,6 +33,8 @@ The cron parser uses explicit expression/item/expansion bounds. Next-fire calcul
 
 No retry, catch-up, overlap, or task-spawn path may grow without a configured finite maximum.
 
+The scheduler rejects catch-up, queue-one, and retry configurations until their bounded runtime paths exist. Misfire skip/fire-once performs at most one dispatch per due job in a tick and retains no missed-occurrence queue.
+
 ## Deferred persistence and distributed work
 
 Persistence, remote execution, and distributed coordination are outside the MVP. If added, they require validation, parameterized database operations, explicit crash/delivery semantics, least-privilege credentials, and a separate security review. Exactly-once execution is not promised.

@@ -1,5 +1,6 @@
 import nox.strings
 from errors import InvalidJobError, TimeRangeError
+from policy import JobPolicies, copy_job_policies, default_job_policies
 from time import MAX_MS, MonotonicInstant, UtcInstant
 from trigger import FixedDelay, MonotonicTrigger, UtcTrigger
 
@@ -58,8 +59,9 @@ class Job:
     last_error_category: str
     has_last_completion: bool
     last_completion_utc_ms: int
+    policy_config_value: JobPolicies
 
-    def __init__(self, job_id: str, name: str, time_domain_value: str, trigger_kind_value: str, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
+    def __init__(self, job_id: str, name: str, time_domain_value: str, trigger_kind_value: str, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata], policy_config: JobPolicies) -> None:
         _validate_identifier("job ID", job_id, MAX_JOB_ID_BYTES)
         _validate_text("job name", name, MAX_JOB_NAME_BYTES)
         if time_domain_value != "utc" and time_domain_value != "monotonic":
@@ -84,6 +86,7 @@ class Job:
         self.last_error_category = ""
         self.has_last_completion = False
         self.last_completion_utc_ms = 0
+        self.policy_config_value = copy_job_policies(policy_config)
 
     def trigger_kind(self) -> str:
 
@@ -92,6 +95,10 @@ class Job:
     def time_domain(self) -> str:
 
         return self.time_domain_value
+
+    def policy_config(self) -> JobPolicies:
+
+        return copy_job_policies(self.policy_config_value)
 
     def next_utc_after(self, reference: UtcInstant) -> UtcInstant | None:
 
@@ -149,8 +156,8 @@ class Job:
 class UtcJob(Job):
     trigger: UtcTrigger
 
-    def __init__(self, job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
-        super().__init__(job_id, name, "utc", "utc", handler, enabled, created_at, metadata)
+    def __init__(self, job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata], policy_config: JobPolicies) -> None:
+        super().__init__(job_id, name, "utc", "utc", handler, enabled, created_at, metadata, policy_config)
         self.trigger = trigger
 
     def next_utc_after(self, reference: UtcInstant) -> UtcInstant | None:
@@ -164,8 +171,8 @@ class UtcJob(Job):
 class MonotonicJob(Job):
     trigger: MonotonicTrigger
 
-    def __init__(self, job_id: str, name: str, trigger: MonotonicTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
-        super().__init__(job_id, name, "monotonic", "monotonic", handler, enabled, created_at, metadata)
+    def __init__(self, job_id: str, name: str, trigger: MonotonicTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata], policy_config: JobPolicies) -> None:
+        super().__init__(job_id, name, "monotonic", "monotonic", handler, enabled, created_at, metadata, policy_config)
         self.trigger = trigger
 
     def next_monotonic_after(self, reference: MonotonicInstant) -> MonotonicInstant | None:
@@ -180,8 +187,8 @@ class FixedDelayJob(Job):
     schedule: FixedDelay
     first_deadline: MonotonicInstant
 
-    def __init__(self, job_id: str, name: str, schedule: FixedDelay, registered_at: MonotonicInstant, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> None:
-        super().__init__(job_id, name, "monotonic", "fixed-delay", handler, enabled, created_at, metadata)
+    def __init__(self, job_id: str, name: str, schedule: FixedDelay, registered_at: MonotonicInstant, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata], policy_config: JobPolicies) -> None:
+        super().__init__(job_id, name, "monotonic", "fixed-delay", handler, enabled, created_at, metadata, policy_config)
         self.schedule = schedule
         self.first_deadline = schedule.next_after_completion(registered_at)
 
@@ -196,13 +203,22 @@ class FixedDelayJob(Job):
         return self.schedule.next_after_completion(completed_at)
 
 def make_utc_job(job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
-    return UtcJob(job_id, name, trigger, handler, enabled, created_at, metadata)
+    return UtcJob(job_id, name, trigger, handler, enabled, created_at, metadata, default_job_policies())
+
+def make_utc_job_with_policies(job_id: str, name: str, trigger: UtcTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata], policy_config: JobPolicies) -> Job:
+    return UtcJob(job_id, name, trigger, handler, enabled, created_at, metadata, policy_config)
 
 def make_monotonic_job(job_id: str, name: str, trigger: MonotonicTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
-    return MonotonicJob(job_id, name, trigger, handler, enabled, created_at, metadata)
+    return MonotonicJob(job_id, name, trigger, handler, enabled, created_at, metadata, default_job_policies())
+
+def make_monotonic_job_with_policies(job_id: str, name: str, trigger: MonotonicTrigger, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata], policy_config: JobPolicies) -> Job:
+    return MonotonicJob(job_id, name, trigger, handler, enabled, created_at, metadata, policy_config)
 
 def make_fixed_delay_job(job_id: str, name: str, schedule: FixedDelay, registered_at: MonotonicInstant, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata]) -> Job:
-    return FixedDelayJob(job_id, name, schedule, registered_at, handler, enabled, created_at, metadata)
+    return FixedDelayJob(job_id, name, schedule, registered_at, handler, enabled, created_at, metadata, default_job_policies())
+
+def make_fixed_delay_job_with_policies(job_id: str, name: str, schedule: FixedDelay, registered_at: MonotonicInstant, handler: (JobContext) -> None, enabled: bool, created_at: UtcInstant, metadata: list[JobMetadata], policy_config: JobPolicies) -> Job:
+    return FixedDelayJob(job_id, name, schedule, registered_at, handler, enabled, created_at, metadata, policy_config)
 
 def _copy_metadata(source: list[JobMetadata]) -> list[JobMetadata]:
     if len(source) > MAX_METADATA_ENTRIES:

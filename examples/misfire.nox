@@ -1,0 +1,25 @@
+from clock import FakeClock
+from job import Job, JobContext, make_utc_job_with_policies
+from policy import JobPolicies, fire_once_misfires, forbid_overlap, no_retry, skip_misfires
+from scheduler import Scheduler, TickResult
+from time import Duration, UtcInstant
+from trigger import OnceTrigger
+
+def announce(context: JobContext) -> None:
+    print("ran", context.job_id, "planned", context.scheduled_time_ms)
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 8)
+fire_once: JobPolicies = JobPolicies(fire_once_misfires(Duration(100)), forbid_overlap(), no_retry())
+skip: JobPolicies = JobPolicies(skip_misfires(Duration(100)), forbid_overlap(), no_retry())
+
+run_late: Job = make_utc_job_with_policies("a-fire", "Fire one late run", OnceTrigger(UtcInstant(1100)), announce, True, UtcInstant(1000), [], fire_once)
+drop_late: Job = make_utc_job_with_policies("b-skip", "Skip late run", OnceTrigger(UtcInstant(1100)), announce, True, UtcInstant(1000), [], skip)
+engine.add(run_late)
+engine.add(drop_late)
+engine.start()
+
+source_clock.advance(Duration(150))
+result: TickResult = engine.tick()
+print("result", result.succeeded, result.misfired, result.policy_skipped)
+engine.stop()
