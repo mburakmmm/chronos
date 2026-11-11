@@ -9,6 +9,7 @@ EVENT_SUCCEEDED: str = "succeeded"
 EVENT_FAILED: str = "failed"
 EVENT_MISFIRED: str = "misfired"
 EVENT_SKIPPED: str = "skipped"
+EVENT_COALESCED: str = "coalesced"
 EVENT_CANCELLED: str = "cancelled"
 EVENT_SCHEDULER_STARTED: str = "scheduler-started"
 EVENT_SCHEDULER_STOPPED: str = "scheduler-stopped"
@@ -28,8 +29,10 @@ class ChronosEvent:
     duration_ms: int
     attempt: int
     error_category: str
+    coalesced_count: int
+    coalesced_truncated: bool
 
-    def __init__(self, kind: str, job_id: str, time_domain: str, has_scheduled_time: bool, scheduled_time_ms: int, actual_start_utc_ms: int, actual_end_utc_ms: int, actual_start_monotonic_ms: int, actual_end_monotonic_ms: int, attempt: int, error_category: str) -> None:
+    def __init__(self, kind: str, job_id: str, time_domain: str, has_scheduled_time: bool, scheduled_time_ms: int, actual_start_utc_ms: int, actual_end_utc_ms: int, actual_start_monotonic_ms: int, actual_end_monotonic_ms: int, attempt: int, error_category: str, coalesced_count: int, coalesced_truncated: bool) -> None:
         if not _known_kind(kind):
             raise InvalidEventError("unknown event kind")
         if time_domain != "none" and time_domain != "utc" and time_domain != "monotonic":
@@ -62,7 +65,7 @@ class ChronosEvent:
             raise InvalidEventError("job event requires job ID and time domain")
         else:
             _validate_identifier("event job ID", job_id, 128)
-        if (kind == EVENT_SCHEDULED or kind == EVENT_MISFIRED or kind == EVENT_SKIPPED) and not has_scheduled_time:
+        if (kind == EVENT_SCHEDULED or kind == EVENT_MISFIRED or kind == EVENT_SKIPPED or kind == EVENT_COALESCED) and not has_scheduled_time:
             raise InvalidEventError("schedule-related event requires planned time")
         if kind == EVENT_FAILED:
             if error_category == "":
@@ -70,6 +73,11 @@ class ChronosEvent:
             _validate_identifier("event error category", error_category, 64)
         elif error_category != "":
             raise InvalidEventError("only failed events may contain an error category")
+        if kind == EVENT_COALESCED:
+            if coalesced_count < 0 or not coalesced_truncated and coalesced_count == 0:
+                raise InvalidEventError("coalesced event requires a positive count or truncation")
+        elif coalesced_count != 0 or coalesced_truncated:
+            raise InvalidEventError("only coalesced events may contain coalescing fields")
 
         self.kind = kind
         self.job_id = job_id
@@ -83,6 +91,8 @@ class ChronosEvent:
         self.duration_ms = elapsed_between(start_monotonic, end_monotonic).value_ms
         self.attempt = attempt
         self.error_category = error_category
+        self.coalesced_count = coalesced_count
+        self.coalesced_truncated = coalesced_truncated
 
 class EventDispatcher:
     max_listeners: int
@@ -121,7 +131,7 @@ class EventDispatcher:
                     self.failure_count += 1
 
 def _known_kind(kind: str) -> bool:
-    return kind == EVENT_REGISTERED or kind == EVENT_SCHEDULED or kind == EVENT_STARTED or kind == EVENT_SUCCEEDED or kind == EVENT_FAILED or kind == EVENT_MISFIRED or kind == EVENT_SKIPPED or kind == EVENT_CANCELLED or kind == EVENT_SCHEDULER_STARTED or kind == EVENT_SCHEDULER_STOPPED
+    return kind == EVENT_REGISTERED or kind == EVENT_SCHEDULED or kind == EVENT_STARTED or kind == EVENT_SUCCEEDED or kind == EVENT_FAILED or kind == EVENT_MISFIRED or kind == EVENT_SKIPPED or kind == EVENT_COALESCED or kind == EVENT_CANCELLED or kind == EVENT_SCHEDULER_STARTED or kind == EVENT_SCHEDULER_STOPPED
 
 def _validate_identifier(label: str, value: str, maximum_bytes: int) -> None:
     size: int = nox.strings.byte_len(value)

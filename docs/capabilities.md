@@ -306,3 +306,16 @@ noxc run --backend qbe examples/misfire.nox         -> exit 0
 noxc check --profile freestanding job.nox           -> exit 0
 noxc check --profile freestanding scheduler.nox     -> exit 0
 ```
+
+## Phase 3 bounded catch-up evidence
+
+Catch-up tests enumerate fixed-rate and UTC cron occurrences from their original anchors, dispatch no more than the configured count, bound evaluation separately, and jump directly to the first future occurrence. Exact coalesced counts and truncated lower bounds are distinguished in events and tick results. Removing a job during the first catch-up callback invalidates remaining snapshot work.
+
+```text
+noxc test tests                                      -> 15 passed, 0 failed
+noxc run --backend llvm tests/scheduler_policy_test.nox -> exit 0
+noxc run --backend qbe tests/scheduler_policy_test.nox  -> exit 0
+noxc run --backend llvm examples/catch_up.nox       -> exit 0
+noxc run --backend qbe examples/catch_up.nox        -> exit 0
+noxc check --profile freestanding scheduler.nox     -> exit 0
+```

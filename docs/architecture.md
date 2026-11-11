@@ -202,4 +202,6 @@ Misfire, overlap, and retry configuration is implemented first as a pure bounded
 
 Catch-up has separate dispatch-count and evaluation-work caps. Retry counts the initial execution as attempt one. Overlap `allow` is rejected because the current executor is synchronous and no shared-state concurrent execution claim has been verified.
 
-Jobs now own a defensive `JobPolicies` copy. The first scheduler integration accepts only skip/fire-once, forbid, and no-retry; unsupported combinations fail atomically at registration. Misfire rescheduling queries the existing trigger strictly after observed time, preserving cron and fixed-rate anchors instead of synthesizing a new anchor.
+Jobs now own a defensive `JobPolicies` copy. Scheduler integration accepts skip/fire-once/catch-up with forbid and no-retry; completion-anchored fixed-delay excludes catch-up, and other unsupported combinations fail atomically at registration. Misfire rescheduling queries the existing trigger strictly after observed time, preserving cron and fixed-rate anchors instead of synthesizing a new anchor.
+
+Bounded catch-up expands planned occurrences into the same generation-checked due snapshot used by ordinary dispatch. The snapshot contains no more than the configured dispatch count per job. A separate evaluation bound limits backlog inspection; known excess is coalesced, and incomplete counting is explicitly marked truncated. The final next time is queried directly after the tick observation, preventing an unbounded backlog walk.

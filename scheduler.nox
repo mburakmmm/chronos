@@ -1,6 +1,6 @@
 from clock import Clock
 from errors import DuplicateJobError, InvalidJobError, InvalidPolicyError, JobNotFoundError, SchedulerStateError
-from events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_MISFIRED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
+from events import ChronosEvent, EVENT_CANCELLED, EVENT_COALESCED, EVENT_FAILED, EVENT_MISFIRED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
 from executor import ExecutionOutcome, InlineExecutor
 from job import Job, JobContext
 from policy import MISFIRE_CATCH_UP, MISFIRE_SKIP, OVERLAP_FORBID, RETRY_NONE, JobPolicies
@@ -42,12 +42,26 @@ class DueItem:
     generation: int
     time_domain: str
     scheduled_time_ms: int
+    catch_up: bool
+    batch_first: bool
+    batch_last: bool
+    coalesced_count: int
+    coalesced_truncated: bool
+    final_has_next: bool
+    final_next_time_ms: int
 
-    def __init__(self, job_id: str, generation: int, time_domain: str, scheduled_time_ms: int) -> None:
+    def __init__(self, job_id: str, generation: int, time_domain: str, scheduled_time_ms: int, catch_up: bool, batch_first: bool, batch_last: bool, coalesced_count: int, coalesced_truncated: bool, final_has_next: bool, final_next_time_ms: int) -> None:
         self.job_id = job_id
         self.generation = generation
         self.time_domain = time_domain
         self.scheduled_time_ms = scheduled_time_ms
+        self.catch_up = catch_up
+        self.batch_first = batch_first
+        self.batch_last = batch_last
+        self.coalesced_count = coalesced_count
+        self.coalesced_truncated = coalesced_truncated
+        self.final_has_next = final_has_next
+        self.final_next_time_ms = final_next_time_ms
 
 class TickResult:
     succeeded: int
@@ -55,6 +69,9 @@ class TickResult:
     skipped: int
     misfired: int
     policy_skipped: int
+    catch_up_dispatched: int
+    coalesced: int
+    coalesced_truncated: int
 
     def __init__(self) -> None:
         self.succeeded = 0
@@ -62,6 +79,9 @@ class TickResult:
         self.skipped = 0
         self.misfired = 0
         self.policy_skipped = 0
+        self.catch_up_dispatched = 0
+        self.coalesced = 0
+        self.coalesced_truncated = 0
 
     def dispatched(self) -> int:
 
@@ -263,7 +283,16 @@ class Scheduler:
             if dispatch_now_ms < due.scheduled_time_ms:
                 result.skipped += 1
                 continue
-            if dispatch_now_ms > due.scheduled_time_ms:
+            if due.catch_up:
+                if due.batch_first:
+                    result.misfired += 1
+                    result.coalesced += due.coalesced_count
+                    if due.coalesced_truncated:
+                        result.coalesced_truncated += 1
+                    self._emit_job_event(EVENT_MISFIRED, due.job_id, due.time_domain, True, due.scheduled_time_ms)
+                    if due.coalesced_count > 0 or due.coalesced_truncated:
+                        self._emit_coalesced_event(due)
+            elif dispatch_now_ms > due.scheduled_time_ms:
                 policy_config: JobPolicies = selected.policy_config()
                 lateness: Duration = Duration(dispatch_now_ms - due.scheduled_time_ms)
                 action: str = policy_config.misfire.action_for_lateness(lateness)
@@ -278,6 +307,8 @@ class Scheduler:
                         self._emit_job_event(EVENT_SCHEDULED, scheduled.job_id, scheduled.time_domain, True, scheduled.next_time_ms)
                     continue
 
+            if due.catch_up:
+                result.catch_up_dispatched += 1
             self.has_active_job = True
             self.active_job_id = due.job_id
             context: JobContext = JobContext(due.job_id, due.time_domain, due.scheduled_time_ms, 1)
@@ -313,7 +344,14 @@ class Scheduler:
             if current_index >= 0 and current_job is not None and current_job.enabled:
                 current: ScheduledEntry = self.schedules[current_index]
                 if current.generation == due.generation:
-                    if current.time_domain == "utc":
+                    if due.catch_up:
+                        if due.batch_last:
+                            current.set_next(due.final_has_next, due.final_next_time_ms)
+                        elif current.time_domain == "utc":
+                            self._set_entry_next_utc(current, current_job.next_utc_after(UtcInstant(due.scheduled_time_ms)))
+                        else:
+                            self._set_entry_next_monotonic(current, current_job.next_monotonic_after(MonotonicInstant(due.scheduled_time_ms)))
+                    elif current.time_domain == "utc":
                         utc_reference_ms: int = due.scheduled_time_ms
                         if completed_utc.epoch_ms > utc_reference_ms:
                             utc_reference_ms = completed_utc.epoch_ms
@@ -333,7 +371,7 @@ class Scheduler:
 
     def _collect_due(self, now_utc: UtcInstant, now_monotonic: MonotonicInstant) -> list[DueItem]:
 
-        result: list[DueItem] = []
+        candidates: list[DueItem] = []
         for scheduled in self.schedules:
             now_ms: int = now_utc.epoch_ms
             if scheduled.time_domain == "monotonic":
@@ -341,18 +379,71 @@ class Scheduler:
             if scheduled.has_next and scheduled.next_time_ms <= now_ms:
                 target: Job | None = self.registry.find(scheduled.job_id)
                 if target is not None and target.enabled:
-                    candidate: DueItem = DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.next_time_ms)
-                    insertion_index: int = len(result)
-                    for i in range(len(result)):
-                        existing: DueItem = result[i]
-                        earlier_domain: bool = candidate.time_domain == "utc" and existing.time_domain == "monotonic"
-                        same_domain: bool = candidate.time_domain == existing.time_domain
-                        earlier_time: bool = same_domain and candidate.scheduled_time_ms < existing.scheduled_time_ms
-                        same_time_earlier_id: bool = same_domain and candidate.scheduled_time_ms == existing.scheduled_time_ms and candidate.job_id < existing.job_id
-                        if earlier_domain or earlier_time or same_time_earlier_id:
-                            insertion_index = i
-                            break
-                    result.insert(insertion_index, candidate)
+                    policy_config: JobPolicies = target.policy_config()
+                    catch_up_active: bool = False
+                    if scheduled.next_time_ms < now_ms:
+                        collection_lateness: Duration = Duration(now_ms - scheduled.next_time_ms)
+                        catch_up_active = policy_config.misfire.action_for_lateness(collection_lateness) == MISFIRE_CATCH_UP
+                    if catch_up_active:
+                        dispatch_times: list[int] = []
+                        cursor_ms: int = scheduled.next_time_ms
+                        has_cursor: bool = True
+                        evaluation_count: int = 0
+                        coalesced_count: int = 0
+                        while has_cursor and cursor_ms <= now_ms and evaluation_count < policy_config.misfire.max_evaluation_steps:
+                            evaluation_count += 1
+                            if len(dispatch_times) < policy_config.misfire.max_catch_up_count:
+                                dispatch_times.append(cursor_ms)
+                            else:
+                                coalesced_count += 1
+                            if scheduled.time_domain == "utc":
+                                next_utc: UtcInstant | None = target.next_utc_after(UtcInstant(cursor_ms))
+                                has_cursor = next_utc is not None
+                                if next_utc is not None:
+                                    cursor_ms = next_utc.epoch_ms
+                            else:
+                                next_monotonic: MonotonicInstant | None = target.next_monotonic_after(MonotonicInstant(cursor_ms))
+                                has_cursor = next_monotonic is not None
+                                if next_monotonic is not None:
+                                    cursor_ms = next_monotonic.value_ms
+                        coalesced_truncated: bool = has_cursor and cursor_ms <= now_ms
+                        final_has_next: bool = False
+                        final_next_time_ms: int = 0
+                        if scheduled.time_domain == "utc":
+                            future_utc: UtcInstant | None = target.next_utc_after(now_utc)
+                            final_has_next = future_utc is not None
+                            if future_utc is not None:
+                                final_next_time_ms = future_utc.epoch_ms
+                        else:
+                            future_monotonic: MonotonicInstant | None = target.next_monotonic_after(now_monotonic)
+                            final_has_next = future_monotonic is not None
+                            if future_monotonic is not None:
+                                final_next_time_ms = future_monotonic.value_ms
+                        for i in range(len(dispatch_times)):
+                            first: bool = i == 0
+                            last: bool = i == len(dispatch_times) - 1
+                            item_coalesced_count: int = 0
+                            item_coalesced_truncated: bool = False
+                            if first:
+                                item_coalesced_count = coalesced_count
+                                item_coalesced_truncated = coalesced_truncated
+                            candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, dispatch_times[i], True, first, last, item_coalesced_count, item_coalesced_truncated, final_has_next, final_next_time_ms))
+                    else:
+                        candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.next_time_ms, False, False, False, 0, False, False, 0))
+
+        result: list[DueItem] = []
+        for candidate in candidates:
+            insertion_index: int = len(result)
+            for i in range(len(result)):
+                existing: DueItem = result[i]
+                earlier_domain: bool = candidate.time_domain == "utc" and existing.time_domain == "monotonic"
+                same_domain: bool = candidate.time_domain == existing.time_domain
+                earlier_time: bool = same_domain and candidate.scheduled_time_ms < existing.scheduled_time_ms
+                same_time_earlier_id: bool = same_domain and candidate.scheduled_time_ms == existing.scheduled_time_ms and candidate.job_id < existing.job_id
+                if earlier_domain or earlier_time or same_time_earlier_id:
+                    insertion_index = i
+                    break
+            result.insert(insertion_index, candidate)
         return result
 
     def _find_schedule(self, job_id: str) -> int:
@@ -389,8 +480,8 @@ class Scheduler:
     def _validate_supported_policies(self, target: Job) -> None:
 
         policy_config: JobPolicies = target.policy_config()
-        if policy_config.misfire.kind == MISFIRE_CATCH_UP:
-            raise InvalidPolicyError("catch-up scheduler integration is not implemented")
+        if policy_config.misfire.kind == MISFIRE_CATCH_UP and target.trigger_kind() == "fixed-delay":
+            raise InvalidPolicyError("catch-up is not defined for completion-anchored fixed-delay")
         if policy_config.overlap.kind != OVERLAP_FORBID:
             raise InvalidPolicyError("queue-one scheduler integration is not implemented")
         if policy_config.retry.kind != RETRY_NONE:
@@ -418,19 +509,26 @@ class Scheduler:
 
         observed_utc: UtcInstant = self.clock.now_utc()
         observed_monotonic: MonotonicInstant = self.clock.now_monotonic()
-        occurrence: ChronosEvent = ChronosEvent(kind, "", "none", False, 0, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, 0, "")
+        occurrence: ChronosEvent = ChronosEvent(kind, "", "none", False, 0, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, 0, "", 0, False)
         self._publish(occurrence)
 
     def _emit_job_event(self, kind: str, job_id: str, time_domain: str, has_scheduled_time: bool, scheduled_time_ms: int) -> None:
 
         observed_utc: UtcInstant = self.clock.now_utc()
         observed_monotonic: MonotonicInstant = self.clock.now_monotonic()
-        occurrence: ChronosEvent = ChronosEvent(kind, job_id, time_domain, has_scheduled_time, scheduled_time_ms, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, 0, "")
+        occurrence: ChronosEvent = ChronosEvent(kind, job_id, time_domain, has_scheduled_time, scheduled_time_ms, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, 0, "", 0, False)
+        self._publish(occurrence)
+
+    def _emit_coalesced_event(self, due: DueItem) -> None:
+
+        observed_utc: UtcInstant = self.clock.now_utc()
+        observed_monotonic: MonotonicInstant = self.clock.now_monotonic()
+        occurrence: ChronosEvent = ChronosEvent(EVENT_COALESCED, due.job_id, due.time_domain, True, due.scheduled_time_ms, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, 0, "", due.coalesced_count, due.coalesced_truncated)
         self._publish(occurrence)
 
     def _emit_execution_event(self, kind: str, due: DueItem, started_utc: UtcInstant, started_monotonic: MonotonicInstant, completed_utc: UtcInstant, completed_monotonic: MonotonicInstant, error_category: str) -> None:
 
-        occurrence: ChronosEvent = ChronosEvent(kind, due.job_id, due.time_domain, True, due.scheduled_time_ms, started_utc.epoch_ms, completed_utc.epoch_ms, started_monotonic.value_ms, completed_monotonic.value_ms, 1, error_category)
+        occurrence: ChronosEvent = ChronosEvent(kind, due.job_id, due.time_domain, True, due.scheduled_time_ms, started_utc.epoch_ms, completed_utc.epoch_ms, started_monotonic.value_ms, completed_monotonic.value_ms, 1, error_category, 0, False)
         self._publish(occurrence)
 
     def _publish(self, occurrence: ChronosEvent) -> None:

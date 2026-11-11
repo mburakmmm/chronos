@@ -1,0 +1,25 @@
+from clock import FakeClock
+from job import Job, JobContext, make_monotonic_job_with_policies
+from policy import JobPolicies, catch_up_misfires, forbid_overlap, no_retry
+from scheduler import Scheduler, TickResult
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger
+
+def handle(context: JobContext) -> None:
+    print("catch-up", context.scheduled_time_ms)
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 8)
+config: JobPolicies = JobPolicies(catch_up_misfires(Duration(1000), 2, 5), forbid_overlap(), no_retry())
+target: Job = make_monotonic_job_with_policies("catch-up", "Catch up", FixedRateTrigger(MonotonicInstant(500), Duration(100)), handle, True, UtcInstant(1000), [], config)
+engine.add(target)
+engine.start()
+
+source_clock.advance(Duration(350))
+result: TickResult = engine.tick()
+print("result", result.catch_up_dispatched, result.coalesced, result.coalesced_truncated)
+
+next_run: MonotonicInstant | None = engine.next_run_monotonic("catch-up")
+if next_run is not None:
+    print("next", next_run.value_ms)
+engine.stop()

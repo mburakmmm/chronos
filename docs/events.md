@@ -15,11 +15,12 @@ Chronos exposes synchronous lifecycle observation without retaining an event his
 | `failed` | The handler raised an exception | present |
 | `misfired` | A planned occurrence was observed late | present |
 | `skipped` | Misfire policy discarded the occurrence | present |
+| `coalesced` | Catch-up discarded known excess occurrences | present |
 | `cancelled` | Scheduler ownership was removed | present only if a run remained pending |
 | `scheduler-started` | Lifecycle entered `running` | absent |
 | `scheduler-stopped` | Lifecycle entered `stopped` | absent |
 
-Initial registration emits `registered` and, when a next occurrence exists, `scheduled`. Successful and failed recurring executions emit another `scheduled` event after their next time is calculated. A late occurrence emits `misfired`; policy rejection then emits `skipped` and, for a recurring job, the next `scheduled` event. Removing a completed job still emits `cancelled`, but without a pending planned time.
+Initial registration emits `registered` and, when a next occurrence exists, `scheduled`. Successful and failed recurring executions emit another `scheduled` event after their next time is calculated. A late occurrence emits `misfired`; policy rejection then emits `skipped`, while bounded catch-up may emit `coalesced`. Removing a completed job still emits `cancelled`, but without a pending planned time.
 
 ## Timestamp fields
 
@@ -31,6 +32,7 @@ Initial registration emits `registered` and, when a next occurrence exists, `sch
 - `actual_start_monotonic_ms` and `actual_end_monotonic_ms` define the nonnegative `duration_ms`.
 - `attempt` is one for current execution events and zero for non-execution events.
 - `error_category` is empty except for `failed`, where the inline executor currently reports only `handler-error`.
+- `coalesced_count` is nonzero only on `coalesced`; `coalesced_truncated` marks that the finite evaluation budget ended before the complete backlog count was known.
 
 The `started` snapshot is taken immediately before synchronous listener delivery and inline execution. Completion duration therefore measures the complete dispatch span from that snapshot through handler return, including time consumed by `started` listeners. It never derives elapsed duration from UTC wall time.
 

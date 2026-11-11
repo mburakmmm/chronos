@@ -37,7 +37,7 @@ def listener_limit_rejected(dispatcher: EventDispatcher, recorder: EventRecorder
 
 def invalid_event_id_rejected() -> bool:
     try:
-        ChronosEvent(EVENT_SCHEDULED, "unsafe job ID", "utc", True, 100, 90, 90, 10, 10, 0, "")
+        ChronosEvent(EVENT_SCHEDULED, "unsafe job ID", "utc", True, 100, 90, 90, 10, 10, 0, "", 0, False)
     except InvalidEventError:
         return True
     return False
@@ -50,7 +50,7 @@ nox.test.assert_true(listener_limit_rejected(dispatcher, recorder), "listener ca
 nox.test.assert_true(invalid_capacity_rejected(), "invalid listener capacity rejected")
 nox.test.assert_true(invalid_event_id_rejected(), "event job ID remains bounded and safe")
 
-occurrence: ChronosEvent = ChronosEvent(EVENT_SCHEDULED, "job.one", "utc", True, 100, 90, 90, 10, 10, 0, "")
+occurrence: ChronosEvent = ChronosEvent(EVENT_SCHEDULED, "job.one", "utc", True, 100, 90, 90, 10, 10, 0, "", 0, False)
 dispatcher.emit(occurrence)
 nox.test.assert_eq_int(dispatcher.listener_count(), 2, "listener count exposed")
 nox.test.assert_eq_int(dispatcher.listener_failure_count(), 1, "listener failure counted")

@@ -1,24 +1,29 @@
 import nox.test
+import nox.time
 from clock import FakeClock
+from cron import CronTrigger, parse
 from errors import InvalidPolicyError
-from events import ChronosEvent, EVENT_MISFIRED, EVENT_SKIPPED
-from job import Job, JobContext, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
+from events import ChronosEvent, EVENT_COALESCED, EVENT_MISFIRED, EVENT_SKIPPED
+from job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
 from policy import JobPolicies, catch_up_misfires, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
 from scheduler import STATE_RUNNING, Scheduler, TickResult
 from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedRateTrigger, OnceTrigger
+from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
 
 class Recorder:
     calls: list[str]
     events: list[ChronosEvent]
+    scheduled_times: list[int]
 
     def __init__(self) -> None:
         self.calls = []
         self.events = []
+        self.scheduled_times = []
 
 def record_handler(recorder: Recorder, label: str) -> (JobContext) -> None:
     def handle(context: JobContext) -> None:
         recorder.calls.append(label)
+        recorder.scheduled_times.append(context.scheduled_time_ms)
 
     return handle
 
@@ -34,6 +39,14 @@ def record_event(recorder: Recorder) -> (ChronosEvent) -> None:
         recorder.events.append(occurrence)
 
     return observe
+
+def remove_self_handler(engine: Scheduler, recorder: Recorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls.append(context.job_id)
+        recorder.scheduled_times.append(context.scheduled_time_ms)
+        engine.remove(context.job_id)
+
+    return handle
 
 def count_events(recorder: Recorder, kind: str) -> int:
     count: int = 0
@@ -110,8 +123,8 @@ if rate_next is not None:
 
 unsupported_clock: FakeClock = FakeClock(6000, 600)
 unsupported_engine: Scheduler = Scheduler(unsupported_clock, 4)
-catch_up_job: Job = make_utc_job_with_policies("catch-up", "Catch up", OnceTrigger(UtcInstant(6000)), record_handler(Recorder(), "catch-up"), True, UtcInstant(6000), [], JobPolicies(catch_up_misfires(Duration(100), 2, 4), forbid_overlap(), no_retry()))
-nox.test.assert_true(unsupported_add_rejected(unsupported_engine, catch_up_job), "catch-up rejected until scheduler integration")
+fixed_catch_up: Job = make_fixed_delay_job_with_policies("fixed-catch-up", "Fixed catch up", FixedDelay(Duration(10)), MonotonicInstant(600), record_handler(Recorder(), "fixed-catch-up"), True, UtcInstant(6000), [], JobPolicies(catch_up_misfires(Duration(100), 2, 4), forbid_overlap(), no_retry()))
+nox.test.assert_true(unsupported_add_rejected(unsupported_engine, fixed_catch_up), "catch-up rejected for completion-anchored fixed-delay")
 queue_job: Job = make_utc_job_with_policies("queue", "Queue", OnceTrigger(UtcInstant(6000)), record_handler(Recorder(), "queue"), True, UtcInstant(6000), [], JobPolicies(fire_once_misfires(Duration(100)), queue_one_overlap(), no_retry()))
 nox.test.assert_true(unsupported_add_rejected(unsupported_engine, queue_job), "queue-one rejected until scheduler integration")
 retry_job: Job = make_utc_job_with_policies("retry", "Retry", OnceTrigger(UtcInstant(6000)), record_handler(Recorder(), "retry"), True, UtcInstant(6000), [], JobPolicies(fire_once_misfires(Duration(100)), forbid_overlap(), fixed_retry(Duration(10), 2)))
@@ -142,3 +155,94 @@ suspend_tick: TickResult = suspend_engine.tick()
 nox.test.assert_eq_int(suspend_tick.misfired, 1, "day-long suspension becomes one bounded misfire decision")
 nox.test.assert_eq_int(suspend_tick.policy_skipped, 1, "day-long suspension beyond grace skips")
 nox.test.assert_eq_int(len(suspend_recorder.calls), 0, "long suspension creates no catch-up storm")
+
+catch_clock: FakeClock = FakeClock(9000, 1000)
+catch_recorder: Recorder = Recorder()
+catch_engine: Scheduler = Scheduler(catch_clock, 4, 1)
+catch_engine.add_listener(record_event(catch_recorder))
+catch_config: JobPolicies = JobPolicies(catch_up_misfires(Duration(10000), 3, 8), forbid_overlap(), no_retry())
+catch_engine.add(make_monotonic_job_with_policies("catch-rate", "Catch rate", FixedRateTrigger(MonotonicInstant(1000), Duration(100)), record_handler(catch_recorder, "catch-rate"), True, UtcInstant(9000), [], catch_config))
+catch_engine.start()
+catch_clock.advance(Duration(550))
+catch_tick: TickResult = catch_engine.tick()
+nox.test.assert_eq_int(catch_tick.succeeded, 3, "catch-up dispatch count obeys cap")
+nox.test.assert_eq_int(catch_tick.catch_up_dispatched, 3, "catch-up executions counted separately")
+nox.test.assert_eq_int(catch_tick.misfired, 1, "catch-up batch records one misfire")
+nox.test.assert_eq_int(catch_tick.coalesced, 3, "undispatched known occurrences coalesced")
+nox.test.assert_eq_int(catch_tick.coalesced_truncated, 0, "fully evaluated coalescing is exact")
+nox.test.assert_eq_int(catch_recorder.scheduled_times[0], 1000, "catch-up starts at original anchor")
+nox.test.assert_eq_int(catch_recorder.scheduled_times[1], 1100, "catch-up preserves second anchor")
+nox.test.assert_eq_int(catch_recorder.scheduled_times[2], 1200, "catch-up preserves third anchor")
+catch_next: MonotonicInstant | None = catch_engine.next_run_monotonic("catch-rate")
+nox.test.assert_true(catch_next is not None, "catch-up recurring job remains scheduled")
+if catch_next is not None:
+    nox.test.assert_eq_int(catch_next.value_ms, 1600, "catch-up advances to first future anchor")
+nox.test.assert_eq_int(count_events(catch_recorder, EVENT_COALESCED), 1, "coalesced event emitted once per batch")
+for occurrence in catch_recorder.events:
+    if occurrence.kind == EVENT_COALESCED:
+        nox.test.assert_eq_int(occurrence.coalesced_count, 3, "coalesced event carries exact bounded count")
+        nox.test.assert_true(not occurrence.coalesced_truncated, "exact coalesced event is not truncated")
+
+truncated_clock: FakeClock = FakeClock(10000, 2000)
+truncated_recorder: Recorder = Recorder()
+truncated_engine: Scheduler = Scheduler(truncated_clock, 4, 1)
+truncated_engine.add_listener(record_event(truncated_recorder))
+truncated_config: JobPolicies = JobPolicies(catch_up_misfires(Duration(10000), 3, 5), forbid_overlap(), no_retry())
+truncated_engine.add(make_monotonic_job_with_policies("truncated", "Truncated", FixedRateTrigger(MonotonicInstant(2000), Duration(1)), record_handler(truncated_recorder, "truncated"), True, UtcInstant(10000), [], truncated_config))
+truncated_engine.start()
+truncated_clock.advance(Duration(20))
+truncated_tick: TickResult = truncated_engine.tick()
+nox.test.assert_eq_int(truncated_tick.catch_up_dispatched, 3, "truncated batch still obeys dispatch cap")
+nox.test.assert_eq_int(truncated_tick.coalesced, 2, "coalesced count is bounded by evaluation work")
+nox.test.assert_eq_int(truncated_tick.coalesced_truncated, 1, "unknown remainder is reported as truncated")
+truncated_next: MonotonicInstant | None = truncated_engine.next_run_monotonic("truncated")
+nox.test.assert_true(truncated_next is not None, "truncated catch-up remains scheduled")
+if truncated_next is not None:
+    nox.test.assert_eq_int(truncated_next.value_ms, 2021, "truncated catch-up jumps to first future anchor")
+for occurrence in truncated_recorder.events:
+    if occurrence.kind == EVENT_COALESCED:
+        nox.test.assert_eq_int(occurrence.coalesced_count, 2, "truncated event carries known coalesced lower bound")
+        nox.test.assert_true(occurrence.coalesced_truncated, "truncated event marks unknown remainder")
+
+cron_base_ms: int = nox.time.DateTime(2024, 1, 1, 0, 0, 0).to_epoch_ms()
+cron_clock: FakeClock = FakeClock(cron_base_ms, 3000)
+cron_recorder: Recorder = Recorder()
+cron_engine: Scheduler = Scheduler(cron_clock, 4)
+cron_config: JobPolicies = JobPolicies(catch_up_misfires(Duration(300000), 2, 10), forbid_overlap(), no_retry())
+cron_engine.add(make_utc_job_with_policies("catch-cron", "Catch cron", CronTrigger(parse("* * * * *")), record_handler(cron_recorder, "catch-cron"), True, UtcInstant(cron_base_ms), [], cron_config))
+cron_engine.start()
+cron_clock.advance(Duration(210000))
+cron_tick: TickResult = cron_engine.tick()
+nox.test.assert_eq_int(cron_tick.catch_up_dispatched, 2, "cron catch-up dispatch count bounded")
+nox.test.assert_eq_int(cron_tick.coalesced, 2, "cron excess occurrences coalesced")
+nox.test.assert_eq_int(cron_recorder.scheduled_times[0], cron_base_ms, "cron catch-up retains first planned minute")
+nox.test.assert_eq_int(cron_recorder.scheduled_times[1], cron_base_ms + 60000, "cron catch-up retains calendar anchor")
+cron_next: UtcInstant | None = cron_engine.next_run_utc("catch-cron")
+nox.test.assert_true(cron_next is not None, "cron remains scheduled after catch-up")
+if cron_next is not None:
+    nox.test.assert_eq_int(cron_next.epoch_ms, cron_base_ms + 240000, "cron advances to first future minute")
+
+remove_clock: FakeClock = FakeClock(12000, 4000)
+remove_recorder: Recorder = Recorder()
+remove_engine: Scheduler = Scheduler(remove_clock, 4)
+remove_config: JobPolicies = JobPolicies(catch_up_misfires(Duration(1000), 3, 8), forbid_overlap(), no_retry())
+remove_target: Job = make_monotonic_job_with_policies("remove-catch", "Remove catch", FixedRateTrigger(MonotonicInstant(4000), Duration(10)), remove_self_handler(remove_engine, remove_recorder), True, UtcInstant(12000), [], remove_config)
+remove_engine.add(remove_target)
+remove_engine.start()
+remove_clock.advance(Duration(30))
+remove_tick: TickResult = remove_engine.tick()
+nox.test.assert_eq_int(remove_tick.succeeded, 1, "active catch-up callback may remove its job")
+nox.test.assert_eq_int(remove_tick.skipped, 2, "removal invalidates remaining bounded catch-up snapshot")
+nox.test.assert_eq_int(len(remove_recorder.calls), 1, "no catch-up callback starts after removal")
+
+catch_expired_clock: FakeClock = FakeClock(13000, 5000)
+catch_expired_recorder: Recorder = Recorder()
+catch_expired_engine: Scheduler = Scheduler(catch_expired_clock, 4)
+catch_expired_config: JobPolicies = JobPolicies(catch_up_misfires(Duration(50), 3, 8), forbid_overlap(), no_retry())
+catch_expired_engine.add(make_monotonic_job_with_policies("catch-expired", "Catch expired", FixedRateTrigger(MonotonicInstant(5000), Duration(100)), record_handler(catch_expired_recorder, "catch-expired"), True, UtcInstant(13000), [], catch_expired_config))
+catch_expired_engine.start()
+catch_expired_clock.advance(Duration(200))
+catch_expired_tick: TickResult = catch_expired_engine.tick()
+nox.test.assert_eq_int(catch_expired_tick.catch_up_dispatched, 0, "catch-up beyond grace does not dispatch backlog")
+nox.test.assert_eq_int(catch_expired_tick.policy_skipped, 1, "catch-up beyond grace resolves to skip")
+nox.test.assert_eq_int(len(catch_expired_recorder.calls), 0, "expired catch-up handler is not invoked")

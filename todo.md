@@ -281,12 +281,12 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 ## Misfire ve coalescing
 
 - [x] `skip` ve grace-bounded `fire_once` policy'lerini scheduler dispatch'e bağla.
-- [ ] Bounded `catch_up` policy'sini scheduler dispatch'e bağla.
+- [x] Bounded `catch_up` policy'sini scheduler dispatch'e bağla.
 - [x] Misfire grace period birimini millisecond olarak açıkça tanımla.
-- [ ] `max_catch_up_count` ve catch-up time/work budget sınırlarını uygula.
+- [x] `max_catch_up_count` ve catch-up work budget sınırlarını uygula.
 - [x] Laptop sleep/uzun downtime benzeri büyük ileri saat sıçramasını fake clock ile test et.
-- [ ] Coalesced occurrence sayısını bounded metadata/event içinde kaydet.
-- [ ] Catch-up'ın cron/fixed-rate anchor'ını değiştirmediğini test et.
+- [x] Coalesced occurrence sayısını bounded event ve truncation bayrağıyla kaydet.
+- [x] Catch-up'ın cron/fixed-rate anchor'ını değiştirmediğini test et.
 
 ## Overlap
 
@@ -504,4 +504,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 3 / `0.3.0`: bounded `catch_up` occurrence keşfi/coalescing event modelini anchor'ı bozmadan uygulamak; ardından `queue_one` overlap state'ine geçmek.
+Phase 3 / `0.3.0`: inline executor sınırında bounded `queue_one` pending state'ini uygulamak; skipped overlap ve cancellation etkisini event/testlerle tanımlamak.

@@ -2,7 +2,7 @@
 
 Status: experimental Phase 3 API for Nox 2.1.0 with partial scheduler integration.
 
-The policy module validates bounded configuration and performs deterministic calculations without reading clocks or executing handlers. `JobPolicies` is accepted by the explicit `make_*_with_policies` job factories. The manual scheduler currently executes `skip` and `fire-once` misfire behavior only; it rejects catch-up, queue-one, and retry configurations atomically when a job is added.
+The policy module validates bounded configuration and performs deterministic calculations without reading clocks or executing handlers. `JobPolicies` is accepted by the explicit `make_*_with_policies` job factories. The manual scheduler executes `skip`, `fire-once`, and bounded `catch-up`; it rejects queue-one and retry configurations atomically when a job is added.
 
 Factories without the `_with_policies` suffix preserve source compatibility and install defaults: fire one late occurrence with the maximum supported grace, forbid overlap, and no retry. `Job.policy_config()` returns a defensive copy.
 
@@ -16,7 +16,9 @@ Grace period is a nonnegative millisecond `Duration`. Its boundary is inclusive.
 
 An occurrence exactly equal to the observed clock is not a misfire and runs even under `skip`. For a late occurrence, the scheduler emits `misfired`, then either dispatches one occurrence under `fire-once` or emits `skipped`. Lateness beyond a fire-once grace period becomes skip. Skip calculates the next cron/fixed-rate occurrence strictly after the observed time without changing its anchor. A skipped fixed-delay occurrence schedules its next delay from the observed skip time because no handler completion exists.
 
-Runtime catch-up remains unsupported. A job configured with `catch-up` is rejected before registry or schedule mutation.
+Catch-up enumerates at most `max_evaluation_steps` planned occurrences from the existing trigger anchor and dispatches at most `max_catch_up_count`. Known excess occurrences are reported in one `coalesced` event. If the evaluation bound is reached while more occurrences remain due, `coalesced_truncated` is true and the count is a bounded known lower bound. The next schedule is calculated directly strictly after the tick's observed time, so uncounted backlog cannot create a storm.
+
+Catch-up works for UTC one-shot/cron and monotonic delay/fixed-rate jobs. Completion-anchored fixed-delay rejects catch-up at registration because it has no sequence of missed planned occurrences without prior completions. Each catch-up execution still passes generation/enabled/schedule validation; removal or shutdown prevents later snapshot callbacks from starting.
 
 ## Overlap
 

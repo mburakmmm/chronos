@@ -48,10 +48,13 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Manual scheduler `skip` and grace-bounded `fire-once` misfire dispatch, misfired/skipped events, and separate tick counters.
 - Anchor-preserving rescheduling after policy skip and per-dispatch clock revalidation after backward UTC corrections.
 - Root `NOX_LIMITATIONS.md` ledger for actionable Nox compiler/runtime limitations discovered during Chronos work.
+- Bounded catch-up dispatch for UTC cron, UTC one-shot, monotonic delay, and fixed-rate jobs with anchor-preserving occurrence snapshots.
+- Coalesced occurrence events with bounded known counts and explicit truncation when evaluation work is exhausted.
+- Catch-up snapshot invalidation after handler removal and compiling catch-up coverage on LLVM and QBE.
 
 ### Limitations
 
 - Configurable execution policies remain incomplete.
-- Retry, catch-up, and queue-one do not execute yet; scheduler registration rejects those configurations.
+- Retry and queue-one do not execute yet; scheduler registration rejects those configurations. Completion-anchored fixed-delay rejects catch-up because it has no missed planned-occurrence sequence.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.
