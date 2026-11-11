@@ -1,6 +1,6 @@
 # Chronos architecture
 
-Status: Phase 0 design record. Public scheduling APIs are not implemented yet.
+Status: accepted architecture records through the experimental Phase 2 API.
 
 ## ADR-001: consumer-facing modules live at the package root
 
@@ -69,13 +69,13 @@ The manifest `entry` selects a project program; it does not create the dependenc
 The intended dependency flow is:
 
 ```text
-time/clock, errors
+time/clock, errors, events
         |
         +--> cron, trigger, policy, job
                          |
                          +--> scheduler --> executor
-                                      |
-                                      +--> events
+                                  |
+                                  +--> events
 ```
 
 Constraints:
@@ -179,3 +179,15 @@ The shared `Job` type owns identity, handler, enabled state, bounded metadata, a
 The registry is a bounded, lexically ordered list rather than a mutable process-global map. This gives deterministic inspection order, avoids hidden lifecycle, and keeps correctness independent of hash iteration. A future benchmark may justify an additional index without changing the public contract.
 
 Registry removal means future schedule removal only. It does not cancel an executing handler. The standalone registry allows reuse after removal; the manual scheduler retains an active ID guard until the in-flight callback has finished.
+
+## ADR-006: synchronous bounded lifecycle observation
+
+Decision date: 2026-11-10
+
+Status: accepted for Phase 2
+
+The portable scheduler delivers lifecycle events synchronously through a bounded listener collection. There is no queue, event history, replay buffer, worker, or global event bus. Each listener has an independent exception boundary, and only an aggregate saturating failure count is retained.
+
+Event payloads separate scheduled time from actual UTC and monotonic observations. Duration is derived only from monotonic start/end values. Job name, metadata, arguments, results, and raw exception text are excluded.
+
+Event listeners are observational callbacks. Scheduler mutation, lifecycle transitions, and nested ticks during delivery are rejected so event reentrancy cannot invalidate scheduler collections. Inline job handlers keep their generation-checked mutation contract.

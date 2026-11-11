@@ -259,3 +259,19 @@ noxc run --backend qbe examples/cancel.nox          -> exit 0
 noxc check --profile freestanding job.nox           -> exit 0
 noxc check --profile freestanding scheduler.nox     -> exit 0
 ```
+
+## Phase 2 lifecycle-event evidence
+
+The lifecycle slice verifies closure-valued listener lists on LLVM and QBE, a configurable 0–64 listener bound, synchronous registration-order delivery, per-listener exception containment, saturating failure counting, and rejection of scheduler mutation during event delivery. The scheduler retains no event queue/history. Deterministic fake-clock tests distinguish planned time from actual UTC observations and derive success/failure duration from monotonic observations. A handler exception containing a secret marker is exposed only as `handler-error`.
+
+```text
+noxc test tests                                      -> 13 passed, 0 failed
+noxc run --backend llvm tests/events_test.nox       -> exit 0
+noxc run --backend qbe tests/events_test.nox        -> exit 0
+noxc run --backend llvm tests/scheduler_events_test.nox -> exit 0
+noxc run --backend qbe tests/scheduler_events_test.nox  -> exit 0
+noxc run --backend llvm examples/events.nox         -> exit 0
+noxc run --backend qbe examples/events.nox          -> exit 0
+noxc check --profile freestanding events.nox        -> exit 0
+noxc check --profile freestanding scheduler.nox     -> exit 0
+```

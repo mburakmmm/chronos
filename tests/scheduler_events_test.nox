@@ -1,0 +1,127 @@
+import nox.test
+from clock import FakeClock
+from events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_STARTED, EVENT_SUCCEEDED
+from job import Job, JobContext, make_monotonic_job, make_utc_job
+from scheduler import STATE_RUNNING, Scheduler
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger, OnceTrigger
+
+class EventRecorder:
+    occurrences: list[ChronosEvent]
+
+    def __init__(self) -> None:
+        self.occurrences = []
+
+class ListenerFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class HandlerFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+def record_listener(recorder: EventRecorder) -> (ChronosEvent) -> None:
+    def listen(occurrence: ChronosEvent) -> None:
+        recorder.occurrences.append(occurrence)
+
+    return listen
+
+def fail_listener(occurrence: ChronosEvent) -> None:
+    raise ListenerFailure("listener payload must not escape")
+
+def advancing_handler(source_clock: FakeClock, advance_ms: int) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        source_clock.advance(Duration(advance_ms))
+
+    return handle
+
+def failing_handler(source_clock: FakeClock, advance_ms: int) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        source_clock.advance(Duration(advance_ms))
+        raise HandlerFailure("TOP-SECRET handler detail")
+
+    return handle
+
+def once_job(job_id: str, target_ms: int, handler: (JobContext) -> None) -> Job:
+    return make_utc_job(job_id, "Job " + job_id, OnceTrigger(UtcInstant(target_ms)), handler, True, UtcInstant(0), [])
+
+def reentrant_add_listener(engine: Scheduler, target: Job) -> (ChronosEvent) -> None:
+    def listen(occurrence: ChronosEvent) -> None:
+        if occurrence.kind == EVENT_REGISTERED:
+            engine.add(target)
+
+    return listen
+
+event_clock: FakeClock = FakeClock(1000, 100)
+recorder: EventRecorder = EventRecorder()
+engine: Scheduler = Scheduler(event_clock, 4, 2)
+engine.add_listener(fail_listener)
+engine.add_listener(record_listener(recorder))
+engine.add(once_job("observed", 1010, advancing_handler(event_clock, 25)))
+engine.start()
+event_clock.advance(Duration(10))
+nox.test.assert_eq_int(engine.tick().succeeded, 1, "observed handler succeeds")
+nox.test.assert_eq_str(engine.state(), STATE_RUNNING, "listener failure preserves scheduler state")
+engine.remove("observed")
+engine.stop()
+
+nox.test.assert_eq_int(len(recorder.occurrences), 7, "complete one-shot lifecycle delivered")
+nox.test.assert_eq_str(recorder.occurrences[0].kind, EVENT_REGISTERED, "registered event first")
+nox.test.assert_eq_str(recorder.occurrences[1].kind, EVENT_SCHEDULED, "scheduled event follows registration")
+nox.test.assert_eq_int(recorder.occurrences[1].scheduled_time_ms, 1010, "planned UTC time retained")
+nox.test.assert_eq_str(recorder.occurrences[2].kind, EVENT_SCHEDULER_STARTED, "scheduler start delivered")
+nox.test.assert_eq_str(recorder.occurrences[3].kind, EVENT_STARTED, "execution start delivered")
+nox.test.assert_eq_int(recorder.occurrences[3].actual_start_utc_ms, 1010, "actual start separated from planned time")
+nox.test.assert_eq_str(recorder.occurrences[4].kind, EVENT_SUCCEEDED, "success delivered")
+nox.test.assert_eq_int(recorder.occurrences[4].scheduled_time_ms, 1010, "success retains planned time")
+nox.test.assert_eq_int(recorder.occurrences[4].actual_end_utc_ms, 1035, "success records actual end")
+nox.test.assert_eq_int(recorder.occurrences[4].duration_ms, 25, "duration uses monotonic elapsed time")
+nox.test.assert_eq_str(recorder.occurrences[5].kind, EVENT_CANCELLED, "removal emits cancellation")
+nox.test.assert_true(not recorder.occurrences[5].has_scheduled_time, "completed removal has no pending schedule")
+nox.test.assert_eq_str(recorder.occurrences[6].kind, EVENT_SCHEDULER_STOPPED, "scheduler stop delivered")
+nox.test.assert_eq_int(engine.listener_failure_count(), 7, "each listener failure counted and contained")
+
+failure_clock: FakeClock = FakeClock(2000, 200)
+failure_recorder: EventRecorder = EventRecorder()
+failure_engine: Scheduler = Scheduler(failure_clock, 4, 1)
+failure_engine.add_listener(record_listener(failure_recorder))
+failure_engine.add(once_job("failure", 2000, failing_handler(failure_clock, 7)))
+failure_engine.start()
+nox.test.assert_eq_int(failure_engine.tick().failed, 1, "handler failure remains a job failure")
+failed: ChronosEvent = failure_recorder.occurrences[4]
+nox.test.assert_eq_str(failed.kind, EVENT_FAILED, "failed lifecycle event delivered")
+nox.test.assert_eq_str(failed.error_category, "handler-error", "raw handler exception is not exposed")
+nox.test.assert_eq_int(failed.duration_ms, 7, "failed execution duration is monotonic")
+nox.test.assert_eq_str(failure_engine.state(), STATE_RUNNING, "failure event preserves running state")
+
+reentrant_clock: FakeClock = FakeClock(3000, 300)
+reentrant_engine: Scheduler = Scheduler(reentrant_clock, 4, 1)
+forbidden: Job = once_job("forbidden", 3000, advancing_handler(reentrant_clock, 0))
+reentrant_engine.add_listener(reentrant_add_listener(reentrant_engine, forbidden))
+reentrant_engine.add(once_job("primary", 3000, advancing_handler(reentrant_clock, 0)))
+nox.test.assert_eq_int(reentrant_engine.listener_failure_count(), 1, "reentrant event mutation is isolated as listener failure")
+nox.test.assert_eq_int(len(reentrant_engine.list_jobs()), 1, "event listener cannot mutate scheduler collections")
+
+rate_clock: FakeClock = FakeClock(4000, 400)
+rate_recorder: EventRecorder = EventRecorder()
+rate_engine: Scheduler = Scheduler(rate_clock, 4, 1)
+rate_engine.add_listener(record_listener(rate_recorder))
+rate_job: Job = make_monotonic_job("rate", "Rate", FixedRateTrigger(MonotonicInstant(400), Duration(10)), advancing_handler(rate_clock, 5), True, UtcInstant(4000), [])
+rate_engine.add(rate_job)
+rate_engine.start()
+nox.test.assert_eq_int(rate_engine.tick().succeeded, 1, "recurring execution succeeds")
+nox.test.assert_eq_int(len(rate_recorder.occurrences), 6, "recurring lifecycle includes next schedule")
+nox.test.assert_eq_str(rate_recorder.occurrences[5].kind, EVENT_SCHEDULED, "recurrence emits scheduled event")
+nox.test.assert_eq_str(rate_recorder.occurrences[5].time_domain, "monotonic", "recurrence preserves time domain")
+nox.test.assert_eq_int(rate_recorder.occurrences[5].scheduled_time_ms, 410, "recurrence event carries next anchor")
+
+cancel_clock: FakeClock = FakeClock(5000, 500)
+cancel_recorder: EventRecorder = EventRecorder()
+cancel_engine: Scheduler = Scheduler(cancel_clock, 2, 1)
+cancel_engine.add_listener(record_listener(cancel_recorder))
+cancel_engine.add(once_job("pending", 6000, advancing_handler(cancel_clock, 0)))
+cancel_engine.remove("pending")
+nox.test.assert_eq_int(len(cancel_recorder.occurrences), 3, "pending cancellation lifecycle delivered")
+nox.test.assert_eq_str(cancel_recorder.occurrences[2].kind, EVENT_CANCELLED, "pending removal emits cancellation")
+nox.test.assert_true(cancel_recorder.occurrences[2].has_scheduled_time, "pending cancellation retains planned time")
+nox.test.assert_eq_int(cancel_recorder.occurrences[2].scheduled_time_ms, 6000, "cancelled event identifies pending occurrence")

@@ -29,7 +29,7 @@ A handler exception is caught at the executor boundary and converted to a bounde
 
 ## Resource denial of service
 
-The cron parser uses explicit expression/item/expansion bounds. Next-fire calculation has both a calendar horizon and an iteration cap. The registry and scheduler enforce an explicit job-count bound; due snapshots and retained per-job outcome state are finite.
+The cron parser uses explicit expression/item/expansion bounds. Next-fire calculation has both a calendar horizon and an iteration cap. The registry and scheduler enforce explicit job and listener-count bounds; due snapshots and retained per-job outcome state are finite. Event delivery is synchronous and retains no queue or history. Events omit job name, metadata, handler arguments/results, and raw exception messages.
 
 No retry, catch-up, overlap, or task-spawn path may grow without a configured finite maximum.
 

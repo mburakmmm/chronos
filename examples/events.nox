@@ -1,0 +1,21 @@
+from clock import FakeClock
+from events import ChronosEvent
+from job import Job, JobContext, make_utc_job
+from scheduler import Scheduler
+from time import UtcInstant
+from trigger import OnceTrigger
+
+def handle(context: JobContext) -> None:
+    print("handled", context.job_id)
+
+def observe(occurrence: ChronosEvent) -> None:
+    print(occurrence.kind, occurrence.job_id, occurrence.duration_ms)
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 8, 1)
+engine.add_listener(observe)
+target: Job = make_utc_job("event.once", "Observed one-shot", OnceTrigger(UtcInstant(1000)), handle, True, UtcInstant(1000), [])
+engine.add(target)
+engine.start()
+engine.tick()
+engine.stop()

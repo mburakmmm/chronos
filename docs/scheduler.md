@@ -4,7 +4,7 @@ Status: experimental Phase 2 manual scheduler for Nox 2.1.0.
 
 ## Ownership and lifecycle
 
-`Scheduler(clock, max_jobs)` is an application-owned in-memory object. It creates no global scheduler, thread, task, timer, sleep, or network listener.
+`Scheduler(clock, max_jobs, max_listeners=16)` is an application-owned in-memory object. It creates no global scheduler, thread, task, timer, sleep, or network listener. Listener capacity may be configured from zero through 64.
 
 Lifecycle states are `created`, `running`, `stopping`, `stopped`, and `failed`.
 
@@ -41,6 +41,8 @@ If a fixed-delay job's first deadline is already past when it is added or re-ena
 Each tick reads both injected clock domains and builds a finite due snapshot. UTC items are dispatched before monotonic items so unlike numeric domains are never compared. Within each domain, items are ordered by planned timestamp then lexical job ID. Jobs sharing a domain and timestamp therefore have stable total ordering.
 
 The inline executor invokes one trusted handler at a time. It catches handler exceptions and returns the fixed safe category `handler-error`; raw exception text is not retained. The scheduler records the outcome and continues with unrelated due jobs.
+
+Bounded synchronous listeners observe registration, scheduling, execution, cancellation, and scheduler start/stop transitions. Listener failures are counted and isolated from scheduler state and handler outcomes. See `docs/events.md` for payload, ordering, retention, and reentrancy rules.
 
 When a fixed-rate or recurring UTC job is late, this Phase 2 slice dispatches at most one occurrence for that job in the tick and calculates the next anchored occurrence strictly after the later of planned time and observed completion in the matching domain. This bounds catch-up work but is not the final configurable misfire policy; explicit skip/fire-once/catch-up policies belong to Phase 3.
 

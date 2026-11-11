@@ -1,5 +1,6 @@
 from clock import Clock
 from errors import DuplicateJobError, InvalidJobError, JobNotFoundError, SchedulerStateError
+from events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
 from executor import ExecutionOutcome, InlineExecutor
 from job import Job, JobContext
 from registry import JobRegistry
@@ -70,8 +71,10 @@ class Scheduler:
     generation_counter: int
     has_active_job: bool
     active_job_id: str
+    event_dispatcher: EventDispatcher
+    emitting_event: bool
 
-    def __init__(self, clock: Clock, max_jobs: int) -> None:
+    def __init__(self, clock: Clock, max_jobs: int, max_listeners: int = 16) -> None:
         self.clock = clock
         self.registry = JobRegistry(max_jobs)
         self.executor = InlineExecutor()
@@ -80,6 +83,8 @@ class Scheduler:
         self.generation_counter = 0
         self.has_active_job = False
         self.active_job_id = ""
+        self.event_dispatcher = EventDispatcher(max_listeners)
+        self.emitting_event = False
 
     def state(self) -> str:
 
@@ -87,18 +92,22 @@ class Scheduler:
 
     def start(self) -> None:
 
+        self._require_not_emitting("cannot start during event delivery")
         if self.state_value == STATE_RUNNING:
             return
         if self.state_value != STATE_CREATED:
             raise SchedulerStateError(self.state_value, "cannot start")
         self.state_value = STATE_RUNNING
+        self._emit_scheduler_event(EVENT_SCHEDULER_STARTED)
 
     def stop(self) -> None:
 
+        self._require_not_emitting("cannot stop during event delivery")
         if self.state_value == STATE_STOPPED or self.state_value == STATE_STOPPING:
             return
         if self.state_value == STATE_CREATED:
             self.state_value = STATE_STOPPED
+            self._emit_scheduler_event(EVENT_SCHEDULER_STOPPED)
             return
         if self.state_value != STATE_RUNNING:
             raise SchedulerStateError(self.state_value, "cannot stop")
@@ -106,6 +115,19 @@ class Scheduler:
             self.state_value = STATE_STOPPING
         else:
             self.state_value = STATE_STOPPED
+            self._emit_scheduler_event(EVENT_SCHEDULER_STOPPED)
+
+    def add_listener(self, listener: (ChronosEvent) -> None) -> None:
+
+        self.event_dispatcher.add_listener(listener)
+
+    def listener_count(self) -> int:
+
+        return self.event_dispatcher.listener_count()
+
+    def listener_failure_count(self) -> int:
+
+        return self.event_dispatcher.listener_failure_count()
 
     def add(self, target: Job) -> None:
 
@@ -133,6 +155,9 @@ class Scheduler:
         self.registry.add(target)
         self.generation_counter += 1
         self.schedules.append(ScheduledEntry(target.job_id, self.generation_counter, time_domain, has_next, next_time_ms))
+        self._emit_job_event(EVENT_REGISTERED, target.job_id, time_domain, False, 0)
+        if has_next:
+            self._emit_job_event(EVENT_SCHEDULED, target.job_id, time_domain, True, next_time_ms)
 
     def remove(self, job_id: str) -> Job:
 
@@ -141,7 +166,9 @@ class Scheduler:
         if index < 0:
             raise JobNotFoundError(job_id)
         removed: Job = self.registry.remove(job_id)
+        removed_entry: ScheduledEntry = self.schedules[index]
         self.schedules.pop(index)
+        self._emit_job_event(EVENT_CANCELLED, job_id, removed_entry.time_domain, removed_entry.has_next, removed_entry.next_time_ms)
         return removed
 
     def enable(self, job_id: str) -> None:
@@ -158,6 +185,8 @@ class Scheduler:
         else:
             next_monotonic: MonotonicInstant | None = target.next_monotonic_at_or_after(self.clock.now_monotonic())
             self._set_entry_next_monotonic(entry, next_monotonic)
+        if entry.has_next:
+            self._emit_job_event(EVENT_SCHEDULED, target.job_id, entry.time_domain, True, entry.next_time_ms)
 
     def disable(self, job_id: str) -> None:
 
@@ -195,6 +224,7 @@ class Scheduler:
 
     def tick(self) -> TickResult:
 
+        self._require_not_emitting("cannot tick during event delivery")
         if self.state_value != STATE_RUNNING:
             raise SchedulerStateError(self.state_value, "tick requires running state")
 
@@ -224,6 +254,9 @@ class Scheduler:
             self.has_active_job = True
             self.active_job_id = due.job_id
             context: JobContext = JobContext(due.job_id, due.time_domain, due.scheduled_time_ms, 1)
+            started_utc: UtcInstant = self.clock.now_utc()
+            started_monotonic: MonotonicInstant = self.clock.now_monotonic()
+            self._emit_execution_event(EVENT_STARTED, due, started_utc, started_monotonic, started_utc, started_monotonic, "")
             outcome: ExecutionOutcome = self.executor.execute(selected, context)
             self.has_active_job = False
             self.active_job_id = ""
@@ -234,15 +267,18 @@ class Scheduler:
                 if outcome.succeeded:
                     selected.record_success(completed_utc)
                     result.succeeded += 1
+                    self._emit_execution_event(EVENT_SUCCEEDED, due, started_utc, started_monotonic, completed_utc, completed_monotonic, "")
                 else:
                     selected.record_failure(outcome.error_category, completed_utc)
                     result.failed += 1
+                    self._emit_execution_event(EVENT_FAILED, due, started_utc, started_monotonic, completed_utc, completed_monotonic, outcome.error_category)
             except Exception:
                 self.state_value = STATE_FAILED
                 raise SchedulerStateError(self.state_value, "failed to record execution outcome")
 
             if self.state_value == STATE_STOPPING:
                 self.state_value = STATE_STOPPED
+                self._emit_scheduler_event(EVENT_SCHEDULER_STOPPED)
                 break
 
             current_index: int = self._find_schedule(due.job_id)
@@ -263,6 +299,8 @@ class Scheduler:
                         if completed_monotonic.value_ms > monotonic_reference_ms:
                             monotonic_reference_ms = completed_monotonic.value_ms
                         self._set_entry_next_monotonic(current, current_job.next_monotonic_after(MonotonicInstant(monotonic_reference_ms)))
+                    if current.has_next:
+                        self._emit_job_event(EVENT_SCHEDULED, current.job_id, current.time_domain, True, current.next_time_ms)
 
         return result
 
@@ -320,5 +358,38 @@ class Scheduler:
 
     def _require_mutable(self) -> None:
 
+        self._require_not_emitting("job mutation is not allowed during event delivery")
         if self.state_value != STATE_CREATED and self.state_value != STATE_RUNNING:
             raise SchedulerStateError(self.state_value, "job mutation is not allowed")
+
+    def _require_not_emitting(self, message: str) -> None:
+
+        if self.emitting_event:
+            raise SchedulerStateError(self.state_value, message)
+
+    def _emit_scheduler_event(self, kind: str) -> None:
+
+        observed_utc: UtcInstant = self.clock.now_utc()
+        observed_monotonic: MonotonicInstant = self.clock.now_monotonic()
+        occurrence: ChronosEvent = ChronosEvent(kind, "", "none", False, 0, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, 0, "")
+        self._publish(occurrence)
+
+    def _emit_job_event(self, kind: str, job_id: str, time_domain: str, has_scheduled_time: bool, scheduled_time_ms: int) -> None:
+
+        observed_utc: UtcInstant = self.clock.now_utc()
+        observed_monotonic: MonotonicInstant = self.clock.now_monotonic()
+        occurrence: ChronosEvent = ChronosEvent(kind, job_id, time_domain, has_scheduled_time, scheduled_time_ms, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, 0, "")
+        self._publish(occurrence)
+
+    def _emit_execution_event(self, kind: str, due: DueItem, started_utc: UtcInstant, started_monotonic: MonotonicInstant, completed_utc: UtcInstant, completed_monotonic: MonotonicInstant, error_category: str) -> None:
+
+        occurrence: ChronosEvent = ChronosEvent(kind, due.job_id, due.time_domain, True, due.scheduled_time_ms, started_utc.epoch_ms, completed_utc.epoch_ms, started_monotonic.value_ms, completed_monotonic.value_ms, 1, error_category)
+        self._publish(occurrence)
+
+    def _publish(self, occurrence: ChronosEvent) -> None:
+
+        self.emitting_event = True
+        try:
+            self.event_dispatcher.emit(occurrence)
+        finally:
+            self.emitting_event = False

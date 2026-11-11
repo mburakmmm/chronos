@@ -1,0 +1,59 @@
+import nox.test
+from errors import EventListenerLimitError, InvalidEventError
+from events import ChronosEvent, EVENT_SCHEDULED, EventDispatcher
+
+class EventRecorder:
+    kinds: list[str]
+
+    def __init__(self) -> None:
+        self.kinds = []
+
+class ListenerFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+def record_listener(recorder: EventRecorder) -> (ChronosEvent) -> None:
+    def listen(occurrence: ChronosEvent) -> None:
+        recorder.kinds.append(occurrence.kind)
+
+    return listen
+
+def fail_listener(occurrence: ChronosEvent) -> None:
+    raise ListenerFailure("listener failed")
+
+def invalid_capacity_rejected() -> bool:
+    try:
+        EventDispatcher(65)
+    except InvalidEventError:
+        return True
+    return False
+
+def listener_limit_rejected(dispatcher: EventDispatcher, recorder: EventRecorder) -> bool:
+    try:
+        dispatcher.add_listener(record_listener(recorder))
+    except EventListenerLimitError as error:
+        return error.limit == 2
+    return False
+
+def invalid_event_id_rejected() -> bool:
+    try:
+        ChronosEvent(EVENT_SCHEDULED, "unsafe job ID", "utc", True, 100, 90, 90, 10, 10, 0, "")
+    except InvalidEventError:
+        return True
+    return False
+
+recorder: EventRecorder = EventRecorder()
+dispatcher: EventDispatcher = EventDispatcher(2)
+dispatcher.add_listener(fail_listener)
+dispatcher.add_listener(record_listener(recorder))
+nox.test.assert_true(listener_limit_rejected(dispatcher, recorder), "listener capacity is bounded")
+nox.test.assert_true(invalid_capacity_rejected(), "invalid listener capacity rejected")
+nox.test.assert_true(invalid_event_id_rejected(), "event job ID remains bounded and safe")
+
+occurrence: ChronosEvent = ChronosEvent(EVENT_SCHEDULED, "job.one", "utc", True, 100, 90, 90, 10, 10, 0, "")
+dispatcher.emit(occurrence)
+nox.test.assert_eq_int(dispatcher.listener_count(), 2, "listener count exposed")
+nox.test.assert_eq_int(dispatcher.listener_failure_count(), 1, "listener failure counted")
+nox.test.assert_eq_int(len(recorder.kinds), 1, "later listener survives earlier failure")
+nox.test.assert_eq_str(recorder.kinds[0], EVENT_SCHEDULED, "event delivered after listener failure")
+nox.test.assert_eq_int(occurrence.duration_ms, 0, "non-execution event has zero observation duration")

@@ -26,6 +26,8 @@ Callers should branch on the exception class, not message text.
 - `DuplicateJobError`: an ID is already present; `job_id` contains the rejected ID.
 - `JobNotFoundError`: an operation targeted an absent ID; `job_id` contains that ID.
 - `SchedulerStateError`: an operation is invalid for the scheduler lifecycle; `state` contains the observed state.
+- `InvalidEventError`: an event or listener-capacity configuration violates the event contract.
+- `EventListenerLimitError`: listener registration exceeded the scheduler's configured capacity; `limit` contains that capacity.
 
 ## `chronos.time`
 
@@ -187,11 +189,33 @@ Removal does not interrupt a handler. The standalone registry permits ID reuse a
 
 `execute(job, context) -> ExecutionOutcome` invokes the trusted handler synchronously. Handler exceptions are contained and represented only by `succeeded = false` and the safe category `handler-error`. The executor does not calculate triggers, record history, spawn work, or claim timeout enforcement.
 
+## `chronos.events`
+
+### `ChronosEvent`
+
+A validated lifecycle payload with:
+
+- `kind`;
+- bounded `job_id` or an empty ID for scheduler lifecycle events;
+- `time_domain`, `has_scheduled_time`, and `scheduled_time_ms`;
+- actual UTC and monotonic start/end observations;
+- monotonic `duration_ms`;
+- `attempt`;
+- safe `error_category`.
+
+Kinds are exported as `EVENT_REGISTERED`, `EVENT_SCHEDULED`, `EVENT_STARTED`, `EVENT_SUCCEEDED`, `EVENT_FAILED`, `EVENT_CANCELLED`, `EVENT_SCHEDULER_STARTED`, and `EVENT_SCHEDULER_STOPPED`.
+
+### `EventDispatcher(max_listeners)`
+
+Stores zero through `MAX_EVENT_LISTENERS` (64) synchronous listeners. `add_listener(listener)` rejects capacity overflow. `emit(event)` invokes the listener snapshot in registration order, isolates each exception, and increments a saturating failure count. It retains no event queue or history. Scheduler consumers normally use the forwarding methods on `Scheduler` instead of constructing a dispatcher.
+
+See `docs/events.md` for field semantics, ordering, reentrancy, retention, and security boundaries.
+
 ## `chronos.scheduler`
 
-### `Scheduler(clock, max_jobs)`
+### `Scheduler(clock, max_jobs, max_listeners=16)`
 
-Creates an application-owned manual scheduler with injected `Clock`, bounded `JobRegistry`, and inline executor.
+Creates an application-owned manual scheduler with injected `Clock`, bounded `JobRegistry`, bounded synchronous listeners, and inline executor.
 
 - `state() -> str`
 - `start()` / `stop()`
@@ -201,6 +225,9 @@ Creates an application-owned manual scheduler with injected `Clock`, bounded `Jo
 - `next_run_utc(job_id) -> UtcInstant | None`
 - `next_run_monotonic(job_id) -> MonotonicInstant | None`
 - `is_completed(job_id) -> bool`
+- `add_listener(listener) -> None`
+- `listener_count() -> int`
+- `listener_failure_count() -> int`
 - `tick() -> TickResult`
 
 `TickResult` exposes `succeeded`, `failed`, `skipped`, and `dispatched()`.
@@ -214,6 +241,7 @@ For a dependency aliased as `chronos`:
 ```nox-fragment
 from chronos.clock import Clock, FakeClock
 from chronos.cron import CronSchedule, CronTrigger, parse
+from chronos.events import ChronosEvent, EventDispatcher
 from chronos.executor import InlineExecutor
 from chronos.job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job
 from chronos.registry import JobRegistry

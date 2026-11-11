@@ -53,3 +53,5 @@ Until then, manual tick is the supported portable lifecycle.
 User callbacks are invoked without iterating the live registry/schedule collections. A tick dispatches from a finite due snapshot and revalidates generation and current registry state before every callback. Additions become eligible on the next tick; removals invalidate pending snapshot entries. Active ID reuse is rejected until the inline callback returns. See `docs/architecture.md` ADR-002.
 
 Fixed-delay completion is sampled only after the inline callback returns. Chronos therefore does not confuse planned time, UTC completion metadata, and monotonic completion used for the next delay.
+
+Lifecycle listeners are synchronous and run in registration order. Their exceptions are isolated per listener, but a slow listener delays inline dispatch. Mutation, start/stop, and nested tick calls from event delivery are rejected; handlers retain the generation-checked mutation behavior above. There is no event worker or unbounded event queue.

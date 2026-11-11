@@ -1,0 +1,135 @@
+import nox.strings
+from errors import EventListenerLimitError, InvalidEventError
+from time import MAX_MS, MonotonicInstant, UtcInstant, elapsed_between
+
+EVENT_REGISTERED: str = "registered"
+EVENT_SCHEDULED: str = "scheduled"
+EVENT_STARTED: str = "started"
+EVENT_SUCCEEDED: str = "succeeded"
+EVENT_FAILED: str = "failed"
+EVENT_CANCELLED: str = "cancelled"
+EVENT_SCHEDULER_STARTED: str = "scheduler-started"
+EVENT_SCHEDULER_STOPPED: str = "scheduler-stopped"
+
+MAX_EVENT_LISTENERS: int = 64
+
+class ChronosEvent:
+    kind: str
+    job_id: str
+    time_domain: str
+    has_scheduled_time: bool
+    scheduled_time_ms: int
+    actual_start_utc_ms: int
+    actual_end_utc_ms: int
+    actual_start_monotonic_ms: int
+    actual_end_monotonic_ms: int
+    duration_ms: int
+    attempt: int
+    error_category: str
+
+    def __init__(self, kind: str, job_id: str, time_domain: str, has_scheduled_time: bool, scheduled_time_ms: int, actual_start_utc_ms: int, actual_end_utc_ms: int, actual_start_monotonic_ms: int, actual_end_monotonic_ms: int, attempt: int, error_category: str) -> None:
+        if not _known_kind(kind):
+            raise InvalidEventError("unknown event kind")
+        if time_domain != "none" and time_domain != "utc" and time_domain != "monotonic":
+            raise InvalidEventError("unknown event time domain")
+        UtcInstant(actual_start_utc_ms)
+        UtcInstant(actual_end_utc_ms)
+        start_monotonic: MonotonicInstant = MonotonicInstant(actual_start_monotonic_ms)
+        end_monotonic: MonotonicInstant = MonotonicInstant(actual_end_monotonic_ms)
+        if has_scheduled_time:
+            if time_domain == "none":
+                raise InvalidEventError("scheduled event requires a time domain")
+            if time_domain == "utc":
+                UtcInstant(scheduled_time_ms)
+            else:
+                MonotonicInstant(scheduled_time_ms)
+        elif scheduled_time_ms != 0:
+            raise InvalidEventError("event without a schedule must use zero scheduled time")
+
+        execution_event: bool = kind == EVENT_STARTED or kind == EVENT_SUCCEEDED or kind == EVENT_FAILED
+        scheduler_event: bool = kind == EVENT_SCHEDULER_STARTED or kind == EVENT_SCHEDULER_STOPPED
+        if execution_event:
+            if job_id == "" or not has_scheduled_time or attempt < 1:
+                raise InvalidEventError("execution event requires job, schedule, and attempt")
+        elif attempt != 0:
+            raise InvalidEventError("non-execution event attempt must be zero")
+        if scheduler_event:
+            if job_id != "" or time_domain != "none" or has_scheduled_time:
+                raise InvalidEventError("scheduler event cannot contain job schedule fields")
+        elif job_id == "" or time_domain == "none":
+            raise InvalidEventError("job event requires job ID and time domain")
+        else:
+            _validate_identifier("event job ID", job_id, 128)
+        if kind == EVENT_SCHEDULED and not has_scheduled_time:
+            raise InvalidEventError("scheduled event requires planned time")
+        if kind == EVENT_FAILED:
+            if error_category == "":
+                raise InvalidEventError("failed event requires an error category")
+            _validate_identifier("event error category", error_category, 64)
+        elif error_category != "":
+            raise InvalidEventError("only failed events may contain an error category")
+
+        self.kind = kind
+        self.job_id = job_id
+        self.time_domain = time_domain
+        self.has_scheduled_time = has_scheduled_time
+        self.scheduled_time_ms = scheduled_time_ms
+        self.actual_start_utc_ms = actual_start_utc_ms
+        self.actual_end_utc_ms = actual_end_utc_ms
+        self.actual_start_monotonic_ms = actual_start_monotonic_ms
+        self.actual_end_monotonic_ms = actual_end_monotonic_ms
+        self.duration_ms = elapsed_between(start_monotonic, end_monotonic).value_ms
+        self.attempt = attempt
+        self.error_category = error_category
+
+class EventDispatcher:
+    max_listeners: int
+    listeners: list[(ChronosEvent) -> None]
+    failure_count: int
+
+    def __init__(self, max_listeners: int) -> None:
+        if max_listeners < 0 or max_listeners > MAX_EVENT_LISTENERS:
+            raise InvalidEventError("event listener capacity must be between 0 and 64")
+        self.max_listeners = max_listeners
+        self.listeners = []
+        self.failure_count = 0
+
+    def add_listener(self, listener: (ChronosEvent) -> None) -> None:
+
+        if len(self.listeners) >= self.max_listeners:
+            raise EventListenerLimitError(self.max_listeners)
+        self.listeners.append(listener)
+
+    def listener_count(self) -> int:
+
+        return len(self.listeners)
+
+    def listener_failure_count(self) -> int:
+
+        return self.failure_count
+
+    def emit(self, occurrence: ChronosEvent) -> None:
+
+        delivery_count: int = len(self.listeners)
+        for i in range(delivery_count):
+            try:
+                self.listeners[i](occurrence)
+            except Exception:
+                if self.failure_count < MAX_MS:
+                    self.failure_count += 1
+
+def _known_kind(kind: str) -> bool:
+    return kind == EVENT_REGISTERED or kind == EVENT_SCHEDULED or kind == EVENT_STARTED or kind == EVENT_SUCCEEDED or kind == EVENT_FAILED or kind == EVENT_CANCELLED or kind == EVENT_SCHEDULER_STARTED or kind == EVENT_SCHEDULER_STOPPED
+
+def _validate_identifier(label: str, value: str, maximum_bytes: int) -> None:
+    size: int = nox.strings.byte_len(value)
+    if size == 0 or size > maximum_bytes:
+        raise InvalidEventError(label + " violates byte limit")
+    for i in range(size):
+        byte: int = nox.strings.byte_at(value, i)
+        lowercase: bool = byte >= 97 and byte <= 122
+        uppercase: bool = byte >= 65 and byte <= 90
+        digit: bool = byte >= 48 and byte <= 57
+        punctuation: bool = byte == 45 or byte == 46 or byte == 58 or byte == 95
+        if not lowercase and not uppercase and not digit and not punctuation:
+            raise InvalidEventError(label + " contains an unsupported character")

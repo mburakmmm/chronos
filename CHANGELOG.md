@@ -38,9 +38,12 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Manual scheduler integration for monotonic one-shot delays and anchor-preserving fixed-rate jobs.
 - Dedicated completion-anchored fixed-delay jobs with identical rescheduling after success or handler failure and explicit removal semantics.
 - Deterministic mixed-domain ordering that never compares UTC and monotonic integers, plus compiling `once`, `every`, and `cancel` examples.
+- Bounded synchronous lifecycle listeners for registration, scheduling, execution, cancellation, and scheduler start/stop transitions.
+- Separate planned, actual UTC, actual monotonic, and monotonic-duration event fields with safe failure categories.
+- Listener exception isolation, aggregate failure counting, reentrant event-mutation rejection, deterministic tests, and a compiling events example.
 
 ### Limitations
 
-- Lifecycle events and configurable execution policies remain incomplete.
+- Configurable execution policies remain incomplete.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.

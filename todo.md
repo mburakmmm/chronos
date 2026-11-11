@@ -242,11 +242,11 @@ Amaç: Portable, uygulama tarafından sahiplenilen, senkron ve deterministik sch
 
 ## Temel events ve gözlemlenebilirlik
 
-- [ ] `registered`, `scheduled`, `started`, `succeeded`, `failed`, `cancelled`, scheduler start/stop eventlerini uygula.
-- [ ] Event timestamp'lerinde scheduled ve actual değerleri ayır.
-- [ ] Duration ölçümünde monoton clock kullan.
-- [ ] Listener failure'ın scheduler state'ini bozmasını engelle.
-- [ ] Event ve error payload'larında secret/job argument sızıntısı olmamasını incele.
+- [x] `registered`, `scheduled`, `started`, `succeeded`, `failed`, `cancelled`, scheduler start/stop eventlerini uygula.
+- [x] Event timestamp'lerinde scheduled ve actual değerleri ayır.
+- [x] Duration ölçümünde monoton clock kullan.
+- [x] Listener failure'ın scheduler state'ini bozmasını engelle.
+- [x] Event ve error payload'larında secret/job argument sızıntısı olmamasını incele.
 
 ## Test, örnek ve belge
 
@@ -259,10 +259,10 @@ Amaç: Portable, uygulama tarafından sahiplenilen, senkron ve deterministik sch
 
 ### `0.2.0` çıkış kapısı
 
-- [ ] Scheduler unit testlerinin tamamı fake clock ile deterministik geçsin.
-- [ ] Handler hatası scheduler koleksiyon/state bütünlüğünü bozmuyor olsun.
-- [ ] Hidden thread, global scheduler, unbounded history veya import-time execution bulunmasın.
-- [ ] LLVM ve QBE manual scheduler/test/example sonuçları kaydedilmiş olsun.
+- [x] Scheduler unit testlerinin tamamı fake clock ile deterministik geçsin.
+- [x] Handler hatası scheduler koleksiyon/state bütünlüğünü bozmuyor olsun.
+- [x] Hidden thread, global scheduler, unbounded history veya import-time execution bulunmasın.
+- [x] LLVM ve QBE manual scheduler/test/example sonuçları kaydedilmiş olsun.
 
 ---
 
@@ -495,4 +495,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 2 / `0.2.0`: bounded temel lifecycle event modelini eklemek; listener hatasını scheduler state'inden izole etmek ve scheduled/actual/monotonic duration alanlarını doğrulamak.
+Phase 3 / `0.3.0`: misfire, overlap ve retry policy tiplerini gerçek Nox API'si olarak tasarlamak; önce saf policy doğrulaması ve scheduler entegrasyon sınırlarını test etmek.
