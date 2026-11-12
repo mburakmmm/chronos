@@ -18,11 +18,12 @@ Chronos exposes synchronous lifecycle observation without retaining an event his
 | `coalesced` | Catch-up discarded known excess occurrences | present |
 | `overlap-queued` | One overlapping occurrence was retained | present |
 | `overlap-skipped` | An overlapping occurrence was discarded | present |
+| `retried` | A later handler attempt was assigned a monotonic deadline | present |
 | `cancelled` | Scheduler ownership was removed | present only if a run remained pending |
 | `scheduler-started` | Lifecycle entered `running` | absent |
 | `scheduler-stopped` | Lifecycle entered `stopped` | absent |
 
-Initial registration emits `registered` and, when a next occurrence exists, `scheduled`. Successful and failed recurring executions emit another `scheduled` event after their next time is calculated. A late occurrence emits `misfired`; policy rejection then emits `skipped`, while bounded catch-up may emit `coalesced`. Reentrant overlap observation emits `overlap-queued` for the single retained occurrence or `overlap-skipped` for a discarded occurrence. Removing a queued job emits `cancelled` with the queued planned time; removing a completed job still emits `cancelled`, but without a pending planned time.
+Initial registration emits `registered` and, when a next occurrence exists, `scheduled`. Successful and terminally failed recurring executions emit another `scheduled` event after their next time is calculated. A retryable failure emits `failed` followed by `retried`; the latter carries the upcoming monotonic deadline. A late occurrence emits `misfired`; policy rejection then emits `skipped`, while bounded catch-up may emit `coalesced`. Reentrant overlap observation emits `overlap-queued` for the single retained occurrence or `overlap-skipped` for a discarded occurrence. Removing a queued job or retry emits `cancelled` with the pending deadline; removing a completed job still emits `cancelled`, but without a pending planned time.
 
 ## Timestamp fields
 
@@ -32,11 +33,13 @@ Initial registration emits `registered` and, when a next occurrence exists, `sch
 - `has_scheduled_time` controls whether `scheduled_time_ms` is meaningful. Its unit belongs to `time_domain`; UTC and monotonic integers must never be compared.
 - `actual_start_utc_ms` and `actual_end_utc_ms` are wall-clock observations and may reflect a clock correction.
 - `actual_start_monotonic_ms` and `actual_end_monotonic_ms` define the nonnegative `duration_ms`.
-- `attempt` is one for current execution events and zero for non-execution events.
+- `attempt` is positive for execution events and `retried`; other non-attempt events use zero. `retried` requires attempt two or later.
 - `error_category` is empty except for `failed`, where the inline executor currently reports only `handler-error`.
 - `coalesced_count` is nonzero only on `coalesced`; `coalesced_truncated` marks that the finite evaluation budget ended before the complete backlog count was known.
 
 The planned time on an overlap event is the candidate occurrence, not the active callback's original planned time. Overlap events have attempt zero because queueing or discarding is not an execution.
+
+The planned time on `retried` is a monotonic eligibility deadline. `started`, `failed`, and `succeeded` for that attempt retain the original occurrence's planned time and trigger domain. This keeps elapsed retry waiting distinct from calendar identity.
 
 The `started` snapshot is taken immediately before synchronous listener delivery and inline execution. Completion duration therefore measures the complete dispatch span from that snapshot through handler return, including time consumed by `started` listeners. It never derives elapsed duration from UTC wall time.
 

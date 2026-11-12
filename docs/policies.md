@@ -2,7 +2,7 @@
 
 Status: experimental Phase 3 API for Nox 2.1.0 with partial scheduler integration.
 
-The policy module validates bounded configuration and performs deterministic calculations without reading clocks or executing handlers. `JobPolicies` is accepted by the explicit `make_*_with_policies` job factories. The manual scheduler executes `skip`, `fire-once`, bounded `catch-up`, `forbid`, and bounded `queue-one`; it rejects retry configurations atomically when a job is added.
+The policy module validates bounded configuration and performs deterministic calculations without reading clocks or executing handlers. `JobPolicies` is accepted by the explicit `make_*_with_policies` job factories. The manual scheduler executes `skip`, `fire-once`, bounded `catch-up`, `forbid`, bounded `queue-one`, and fixed-delay retry. Exponential retry remains configuration-only.
 
 Factories without the `_with_policies` suffix preserve source compatibility and install defaults: fire one late occurrence with the maximum supported grace, forbid overlap, and no retry. `Job.policy_config()` returns a defensive copy.
 
@@ -38,8 +38,14 @@ This is bounded single-thread reentrancy behavior, not thread safety. The schedu
 
 `should_retry_after(completed_attempt)` answers whether another attempt is permitted. `delay_before_attempt(attempt)` uses attempt two for the first retry. Exponential delay doubles from the base and saturates at the configured maximum without overflowing signed 64-bit milliseconds.
 
-Retries remain separate from recurrence. The scheduler currently accepts only `no-retry` and rejects fixed/exponential configurations. It does not yet decide how a delayed retry competes with the next regular occurrence, does not add jitter, and does not claim timeout or cancellation enforcement.
+Retries remain separate from recurrence. The scheduler accepts `no-retry` and `fixed_retry`; exponential retry remains rejected until its runtime path is integrated. A retry delay is elapsed time measured only by the monotonic clock. Attempt one is the original dispatch and attempts two through `max_attempts` reuse the original occurrence's planned timestamp and time domain.
+
+While a retry chain is pending, the job's regular recurrence is suspended. The retry wins over any intervening cron, fixed-rate, or fixed-delay occurrence. On success or exhaustion, one-shot completes; fixed-rate and cron query their unchanged trigger anchor strictly after terminal completion; fixed-delay starts its normal delay from terminal monotonic completion. A late retry dispatches once and does not enter misfire/catch-up logic.
+
+Fixed retry is currently incompatible with `catch-up` and `queue-one`; registration rejects both combinations atomically. Removal cancels a pending retry. Disable suspends it, while re-enable discards it and recomputes the regular trigger. Stop during a failing callback does not create a new retry. Retry-deadline overflow changes the scheduler to `failed` rather than wrapping the monotonic integer.
+
+Only contained handler failures (`handler-error`) are retryable. Invalid schedules fail before handler dispatch, scheduler/infrastructure failures are not retried, and cancellation never manufactures another attempt. There is no jitter, timeout, task cancellation, or exactly-once claim.
 
 ## Safety
 
-All policy state is finite. There is no retry loop, catch-up loop, execution history, task spawning, or retained payload in this module. Side-effecting handlers will still require application-level idempotency; these policies cannot provide exactly-once effects.
+All policy state is finite. The scheduler retains one retry deadline, upcoming attempt number, and original planned time per retrying job; it retains no retry list or execution history. Side-effecting handlers require application-level idempotency because any attempt may have produced effects before raising, and these policies cannot provide exactly-once effects.

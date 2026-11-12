@@ -1,0 +1,44 @@
+from clock import FakeClock
+from job import Job, JobContext, make_utc_job_with_policies
+from policy import JobPolicies, fire_once_misfires, fixed_retry, forbid_overlap
+from scheduler import Scheduler, TickResult
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from trigger import OnceTrigger
+
+class PlannedFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class State:
+    calls: int
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+def flaky_handler(state: State) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        state.calls += 1
+        print("attempt", context.attempt, "planned", context.scheduled_time_ms)
+        if state.calls == 1:
+            raise PlannedFailure("first attempt fails")
+
+    return handle
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 8)
+state: State = State()
+config: JobPolicies = JobPolicies(fire_once_misfires(Duration(MAX_MS)), forbid_overlap(), fixed_retry(Duration(25), 2))
+target: Job = make_utc_job_with_policies("retry-once", "Retry once", OnceTrigger(UtcInstant(1000)), flaky_handler(state), True, UtcInstant(1000), [], config)
+engine.add(target)
+engine.start()
+
+first: TickResult = engine.tick()
+print("failed", first.failed, "retry scheduled", first.retries_scheduled)
+retry_at: MonotonicInstant | None = engine.next_retry_monotonic("retry-once")
+if retry_at is not None:
+    print("retry monotonic deadline", retry_at.value_ms)
+
+source_clock.advance(Duration(25))
+second: TickResult = engine.tick()
+print("succeeded", second.succeeded, "retry dispatched", second.retry_dispatched)
+engine.stop()

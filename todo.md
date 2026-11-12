@@ -300,13 +300,13 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 ## Retry ve failure
 
 - [x] Default `no retry` davranışını uygula; desteklenmeyen retry konfigürasyonunu registration'da atomik reddet.
-- [ ] Bounded fixed-delay retry uygula.
+- [x] Bounded fixed-delay retry uygula.
 - [ ] Bounded exponential backoff ve maximum delay uygula.
-- [ ] Maximum attempt sınırı ve attempt count semantiğini tanımla.
-- [ ] Retry ile normal recurrence çakışmasını deterministik policy ile çöz.
-- [ ] Handler, scheduler, cancellation ve infrastructure failure kategorilerini ayır.
-- [ ] Permanently invalid schedule için retry çalıştırma.
-- [ ] Error summary ve execution history retention sınırlarını uygula.
+- [x] Maximum attempt sınırı ve attempt count semantiğini tanımla.
+- [x] Retry ile normal recurrence çakışmasını deterministik policy ile çöz.
+- [x] Handler, scheduler, cancellation ve infrastructure failure kategorilerini ayır.
+- [x] Permanently invalid schedule için retry çalıştırma.
+- [x] Error summary ve execution history retention sınırlarını uygula.
 - [ ] Jitter yalnızca injectable deterministic RNG ve açık ihtiyaç varsa eklenir; aksi halde sonraki backlog'a bırakılır.
 
 ## Shutdown ve opsiyonel background mode
@@ -323,9 +323,10 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 
 - [ ] Misfire, catch-up cap, overlap, queue-one, retry/backoff/exhaustion ve shutdown testlerini ekle.
 - [ ] Policy kombinasyonları için regression matrisi ekle.
-- [ ] `retry` örneğini ve destekleniyorsa background lifecycle örneğini derle/çalıştır.
-- [ ] `docs/policies.md`, `docs/scheduler.md`, `docs/concurrency.md`, API ve README güncelle.
-- [ ] Side-effecting job'lar için idempotency rehberi ekle; exactly-once vaat etme.
+- [x] `retry` örneğini LLVM ve QBE üzerinde derle/çalıştır.
+- [ ] Background mode desteklenirse lifecycle örneğini derle/çalıştır; desteklenmezse limitation'ı açıkça belge.
+- [x] `docs/policies.md`, `docs/scheduler.md`, `docs/concurrency.md`, API ve README güncelle.
+- [x] Side-effecting job'lar için idempotency rehberi ekle; exactly-once vaat etme.
 
 ### `0.3.0` çıkış kapısı
 
@@ -504,4 +505,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 3 / `0.3.0`: bounded fixed-delay retry state'ini uygulamak; attempt sayımı ile retry/normal recurrence çakışmasını deterministik ve sonlu bir policy olarak tanımlamak.
+Phase 3 / `0.3.0`: bounded exponential retry scheduler entegrasyonunu uygula; maximum delay saturation ve exhaustion davranışını fixed retry ile aynı lifecycle kurallarında doğrula.

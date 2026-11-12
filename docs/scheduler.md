@@ -32,7 +32,7 @@ A past one-shot is retained as completed without execution. A completed job rema
 
 UTC jobs follow wall-clock corrections: a forward jump may make a deadline due on the next tick, while a backward jump cannot make it run before the target wall time. The monotonic counter is not consulted for UTC trigger eligibility.
 
-Elapsed jobs use only the monotonic counter for eligibility. Wall-clock jumps do not make a delay or interval early/late. Fixed-rate next times remain anchored to the original trigger anchor even when a callback advances the clock. Fixed-delay next times are calculated from observed monotonic completion, after either success or handler failure.
+Elapsed jobs use only the monotonic counter for eligibility. Wall-clock jumps do not make a delay or interval early/late. Fixed-rate next times remain anchored to the original trigger anchor even when a callback advances the clock. Fixed-delay next times are calculated from observed monotonic completion after the occurrence's terminal attempt.
 
 If a fixed-delay job's first deadline is already past when it is added or re-enabled, exactly one execution becomes due at the observed monotonic time. Chronos does not generate an unbounded first-run catch-up sequence.
 
@@ -46,9 +46,19 @@ Bounded synchronous listeners observe registration, scheduling, execution, cance
 
 An exact-boundary occurrence is not a misfire. A late occurrence uses the job's millisecond-grace policy: `skip` records no execution and advances to the first future anchored occurrence, while `fire-once` dispatches one occurrence when within grace and otherwise skips. `catch-up` enumerates bounded planned occurrences, dispatches up to the configured count, coalesces evaluated excess, and jumps directly to the first future anchored occurrence. Fixed-rate and cron anchors are not shifted. A skipped fixed-delay occurrence uses observed skip time as its next delay base because there is no completion timestamp; fixed-delay rejects catch-up.
 
-The default job configuration preserves the earlier bounded behavior by firing one late occurrence with maximum grace and forbidding overlap. Queue-one is supported in the inline/reentrant model; retry is not yet implemented, and `Scheduler.add` rejects retry configurations before mutating the registry. Every due or catch-up snapshot item is rechecked against generation, enabled state, planned time, and matching clock immediately before dispatch, so removal/shutdown invalidates remaining work and a backward UTC correction cannot start a later callback early.
+The default job configuration preserves the earlier bounded behavior by firing one late occurrence with maximum grace, forbidding overlap, and performing no retry. Queue-one and fixed retry are supported under their documented combination limits; exponential retry remains rejected. Every due, catch-up, or retry snapshot item is rechecked against generation, enabled state, attempt, deadline, and matching clock immediately before dispatch, so removal/shutdown invalidates remaining work and a backward UTC correction cannot start a later callback early.
 
-`TickResult` reports `succeeded`, `failed`, total `skipped`, `misfired`, `policy_skipped`, `catch_up_dispatched`, `coalesced`, `coalesced_truncated`, `overlap_queued`, and `overlap_skipped` counts. `coalesced` is the known bounded count; a positive truncated-batch count means more backlog existed but was deliberately not enumerated. Deferring an unrelated job during a nested tick is not counted as a skip because the outer tick can still dispatch it. Tick results retain no handler payloads.
+`TickResult` reports `succeeded`, `failed`, total `skipped`, `misfired`, `policy_skipped`, `catch_up_dispatched`, `coalesced`, `coalesced_truncated`, `overlap_queued`, `overlap_skipped`, `retry_dispatched`, and `retries_scheduled` counts. `coalesced` is the known bounded count; a positive truncated-batch count means more backlog existed but was deliberately not enumerated. Deferring an unrelated job during a nested tick is not counted as a skip because the outer tick can still dispatch it. Tick results retain no handler payloads.
+
+## Fixed retry
+
+After a contained handler failure, `fixed_retry(delay, max_attempts)` may schedule the next attempt at monotonic completion plus `delay`. The scheduler stores one retry deadline, not a queue. `next_retry_monotonic(job_id)` exposes that deadline; regular `next_run_utc`/`next_run_monotonic` returns no regular run while the retry chain owns the job.
+
+Every attempt retains the original occurrence's planned timestamp and domain in `JobContext` and execution events. `retried` instead carries the upcoming monotonic deadline and attempt number. A retry that is polled late executes once and bypasses recurrence misfire policy.
+
+Regular recurrence is suspended for the chain. Success or exhaustion is terminal for that occurrence: one-shot completes, cron/fixed-rate resumes at the first anchored occurrence strictly after terminal completion, and fixed-delay starts from terminal monotonic completion. This prevents retry from overlapping a regular run. Fixed retry cannot currently be combined with catch-up or queue-one, and exponential runtime integration remains gated.
+
+Removal cancels the stored retry deadline. Re-enable discards it and recalculates the regular trigger. A stop requested by the active failing handler completes shutdown without scheduling another attempt. Monotonic deadline overflow is an unrecoverable scheduler failure and is never wrapped.
 
 ## Inline overlap
 

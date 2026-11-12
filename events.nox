@@ -12,6 +12,7 @@ EVENT_SKIPPED: str = "skipped"
 EVENT_COALESCED: str = "coalesced"
 EVENT_OVERLAP_QUEUED: str = "overlap-queued"
 EVENT_OVERLAP_SKIPPED: str = "overlap-skipped"
+EVENT_RETRIED: str = "retried"
 EVENT_CANCELLED: str = "cancelled"
 EVENT_SCHEDULER_STARTED: str = "scheduler-started"
 EVENT_SCHEDULER_STOPPED: str = "scheduler-stopped"
@@ -54,12 +55,15 @@ class ChronosEvent:
             raise InvalidEventError("event without a schedule must use zero scheduled time")
 
         execution_event: bool = kind == EVENT_STARTED or kind == EVENT_SUCCEEDED or kind == EVENT_FAILED
+        attempt_event: bool = execution_event or kind == EVENT_RETRIED
         scheduler_event: bool = kind == EVENT_SCHEDULER_STARTED or kind == EVENT_SCHEDULER_STOPPED
-        if execution_event:
+        if attempt_event:
             if job_id == "" or not has_scheduled_time or attempt < 1:
-                raise InvalidEventError("execution event requires job, schedule, and attempt")
+                raise InvalidEventError("attempt event requires job, schedule, and attempt")
+            if kind == EVENT_RETRIED and attempt < 2:
+                raise InvalidEventError("retry event requires attempt two or later")
         elif attempt != 0:
-            raise InvalidEventError("non-execution event attempt must be zero")
+            raise InvalidEventError("non-attempt event attempt must be zero")
         if scheduler_event:
             if job_id != "" or time_domain != "none" or has_scheduled_time:
                 raise InvalidEventError("scheduler event cannot contain job schedule fields")
@@ -67,7 +71,7 @@ class ChronosEvent:
             raise InvalidEventError("job event requires job ID and time domain")
         else:
             _validate_identifier("event job ID", job_id, 128)
-        if (kind == EVENT_SCHEDULED or kind == EVENT_MISFIRED or kind == EVENT_SKIPPED or kind == EVENT_COALESCED or kind == EVENT_OVERLAP_QUEUED or kind == EVENT_OVERLAP_SKIPPED) and not has_scheduled_time:
+        if (kind == EVENT_SCHEDULED or kind == EVENT_MISFIRED or kind == EVENT_SKIPPED or kind == EVENT_COALESCED or kind == EVENT_OVERLAP_QUEUED or kind == EVENT_OVERLAP_SKIPPED or kind == EVENT_RETRIED) and not has_scheduled_time:
             raise InvalidEventError("schedule-related event requires planned time")
         if kind == EVENT_FAILED:
             if error_category == "":
@@ -133,7 +137,7 @@ class EventDispatcher:
                     self.failure_count += 1
 
 def _known_kind(kind: str) -> bool:
-    return kind == EVENT_REGISTERED or kind == EVENT_SCHEDULED or kind == EVENT_STARTED or kind == EVENT_SUCCEEDED or kind == EVENT_FAILED or kind == EVENT_MISFIRED or kind == EVENT_SKIPPED or kind == EVENT_COALESCED or kind == EVENT_OVERLAP_QUEUED or kind == EVENT_OVERLAP_SKIPPED or kind == EVENT_CANCELLED or kind == EVENT_SCHEDULER_STARTED or kind == EVENT_SCHEDULER_STOPPED
+    return kind == EVENT_REGISTERED or kind == EVENT_SCHEDULED or kind == EVENT_STARTED or kind == EVENT_SUCCEEDED or kind == EVENT_FAILED or kind == EVENT_MISFIRED or kind == EVENT_SKIPPED or kind == EVENT_COALESCED or kind == EVENT_OVERLAP_QUEUED or kind == EVENT_OVERLAP_SKIPPED or kind == EVENT_RETRIED or kind == EVENT_CANCELLED or kind == EVENT_SCHEDULER_STARTED or kind == EVENT_SCHEDULER_STOPPED
 
 def _validate_identifier(label: str, value: str, maximum_bytes: int) -> None:
     size: int = nox.strings.byte_len(value)

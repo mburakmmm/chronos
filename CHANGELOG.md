@@ -55,11 +55,15 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Explicit `overlap-queued` and `overlap-skipped` lifecycle events plus corresponding `TickResult` counters.
 - Reentrant nested-tick isolation that observes the active job's overlap without recursively dispatching unrelated callbacks.
 - Pending-overlap cancellation on removal and recomputation on re-enable, with deterministic LLVM/QBE tests and a compiling queue-one example.
+- Bounded fixed-delay handler retries using monotonic deadlines and total-attempt limits.
+- Retry attempt propagation through job contexts and execution events, plus `retried` scheduling events and tick counters.
+- Deterministic retry precedence that suspends regular recurrence until success or exhaustion, then resumes from the original trigger anchor after terminal completion.
+- Explicit retry cancellation, late-retry single dispatch, overflow failure handling, and fixed-rate/fixed-delay recurrence tests on LLVM and QBE.
 
 ### Limitations
 
 - Configurable execution policies remain incomplete.
-- Retry does not execute yet and scheduler registration rejects retry configurations. Completion-anchored fixed-delay rejects catch-up because it has no missed planned-occurrence sequence.
+- Exponential retry execution remains gated. Fixed retry cannot yet be combined with catch-up or queue-one overlap. Completion-anchored fixed-delay rejects catch-up because it has no missed planned-occurrence sequence.
 - Queue-one overlap is verified only for the inline, single-threaded reentrant scheduler model; it is not a concurrent-executor or thread-safety claim.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.

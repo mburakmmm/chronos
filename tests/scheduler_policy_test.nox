@@ -5,7 +5,7 @@ from cron import CronTrigger, parse
 from errors import InvalidPolicyError
 from events import ChronosEvent, EVENT_COALESCED, EVENT_MISFIRED, EVENT_SKIPPED
 from job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
-from policy import JobPolicies, catch_up_misfires, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, skip_misfires
+from policy import JobPolicies, catch_up_misfires, exponential_retry, fire_once_misfires, forbid_overlap, no_retry, skip_misfires
 from scheduler import STATE_RUNNING, Scheduler, TickResult
 from time import Duration, MonotonicInstant, UtcInstant
 from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
@@ -125,8 +125,8 @@ unsupported_clock: FakeClock = FakeClock(6000, 600)
 unsupported_engine: Scheduler = Scheduler(unsupported_clock, 4)
 fixed_catch_up: Job = make_fixed_delay_job_with_policies("fixed-catch-up", "Fixed catch up", FixedDelay(Duration(10)), MonotonicInstant(600), record_handler(Recorder(), "fixed-catch-up"), True, UtcInstant(6000), [], JobPolicies(catch_up_misfires(Duration(100), 2, 4), forbid_overlap(), no_retry()))
 nox.test.assert_true(unsupported_add_rejected(unsupported_engine, fixed_catch_up), "catch-up rejected for completion-anchored fixed-delay")
-retry_job: Job = make_utc_job_with_policies("retry", "Retry", OnceTrigger(UtcInstant(6000)), record_handler(Recorder(), "retry"), True, UtcInstant(6000), [], JobPolicies(fire_once_misfires(Duration(100)), forbid_overlap(), fixed_retry(Duration(10), 2)))
-nox.test.assert_true(unsupported_add_rejected(unsupported_engine, retry_job), "retry rejected until scheduler integration")
+retry_job: Job = make_utc_job_with_policies("retry", "Retry", OnceTrigger(UtcInstant(6000)), record_handler(Recorder(), "retry"), True, UtcInstant(6000), [], JobPolicies(fire_once_misfires(Duration(100)), forbid_overlap(), exponential_retry(Duration(10), Duration(20), 3)))
+nox.test.assert_true(unsupported_add_rejected(unsupported_engine, retry_job), "exponential retry remains gated")
 nox.test.assert_eq_int(len(unsupported_engine.list_jobs()), 0, "unsupported policy add is atomic")
 
 backward_clock: FakeClock = FakeClock(7000, 700)

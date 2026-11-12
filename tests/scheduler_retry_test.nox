@@ -1,0 +1,228 @@
+import nox.test
+from clock import FakeClock
+from cron import CronTrigger, parse
+from errors import InvalidPolicyError, SchedulerStateError
+from events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_RETRIED, EVENT_STARTED, EVENT_SUCCEEDED
+from job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job_with_policies, make_utc_job_with_policies
+from policy import JobPolicies, catch_up_misfires, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, queue_one_overlap
+from scheduler import STATE_FAILED, STATE_STOPPED, Scheduler, TickResult
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
+
+class PlannedFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class RetryRecorder:
+    attempts: list[int]
+    scheduled_times: list[int]
+    events: list[ChronosEvent]
+    calls: int
+
+    def __init__(self) -> None:
+        self.attempts = []
+        self.scheduled_times = []
+        self.events = []
+        self.calls = 0
+
+def flaky_handler(recorder: RetryRecorder, failures: int) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls += 1
+        recorder.attempts.append(context.attempt)
+        recorder.scheduled_times.append(context.scheduled_time_ms)
+        if recorder.calls <= failures:
+            raise PlannedFailure("planned retry failure")
+
+    return handle
+
+def record_event(recorder: RetryRecorder) -> (ChronosEvent) -> None:
+    def observe(occurrence: ChronosEvent) -> None:
+        recorder.events.append(occurrence)
+
+    return observe
+
+def stop_and_fail_handler(engine: Scheduler, recorder: RetryRecorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls += 1
+        recorder.attempts.append(context.attempt)
+        engine.stop()
+        raise PlannedFailure("stop before retry")
+
+    return handle
+
+def count_events(recorder: RetryRecorder, kind: str) -> int:
+    count: int = 0
+    for occurrence in recorder.events:
+        if occurrence.kind == kind:
+            count += 1
+    return count
+
+def fixed_config(delay_ms: int, max_attempts: int) -> JobPolicies:
+    return JobPolicies(fire_once_misfires(Duration(MAX_MS)), forbid_overlap(), fixed_retry(Duration(delay_ms), max_attempts))
+
+def unsupported_add_rejected(engine: Scheduler, target: Job) -> bool:
+    try:
+        engine.add(target)
+    except InvalidPolicyError:
+        return True
+    return False
+
+def retry_overflow_fails_scheduler(engine: Scheduler) -> bool:
+    try:
+        engine.tick()
+    except SchedulerStateError:
+        return engine.state() == STATE_FAILED
+    return False
+
+once_clock: FakeClock = FakeClock(10000, 1000)
+once_recorder: RetryRecorder = RetryRecorder()
+once_engine: Scheduler = Scheduler(once_clock, 4, 1)
+once_engine.add_listener(record_event(once_recorder))
+once_job: Job = make_utc_job_with_policies("retry-once", "Retry once", OnceTrigger(UtcInstant(10000)), flaky_handler(once_recorder, 2), True, UtcInstant(10000), [], fixed_config(10, 3))
+once_engine.add(once_job)
+once_engine.start()
+first: TickResult = once_engine.tick()
+nox.test.assert_eq_int(first.failed, 1, "initial failed attempt is recorded")
+nox.test.assert_eq_int(first.retries_scheduled, 1, "initial failure schedules one retry")
+nox.test.assert_eq_int(first.retry_dispatched, 0, "initial occurrence is not a retry dispatch")
+nox.test.assert_true(not once_engine.is_completed("retry-once"), "pending retry keeps one-shot incomplete")
+nox.test.assert_true(once_engine.next_run_utc("retry-once") is None, "regular UTC occurrence is suspended during retry")
+first_retry: MonotonicInstant | None = once_engine.next_retry_monotonic("retry-once")
+nox.test.assert_true(first_retry is not None, "retry deadline is inspectable")
+if first_retry is not None:
+    nox.test.assert_eq_int(first_retry.value_ms, 1010, "fixed retry delay uses monotonic completion")
+
+once_clock.advance(Duration(9))
+nox.test.assert_eq_int(once_engine.tick().dispatched(), 0, "retry cannot run before monotonic deadline")
+once_clock.advance(Duration(1))
+second: TickResult = once_engine.tick()
+nox.test.assert_eq_int(second.failed, 1, "second attempt failure is recorded")
+nox.test.assert_eq_int(second.retry_dispatched, 1, "second attempt is identified as retry")
+nox.test.assert_eq_int(second.retries_scheduled, 1, "second failure schedules final permitted attempt")
+second_retry: MonotonicInstant | None = once_engine.next_retry_monotonic("retry-once")
+nox.test.assert_true(second_retry is not None, "third attempt remains pending")
+if second_retry is not None:
+    nox.test.assert_eq_int(second_retry.value_ms, 1020, "fixed retry delay repeats without drift")
+
+once_clock.advance(Duration(25))
+third: TickResult = once_engine.tick()
+nox.test.assert_eq_int(third.succeeded, 1, "late retry executes once")
+nox.test.assert_eq_int(third.retry_dispatched, 1, "terminal success is a retry dispatch")
+nox.test.assert_eq_int(third.misfired, 0, "retry lateness does not use recurrence misfire policy")
+nox.test.assert_true(once_engine.is_completed("retry-once"), "one-shot completes after retry success")
+nox.test.assert_true(once_engine.next_retry_monotonic("retry-once") is None, "terminal success clears retry state")
+nox.test.assert_eq_int(once_job.execution_count, 3, "execution count includes every attempt")
+nox.test.assert_eq_int(once_recorder.attempts[0], 1, "initial context uses attempt one")
+nox.test.assert_eq_int(once_recorder.attempts[1], 2, "first retry uses attempt two")
+nox.test.assert_eq_int(once_recorder.attempts[2], 3, "second retry uses attempt three")
+nox.test.assert_eq_int(once_recorder.scheduled_times[0], 10000, "initial planned time retained")
+nox.test.assert_eq_int(once_recorder.scheduled_times[1], 10000, "retry retains original UTC planned time")
+nox.test.assert_eq_int(once_recorder.scheduled_times[2], 10000, "all attempts share occurrence identity")
+nox.test.assert_eq_int(count_events(once_recorder, EVENT_RETRIED), 2, "each scheduled retry emits one event")
+nox.test.assert_eq_int(count_events(once_recorder, EVENT_STARTED), 3, "each attempt emits started")
+nox.test.assert_eq_int(count_events(once_recorder, EVENT_FAILED), 2, "failed attempts emit bounded failure events")
+nox.test.assert_eq_int(count_events(once_recorder, EVENT_SUCCEEDED), 1, "terminal success emits one event")
+
+retry_event_index: int = 0
+for occurrence in once_recorder.events:
+    if occurrence.kind == EVENT_RETRIED:
+        if retry_event_index == 0:
+            nox.test.assert_eq_int(occurrence.attempt, 2, "first retry event identifies attempt two")
+            nox.test.assert_eq_int(occurrence.scheduled_time_ms, 1010, "first retry event carries monotonic deadline")
+        else:
+            nox.test.assert_eq_int(occurrence.attempt, 3, "second retry event identifies attempt three")
+            nox.test.assert_eq_int(occurrence.scheduled_time_ms, 1020, "second retry event carries monotonic deadline")
+        nox.test.assert_eq_str(occurrence.time_domain, "monotonic", "retry delay event uses monotonic domain")
+        retry_event_index += 1
+
+rate_clock: FakeClock = FakeClock(20000, 2000)
+rate_recorder: RetryRecorder = RetryRecorder()
+rate_engine: Scheduler = Scheduler(rate_clock, 4)
+rate_job: Job = make_monotonic_job_with_policies("retry-rate", "Retry rate", FixedRateTrigger(MonotonicInstant(2000), Duration(100)), flaky_handler(rate_recorder, 1), True, UtcInstant(20000), [], fixed_config(150, 2))
+rate_engine.add(rate_job)
+rate_engine.start()
+nox.test.assert_eq_int(rate_engine.tick().failed, 1, "fixed-rate initial attempt fails")
+rate_clock.advance(Duration(100))
+nox.test.assert_eq_int(rate_engine.tick().dispatched(), 0, "regular recurrence stays suspended before retry")
+rate_clock.advance(Duration(50))
+nox.test.assert_eq_int(rate_engine.tick().succeeded, 1, "retry wins over intervening regular occurrence")
+rate_next: MonotonicInstant | None = rate_engine.next_run_monotonic("retry-rate")
+nox.test.assert_true(rate_next is not None, "fixed-rate resumes after terminal attempt")
+if rate_next is not None:
+    nox.test.assert_eq_int(rate_next.value_ms, 2200, "fixed-rate anchor resumes strictly after terminal completion")
+
+fixed_clock: FakeClock = FakeClock(30000, 3000)
+fixed_recorder: RetryRecorder = RetryRecorder()
+fixed_engine: Scheduler = Scheduler(fixed_clock, 4)
+fixed_job: Job = make_fixed_delay_job_with_policies("retry-delay", "Retry delay", FixedDelay(Duration(10)), MonotonicInstant(3000), flaky_handler(fixed_recorder, 1), True, UtcInstant(30000), [], fixed_config(5, 2))
+fixed_engine.add(fixed_job)
+fixed_engine.start()
+fixed_clock.advance(Duration(10))
+nox.test.assert_eq_int(fixed_engine.tick().failed, 1, "fixed-delay initial attempt fails")
+fixed_clock.advance(Duration(5))
+nox.test.assert_eq_int(fixed_engine.tick().succeeded, 1, "fixed-delay retry succeeds")
+fixed_next: MonotonicInstant | None = fixed_engine.next_run_monotonic("retry-delay")
+nox.test.assert_true(fixed_next is not None, "fixed-delay recurrence resumes")
+if fixed_next is not None:
+    nox.test.assert_eq_int(fixed_next.value_ms, 3025, "regular delay starts after terminal retry completion")
+
+cancel_clock: FakeClock = FakeClock(40000, 4000)
+cancel_recorder: RetryRecorder = RetryRecorder()
+cancel_engine: Scheduler = Scheduler(cancel_clock, 2, 1)
+cancel_engine.add_listener(record_event(cancel_recorder))
+cancel_job: Job = make_utc_job_with_policies("cancel-retry", "Cancel retry", OnceTrigger(UtcInstant(40000)), flaky_handler(cancel_recorder, 1), True, UtcInstant(40000), [], fixed_config(20, 2))
+cancel_engine.add(cancel_job)
+cancel_engine.start()
+nox.test.assert_eq_int(cancel_engine.tick().retries_scheduled, 1, "failed occurrence creates cancellable retry")
+cancel_engine.remove("cancel-retry")
+nox.test.assert_eq_int(cancel_engine.tick().dispatched(), 0, "removed retry never dispatches")
+nox.test.assert_eq_int(count_events(cancel_recorder, EVENT_CANCELLED), 1, "retry removal emits cancellation")
+for occurrence in cancel_recorder.events:
+    if occurrence.kind == EVENT_CANCELLED:
+        nox.test.assert_eq_str(occurrence.time_domain, "monotonic", "retry cancellation identifies delay domain")
+        nox.test.assert_eq_int(occurrence.scheduled_time_ms, 4020, "retry cancellation identifies pending deadline")
+
+exhaust_clock: FakeClock = FakeClock(45000, 4500)
+exhaust_recorder: RetryRecorder = RetryRecorder()
+exhaust_engine: Scheduler = Scheduler(exhaust_clock, 2)
+exhaust_job: Job = make_utc_job_with_policies("retry-exhaust", "Retry exhaust", OnceTrigger(UtcInstant(45000)), flaky_handler(exhaust_recorder, 3), True, UtcInstant(45000), [], fixed_config(5, 2))
+exhaust_engine.add(exhaust_job)
+exhaust_engine.start()
+nox.test.assert_eq_int(exhaust_engine.tick().retries_scheduled, 1, "first exhaustion attempt schedules final attempt")
+exhaust_clock.advance(Duration(5))
+exhausted: TickResult = exhaust_engine.tick()
+nox.test.assert_eq_int(exhausted.failed, 1, "final permitted attempt failure is recorded")
+nox.test.assert_eq_int(exhausted.retries_scheduled, 0, "attempt exhaustion schedules nothing further")
+nox.test.assert_true(exhaust_engine.next_retry_monotonic("retry-exhaust") is None, "exhaustion clears retry deadline")
+nox.test.assert_true(exhaust_engine.is_completed("retry-exhaust"), "exhausted one-shot becomes complete")
+nox.test.assert_eq_int(exhaust_job.execution_count, 2, "exhaustion stops at configured total attempts")
+nox.test.assert_eq_str(exhaust_job.last_status, "failed", "terminal failure remains bounded latest outcome")
+
+stop_clock: FakeClock = FakeClock(47000, 4700)
+stop_recorder: RetryRecorder = RetryRecorder()
+stop_engine: Scheduler = Scheduler(stop_clock, 2)
+stop_job: Job = make_utc_job_with_policies("retry-stop", "Retry stop", OnceTrigger(UtcInstant(47000)), stop_and_fail_handler(stop_engine, stop_recorder), True, UtcInstant(47000), [], fixed_config(5, 2))
+stop_engine.add(stop_job)
+stop_engine.start()
+stopped: TickResult = stop_engine.tick()
+nox.test.assert_eq_int(stopped.failed, 1, "stopping handler failure is recorded")
+nox.test.assert_eq_int(stopped.retries_scheduled, 0, "shutdown prevents retry scheduling")
+nox.test.assert_eq_str(stop_engine.state(), STATE_STOPPED, "stop completes after active failed callback")
+nox.test.assert_true(stop_engine.next_retry_monotonic("retry-stop") is None, "stopped scheduler owns no retry deadline")
+
+unsupported_clock: FakeClock = FakeClock(50000, 5000)
+unsupported_engine: Scheduler = Scheduler(unsupported_clock, 4)
+exponential_job: Job = make_utc_job_with_policies("exponential", "Exponential", OnceTrigger(UtcInstant(50000)), flaky_handler(RetryRecorder(), 1), True, UtcInstant(50000), [], JobPolicies(fire_once_misfires(Duration(100)), forbid_overlap(), exponential_retry(Duration(10), Duration(20), 3)))
+nox.test.assert_true(unsupported_add_rejected(unsupported_engine, exponential_job), "exponential scheduler integration remains gated")
+catch_job: Job = make_monotonic_job_with_policies("retry-catch", "Retry catch", FixedRateTrigger(MonotonicInstant(5000), Duration(10)), flaky_handler(RetryRecorder(), 1), True, UtcInstant(50000), [], JobPolicies(catch_up_misfires(Duration(100), 2, 4), forbid_overlap(), fixed_retry(Duration(10), 2)))
+nox.test.assert_true(unsupported_add_rejected(unsupported_engine, catch_job), "catch-up and retry combination is rejected")
+queue_job: Job = make_utc_job_with_policies("retry-queue", "Retry queue", CronTrigger(parse("* * * * *")), flaky_handler(RetryRecorder(), 1), True, UtcInstant(50000), [], JobPolicies(fire_once_misfires(Duration(100)), queue_one_overlap(), fixed_retry(Duration(10), 2)))
+nox.test.assert_true(unsupported_add_rejected(unsupported_engine, queue_job), "queue-one and retry combination is rejected")
+nox.test.assert_eq_int(len(unsupported_engine.list_jobs()), 0, "unsupported retry combinations fail atomically")
+
+overflow_clock: FakeClock = FakeClock(60000, MAX_MS - 5)
+overflow_engine: Scheduler = Scheduler(overflow_clock, 2)
+overflow_job: Job = make_monotonic_job_with_policies("retry-overflow", "Retry overflow", FixedRateTrigger(MonotonicInstant(MAX_MS - 5), Duration(1)), flaky_handler(RetryRecorder(), 1), True, UtcInstant(60000), [], fixed_config(10, 2))
+overflow_engine.add(overflow_job)
+overflow_engine.start()
+nox.test.assert_true(retry_overflow_fails_scheduler(overflow_engine), "retry deadline overflow becomes explicit scheduler failure")

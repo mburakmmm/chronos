@@ -54,6 +54,8 @@ User callbacks are invoked without iterating the live registry/schedule collecti
 
 A handler may call `tick()` reentrantly. While an inline callback is active, that nested tick evaluates only the active job's next possible occurrence and defers unrelated callbacks to the owning outer tick. `forbid` drops the observed occurrence; `queue-one` stores at most one planned timestamp and never invokes it recursively. This state is bounded and safe for same-thread reentrancy only. It is not protected for calls from another OS thread and is not a concurrent-executor claim.
 
+Fixed retry creates no sleeper or task. The scheduler records one monotonic deadline and the application must call `tick()` at or after it. Attempts remain inline and sequential; regular recurrence is suspended until the chain terminates. Retry therefore adds no concurrent callback or cancellation guarantee.
+
 Fixed-delay completion is sampled only after the inline callback returns. Chronos therefore does not confuse planned time, UTC completion metadata, and monotonic completion used for the next delay.
 
 Lifecycle listeners are synchronous and run in registration order. Their exceptions are isolated per listener, but a slow listener delays inline dispatch. Mutation, start/stop, and nested tick calls from event delivery are rejected; handlers retain the generation-checked mutation behavior above. There is no event worker or unbounded event queue.

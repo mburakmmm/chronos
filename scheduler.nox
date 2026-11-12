@@ -1,11 +1,11 @@
 from clock import Clock
 from errors import DuplicateJobError, InvalidJobError, InvalidPolicyError, JobNotFoundError, SchedulerStateError
-from events import ChronosEvent, EVENT_CANCELLED, EVENT_COALESCED, EVENT_FAILED, EVENT_MISFIRED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
+from events import ChronosEvent, EVENT_CANCELLED, EVENT_COALESCED, EVENT_FAILED, EVENT_MISFIRED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED, EVENT_REGISTERED, EVENT_RETRIED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
 from executor import ExecutionOutcome, InlineExecutor
 from job import Job, JobContext
-from policy import MISFIRE_CATCH_UP, MISFIRE_SKIP, OVERLAP_QUEUE_ONE, RETRY_NONE, JobPolicies
+from policy import MISFIRE_CATCH_UP, MISFIRE_SKIP, OVERLAP_QUEUE_ONE, RETRY_EXPONENTIAL, RETRY_NONE, JobPolicies
 from registry import JobRegistry
-from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant, add_monotonic_duration
 
 STATE_CREATED: str = "created"
 STATE_RUNNING: str = "running"
@@ -25,6 +25,10 @@ class ScheduledEntry:
     pending_overlap_time_ms: int
     has_overlap_cursor: bool
     overlap_cursor_time_ms: int
+    has_retry: bool
+    retry_due_monotonic_ms: int
+    retry_attempt: int
+    retry_scheduled_time_ms: int
 
     def __init__(self, job_id: str, generation: int, time_domain: str, has_next: bool, next_time_ms: int) -> None:
         if time_domain != "utc" and time_domain != "monotonic":
@@ -40,6 +44,10 @@ class ScheduledEntry:
         self.pending_overlap_time_ms = 0
         self.has_overlap_cursor = False
         self.overlap_cursor_time_ms = 0
+        self.has_retry = False
+        self.retry_due_monotonic_ms = 0
+        self.retry_attempt = 0
+        self.retry_scheduled_time_ms = 0
 
     def set_next(self, has_next: bool, next_time_ms: int) -> None:
 
@@ -67,6 +75,23 @@ class ScheduledEntry:
         self.has_overlap_cursor = False
         self.overlap_cursor_time_ms = 0
 
+    def schedule_retry(self, due_at: MonotonicInstant, attempt: int, scheduled_time_ms: int) -> None:
+
+        self.has_retry = True
+        self.retry_due_monotonic_ms = due_at.value_ms
+        self.retry_attempt = attempt
+        self.retry_scheduled_time_ms = scheduled_time_ms
+        self.has_next = False
+        self.next_time_ms = 0
+        self.completed = False
+
+    def clear_retry(self) -> None:
+
+        self.has_retry = False
+        self.retry_due_monotonic_ms = 0
+        self.retry_attempt = 0
+        self.retry_scheduled_time_ms = 0
+
 class DueItem:
     job_id: str
     generation: int
@@ -79,8 +104,11 @@ class DueItem:
     coalesced_truncated: bool
     final_has_next: bool
     final_next_time_ms: int
+    retry: bool
+    attempt: int
+    due_time_ms: int
 
-    def __init__(self, job_id: str, generation: int, time_domain: str, scheduled_time_ms: int, catch_up: bool, batch_first: bool, batch_last: bool, coalesced_count: int, coalesced_truncated: bool, final_has_next: bool, final_next_time_ms: int) -> None:
+    def __init__(self, job_id: str, generation: int, time_domain: str, scheduled_time_ms: int, catch_up: bool, batch_first: bool, batch_last: bool, coalesced_count: int, coalesced_truncated: bool, final_has_next: bool, final_next_time_ms: int, retry: bool, attempt: int, due_time_ms: int) -> None:
         self.job_id = job_id
         self.generation = generation
         self.time_domain = time_domain
@@ -92,6 +120,9 @@ class DueItem:
         self.coalesced_truncated = coalesced_truncated
         self.final_has_next = final_has_next
         self.final_next_time_ms = final_next_time_ms
+        self.retry = retry
+        self.attempt = attempt
+        self.due_time_ms = due_time_ms
 
 class TickResult:
     succeeded: int
@@ -104,6 +135,8 @@ class TickResult:
     coalesced_truncated: int
     overlap_queued: int
     overlap_skipped: int
+    retry_dispatched: int
+    retries_scheduled: int
 
     def __init__(self) -> None:
         self.succeeded = 0
@@ -116,6 +149,8 @@ class TickResult:
         self.coalesced_truncated = 0
         self.overlap_queued = 0
         self.overlap_skipped = 0
+        self.retry_dispatched = 0
+        self.retries_scheduled = 0
 
     def dispatched(self) -> int:
 
@@ -228,10 +263,14 @@ class Scheduler:
         removed: Job = self.registry.remove(job_id)
         removed_entry: ScheduledEntry = self.schedules[index]
         cancelled_time_ms: int = removed_entry.next_time_ms
+        cancelled_time_domain: str = removed_entry.time_domain
         if removed_entry.has_pending_overlap:
             cancelled_time_ms = removed_entry.pending_overlap_time_ms
+        if removed_entry.has_retry:
+            cancelled_time_ms = removed_entry.retry_due_monotonic_ms
+            cancelled_time_domain = "monotonic"
         self.schedules.pop(index)
-        self._emit_job_event(EVENT_CANCELLED, job_id, removed_entry.time_domain, removed_entry.has_next, cancelled_time_ms)
+        self._emit_job_event(EVENT_CANCELLED, job_id, cancelled_time_domain, removed_entry.has_next or removed_entry.has_retry, cancelled_time_ms)
         return removed
 
     def enable(self, job_id: str) -> None:
@@ -244,6 +283,7 @@ class Scheduler:
         entry: ScheduledEntry = self.schedules[index]
         entry.clear_overlap()
         entry.clear_overlap_cursor()
+        entry.clear_retry()
         if entry.time_domain == "utc":
             next_utc: UtcInstant | None = target.next_utc_at_or_after(updated_at)
             self._set_entry_next_utc(entry, next_utc)
@@ -287,6 +327,14 @@ class Scheduler:
         index: int = self._required_schedule(job_id)
         return self.schedules[index].completed
 
+    def next_retry_monotonic(self, job_id: str) -> MonotonicInstant | None:
+
+        index: int = self._required_schedule(job_id)
+        entry: ScheduledEntry = self.schedules[index]
+        if not entry.has_retry:
+            return None
+        return MonotonicInstant(entry.retry_due_monotonic_ms)
+
     def tick(self) -> TickResult:
 
         self._require_not_emitting("cannot tick during event delivery")
@@ -308,7 +356,12 @@ class Scheduler:
                 result.skipped += 1
                 continue
             scheduled: ScheduledEntry = self.schedules[schedule_index]
-            if scheduled.generation != due.generation or scheduled.time_domain != due.time_domain or not scheduled.has_next or scheduled.next_time_ms != due.scheduled_time_ms:
+            valid_due: bool = scheduled.generation == due.generation and scheduled.time_domain == due.time_domain
+            if due.retry:
+                valid_due = valid_due and scheduled.has_retry and scheduled.retry_due_monotonic_ms == due.due_time_ms and scheduled.retry_attempt == due.attempt and scheduled.retry_scheduled_time_ms == due.scheduled_time_ms
+            else:
+                valid_due = valid_due and scheduled.has_next and scheduled.next_time_ms == due.scheduled_time_ms
+            if not valid_due:
                 result.skipped += 1
                 continue
 
@@ -321,9 +374,9 @@ class Scheduler:
                 continue
 
             dispatch_now_ms: int = self.clock.now_utc().epoch_ms
-            if due.time_domain == "monotonic":
+            if due.retry or due.time_domain == "monotonic":
                 dispatch_now_ms = self.clock.now_monotonic().value_ms
-            if dispatch_now_ms < due.scheduled_time_ms:
+            if dispatch_now_ms < due.due_time_ms:
                 result.skipped += 1
                 continue
             if scheduled.running_count > 0:
@@ -338,7 +391,7 @@ class Scheduler:
                     self._emit_job_event(EVENT_MISFIRED, due.job_id, due.time_domain, True, due.scheduled_time_ms)
                     if due.coalesced_count > 0 or due.coalesced_truncated:
                         self._emit_coalesced_event(due)
-            elif dispatch_now_ms > due.scheduled_time_ms:
+            elif not due.retry and dispatch_now_ms > due.scheduled_time_ms:
                 policy_config: JobPolicies = selected.policy_config()
                 lateness: Duration = Duration(dispatch_now_ms - due.scheduled_time_ms)
                 action: str = policy_config.misfire.action_for_lateness(lateness)
@@ -355,13 +408,16 @@ class Scheduler:
 
             if due.catch_up:
                 result.catch_up_dispatched += 1
+            if due.retry:
+                result.retry_dispatched += 1
+                scheduled.clear_retry()
             if scheduled.has_pending_overlap and scheduled.pending_overlap_time_ms == due.scheduled_time_ms:
                 scheduled.clear_overlap()
             scheduled.clear_overlap_cursor()
             scheduled.running_count = 1
             self.has_active_job = True
             self.active_job_id = due.job_id
-            context: JobContext = JobContext(due.job_id, due.time_domain, due.scheduled_time_ms, 1)
+            context: JobContext = JobContext(due.job_id, due.time_domain, due.scheduled_time_ms, due.attempt)
             started_utc: UtcInstant = self.clock.now_utc()
             started_monotonic: MonotonicInstant = self.clock.now_monotonic()
             self._emit_execution_event(EVENT_STARTED, due, started_utc, started_monotonic, started_utc, started_monotonic, "")
@@ -395,6 +451,25 @@ class Scheduler:
             if current_index >= 0 and current_job is not None and current_job.enabled:
                 current: ScheduledEntry = self.schedules[current_index]
                 if current.generation == due.generation:
+                    current_policies: JobPolicies = current_job.policy_config()
+                    retry_scheduled: bool = False
+                    if not outcome.succeeded and current_policies.retry.should_retry_after(due.attempt):
+                        next_attempt: int = due.attempt + 1
+                        retry_due: MonotonicInstant = completed_monotonic
+                        try:
+                            retry_delay: Duration = current_policies.retry.delay_before_attempt(next_attempt)
+                            retry_due = add_monotonic_duration(completed_monotonic, retry_delay)
+                        except Exception:
+                            self.state_value = STATE_FAILED
+                            raise SchedulerStateError(self.state_value, "failed to schedule bounded retry")
+                        current.clear_overlap()
+                        current.clear_overlap_cursor()
+                        current.schedule_retry(retry_due, next_attempt, due.scheduled_time_ms)
+                        result.retries_scheduled += 1
+                        retry_scheduled = True
+                        self._emit_retry_event(current.job_id, retry_due, next_attempt)
+                    if retry_scheduled:
+                        continue
                     if current.has_pending_overlap:
                         pending_time_ms: int = current.pending_overlap_time_ms
                         current.clear_overlap()
@@ -433,6 +508,11 @@ class Scheduler:
 
         candidates: list[DueItem] = []
         for scheduled in self.schedules:
+            retry_target: Job | None = self.registry.find(scheduled.job_id)
+            if scheduled.has_retry and scheduled.retry_due_monotonic_ms <= now_monotonic.value_ms and retry_target is not None and retry_target.enabled:
+                candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.retry_scheduled_time_ms, False, False, False, 0, False, False, 0, True, scheduled.retry_attempt, scheduled.retry_due_monotonic_ms))
+            if scheduled.has_retry:
+                continue
             now_ms: int = now_utc.epoch_ms
             if scheduled.time_domain == "monotonic":
                 now_ms = now_monotonic.value_ms
@@ -487,19 +567,27 @@ class Scheduler:
                             if first:
                                 item_coalesced_count = coalesced_count
                                 item_coalesced_truncated = coalesced_truncated
-                            candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, dispatch_times[i], True, first, last, item_coalesced_count, item_coalesced_truncated, final_has_next, final_next_time_ms))
+                            candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, dispatch_times[i], True, first, last, item_coalesced_count, item_coalesced_truncated, final_has_next, final_next_time_ms, False, 1, dispatch_times[i]))
                     else:
-                        candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.next_time_ms, False, False, False, 0, False, False, 0))
+                        candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.next_time_ms, False, False, False, 0, False, False, 0, False, 1, scheduled.next_time_ms))
 
         result: list[DueItem] = []
         for candidate in candidates:
             insertion_index: int = len(result)
             for i in range(len(result)):
                 existing: DueItem = result[i]
-                earlier_domain: bool = candidate.time_domain == "utc" and existing.time_domain == "monotonic"
-                same_domain: bool = candidate.time_domain == existing.time_domain
-                earlier_time: bool = same_domain and candidate.scheduled_time_ms < existing.scheduled_time_ms
-                same_time_earlier_id: bool = same_domain and candidate.scheduled_time_ms == existing.scheduled_time_ms and candidate.job_id < existing.job_id
+                candidate_sort_domain: str = candidate.time_domain
+                candidate_sort_time_ms: int = candidate.due_time_ms
+                if candidate.retry:
+                    candidate_sort_domain = "monotonic"
+                existing_sort_domain: str = existing.time_domain
+                existing_sort_time_ms: int = existing.due_time_ms
+                if existing.retry:
+                    existing_sort_domain = "monotonic"
+                earlier_domain: bool = candidate_sort_domain == "utc" and existing_sort_domain == "monotonic"
+                same_domain: bool = candidate_sort_domain == existing_sort_domain
+                earlier_time: bool = same_domain and candidate_sort_time_ms < existing_sort_time_ms
+                same_time_earlier_id: bool = same_domain and candidate_sort_time_ms == existing_sort_time_ms and candidate.job_id < existing.job_id
                 if earlier_domain or earlier_time or same_time_earlier_id:
                     insertion_index = i
                     break
@@ -542,8 +630,12 @@ class Scheduler:
         policy_config: JobPolicies = target.policy_config()
         if policy_config.misfire.kind == MISFIRE_CATCH_UP and target.trigger_kind() == "fixed-delay":
             raise InvalidPolicyError("catch-up is not defined for completion-anchored fixed-delay")
-        if policy_config.retry.kind != RETRY_NONE:
-            raise InvalidPolicyError("retry scheduler integration is not implemented")
+        if policy_config.retry.kind == RETRY_EXPONENTIAL:
+            raise InvalidPolicyError("exponential retry scheduler integration is not implemented")
+        if policy_config.retry.kind != RETRY_NONE and policy_config.misfire.kind == MISFIRE_CATCH_UP:
+            raise InvalidPolicyError("retry cannot be combined with catch-up")
+        if policy_config.retry.kind != RETRY_NONE and policy_config.overlap.kind == OVERLAP_QUEUE_ONE:
+            raise InvalidPolicyError("retry cannot be combined with queue-one overlap")
 
     def _handle_active_overlap(self, entry: ScheduledEntry, target: Job, observed_time_ms: int, result: TickResult) -> None:
 
@@ -617,9 +709,16 @@ class Scheduler:
         occurrence: ChronosEvent = ChronosEvent(EVENT_COALESCED, due.job_id, due.time_domain, True, due.scheduled_time_ms, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, 0, "", due.coalesced_count, due.coalesced_truncated)
         self._publish(occurrence)
 
+    def _emit_retry_event(self, job_id: str, due_at: MonotonicInstant, attempt: int) -> None:
+
+        observed_utc: UtcInstant = self.clock.now_utc()
+        observed_monotonic: MonotonicInstant = self.clock.now_monotonic()
+        occurrence: ChronosEvent = ChronosEvent(EVENT_RETRIED, job_id, "monotonic", True, due_at.value_ms, observed_utc.epoch_ms, observed_utc.epoch_ms, observed_monotonic.value_ms, observed_monotonic.value_ms, attempt, "", 0, False)
+        self._publish(occurrence)
+
     def _emit_execution_event(self, kind: str, due: DueItem, started_utc: UtcInstant, started_monotonic: MonotonicInstant, completed_utc: UtcInstant, completed_monotonic: MonotonicInstant, error_category: str) -> None:
 
-        occurrence: ChronosEvent = ChronosEvent(kind, due.job_id, due.time_domain, True, due.scheduled_time_ms, started_utc.epoch_ms, completed_utc.epoch_ms, started_monotonic.value_ms, completed_monotonic.value_ms, 1, error_category, 0, False)
+        occurrence: ChronosEvent = ChronosEvent(kind, due.job_id, due.time_domain, True, due.scheduled_time_ms, started_utc.epoch_ms, completed_utc.epoch_ms, started_monotonic.value_ms, completed_monotonic.value_ms, due.attempt, error_category, 0, False)
         self._publish(occurrence)
 
     def _publish(self, occurrence: ChronosEvent) -> None:
