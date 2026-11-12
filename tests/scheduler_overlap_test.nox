@@ -1,0 +1,158 @@
+import nox.test
+import nox.time
+from clock import FakeClock
+from cron import CronTrigger, parse
+from events import ChronosEvent, EVENT_CANCELLED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED
+from job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job, make_monotonic_job_with_policies, make_utc_job_with_policies
+from policy import JobPolicies, fire_once_misfires, forbid_overlap, no_retry, queue_one_overlap
+from scheduler import Scheduler, TickResult
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from trigger import DelayTrigger, FixedDelay, FixedRateTrigger
+
+class OverlapRecorder:
+    calls: list[str]
+    scheduled_times: list[int]
+    events: list[ChronosEvent]
+    nested_queued: int
+    nested_overlap_skipped: int
+    nested_skipped: int
+
+    def __init__(self) -> None:
+        self.calls = []
+        self.scheduled_times = []
+        self.events = []
+        self.nested_queued = 0
+        self.nested_overlap_skipped = 0
+        self.nested_skipped = 0
+
+def record_handler(recorder: OverlapRecorder, label: str) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls.append(label)
+        recorder.scheduled_times.append(context.scheduled_time_ms)
+
+    return handle
+
+def overlap_handler(engine: Scheduler, source_clock: FakeClock, recorder: OverlapRecorder, label: str, advance_ms: int, nested_ticks: int, remove_after: bool) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls.append(label)
+        recorder.scheduled_times.append(context.scheduled_time_ms)
+        if len(recorder.calls) == 1:
+            source_clock.advance(Duration(advance_ms))
+            for i in range(nested_ticks):
+                nested: TickResult = engine.tick()
+                recorder.nested_queued += nested.overlap_queued
+                recorder.nested_overlap_skipped += nested.overlap_skipped
+                recorder.nested_skipped += nested.skipped
+            if remove_after:
+                engine.remove(context.job_id)
+
+    return handle
+
+def record_event(recorder: OverlapRecorder) -> (ChronosEvent) -> None:
+    def observe(occurrence: ChronosEvent) -> None:
+        recorder.events.append(occurrence)
+
+    return observe
+
+def count_events(recorder: OverlapRecorder, kind: str) -> int:
+    count: int = 0
+    for occurrence in recorder.events:
+        if occurrence.kind == kind:
+            count += 1
+    return count
+
+def queue_config() -> JobPolicies:
+    return JobPolicies(fire_once_misfires(Duration(MAX_MS)), queue_one_overlap(), no_retry())
+
+def forbid_config() -> JobPolicies:
+    return JobPolicies(fire_once_misfires(Duration(MAX_MS)), forbid_overlap(), no_retry())
+
+queue_clock: FakeClock = FakeClock(10000, 1000)
+queue_recorder: OverlapRecorder = OverlapRecorder()
+queue_engine: Scheduler = Scheduler(queue_clock, 4, 1)
+queue_engine.add_listener(record_event(queue_recorder))
+queue_job: Job = make_monotonic_job_with_policies("a-queue", "Queue", FixedRateTrigger(MonotonicInstant(1000), Duration(10)), overlap_handler(queue_engine, queue_clock, queue_recorder, "a-queue", 50, 3, False), True, UtcInstant(10000), [], queue_config())
+other_job: Job = make_monotonic_job("z-other", "Other", DelayTrigger(MonotonicInstant(1000), Duration(0)), record_handler(queue_recorder, "z-other"), True, UtcInstant(10000), [])
+queue_engine.add(queue_job)
+queue_engine.add(other_job)
+queue_engine.start()
+first: TickResult = queue_engine.tick()
+nox.test.assert_eq_int(first.succeeded, 2, "outer tick completes active and unrelated jobs")
+nox.test.assert_eq_str(queue_recorder.calls[0], "a-queue", "active overlap job starts first")
+nox.test.assert_eq_str(queue_recorder.calls[1], "z-other", "nested tick defers unrelated job to outer dispatch")
+nox.test.assert_eq_int(queue_recorder.nested_queued, 1, "queue-one retains one pending occurrence")
+nox.test.assert_eq_int(queue_recorder.nested_overlap_skipped, 2, "later overlapping occurrences are each skipped once")
+nox.test.assert_eq_int(queue_recorder.nested_skipped, 2, "only discarded overlaps contribute to skipped count")
+nox.test.assert_eq_int(count_events(queue_recorder, EVENT_OVERLAP_QUEUED), 1, "queued overlap event emitted once")
+nox.test.assert_eq_int(count_events(queue_recorder, EVENT_OVERLAP_SKIPPED), 2, "distinct skipped overlap events are emitted once each")
+queued_next: MonotonicInstant | None = queue_engine.next_run_monotonic("a-queue")
+nox.test.assert_true(queued_next is not None, "queued overlap becomes next run")
+if queued_next is not None:
+    nox.test.assert_eq_int(queued_next.value_ms, 1010, "queue-one retains earliest overlapping anchor")
+second: TickResult = queue_engine.tick()
+nox.test.assert_eq_int(second.succeeded, 1, "queued overlap dispatches on next outer tick")
+nox.test.assert_eq_int(queue_recorder.scheduled_times[2], 1010, "queued dispatch keeps planned occurrence time")
+nox.test.assert_eq_int(queue_job.execution_count, 2, "queued overlap counts only executed callbacks")
+queue_after: MonotonicInstant | None = queue_engine.next_run_monotonic("a-queue")
+nox.test.assert_true(queue_after is not None, "recurrence continues after queued overlap")
+if queue_after is not None:
+    nox.test.assert_eq_int(queue_after.value_ms, 1060, "recurrence skips to first future anchor after queued completion")
+
+forbid_clock: FakeClock = FakeClock(20000, 2000)
+forbid_recorder: OverlapRecorder = OverlapRecorder()
+forbid_engine: Scheduler = Scheduler(forbid_clock, 2, 1)
+forbid_engine.add_listener(record_event(forbid_recorder))
+forbid_job: Job = make_monotonic_job_with_policies("forbid", "Forbid", FixedRateTrigger(MonotonicInstant(2000), Duration(10)), overlap_handler(forbid_engine, forbid_clock, forbid_recorder, "forbid", 50, 2, False), True, UtcInstant(20000), [], forbid_config())
+forbid_engine.add(forbid_job)
+forbid_engine.start()
+nox.test.assert_eq_int(forbid_engine.tick().succeeded, 1, "forbid outer callback succeeds")
+nox.test.assert_eq_int(forbid_recorder.nested_overlap_skipped, 2, "forbid drops each distinct observed occurrence once")
+nox.test.assert_eq_int(len(forbid_recorder.calls), 1, "forbid starts no second callback")
+nox.test.assert_eq_int(forbid_job.execution_count, 1, "skipped overlap is not an execution")
+forbid_next: MonotonicInstant | None = forbid_engine.next_run_monotonic("forbid")
+nox.test.assert_true(forbid_next is not None, "forbid recurrence remains scheduled")
+if forbid_next is not None:
+    nox.test.assert_eq_int(forbid_next.value_ms, 2060, "forbid advances to first future anchor")
+
+cancel_clock: FakeClock = FakeClock(30000, 3000)
+cancel_recorder: OverlapRecorder = OverlapRecorder()
+cancel_engine: Scheduler = Scheduler(cancel_clock, 2, 1)
+cancel_engine.add_listener(record_event(cancel_recorder))
+cancel_job: Job = make_monotonic_job_with_policies("cancel-queue", "Cancel queue", FixedRateTrigger(MonotonicInstant(3000), Duration(10)), overlap_handler(cancel_engine, cancel_clock, cancel_recorder, "cancel-queue", 50, 1, True), True, UtcInstant(30000), [], queue_config())
+cancel_engine.add(cancel_job)
+cancel_engine.start()
+nox.test.assert_eq_int(cancel_engine.tick().succeeded, 1, "active callback completes after removing queued job")
+nox.test.assert_eq_int(cancel_recorder.nested_queued, 1, "pending overlap existed before removal")
+nox.test.assert_eq_int(len(cancel_engine.list_jobs()), 0, "removal cancels queued overlap ownership")
+nox.test.assert_eq_int(cancel_engine.tick().dispatched(), 0, "removed queued overlap never dispatches")
+nox.test.assert_eq_int(count_events(cancel_recorder, EVENT_CANCELLED), 1, "queued removal emits one cancellation event")
+for occurrence in cancel_recorder.events:
+    if occurrence.kind == EVENT_CANCELLED:
+        nox.test.assert_eq_int(occurrence.scheduled_time_ms, 3010, "cancellation event identifies queued occurrence")
+
+cron_base_ms: int = nox.time.DateTime(2024, 1, 1, 0, 0, 0).to_epoch_ms()
+cron_clock: FakeClock = FakeClock(cron_base_ms, 5000)
+cron_recorder: OverlapRecorder = OverlapRecorder()
+cron_engine: Scheduler = Scheduler(cron_clock, 2)
+cron_job: Job = make_utc_job_with_policies("cron-forbid", "Cron forbid", CronTrigger(parse("* * * * *")), overlap_handler(cron_engine, cron_clock, cron_recorder, "cron-forbid", 60000, 1, False), True, UtcInstant(cron_base_ms), [], forbid_config())
+cron_engine.add(cron_job)
+cron_engine.start()
+nox.test.assert_eq_int(cron_engine.tick().succeeded, 1, "UTC cron outer callback succeeds")
+nox.test.assert_eq_int(cron_recorder.nested_overlap_skipped, 1, "forbid applies to UTC cron overlap")
+nox.test.assert_eq_int(len(cron_recorder.calls), 1, "UTC cron overlap starts no nested callback")
+
+fixed_clock: FakeClock = FakeClock(50000, 6000)
+fixed_recorder: OverlapRecorder = OverlapRecorder()
+fixed_engine: Scheduler = Scheduler(fixed_clock, 2)
+fixed_job: Job = make_fixed_delay_job_with_policies("fixed-queue", "Fixed queue", FixedDelay(Duration(10)), MonotonicInstant(6000), overlap_handler(fixed_engine, fixed_clock, fixed_recorder, "fixed-queue", 50, 1, False), True, UtcInstant(50000), [], queue_config())
+fixed_engine.add(fixed_job)
+fixed_engine.start()
+fixed_clock.advance(Duration(10))
+nox.test.assert_eq_int(fixed_engine.tick().succeeded, 1, "fixed-delay outer callback succeeds")
+nox.test.assert_eq_int(fixed_recorder.nested_queued, 0, "fixed-delay has no next occurrence before completion")
+nox.test.assert_eq_int(fixed_recorder.nested_overlap_skipped, 0, "fixed-delay creates no synthetic overlap occurrence")
+nox.test.assert_eq_int(fixed_recorder.nested_skipped, 0, "fixed-delay reports no skipped occurrence before completion")
+fixed_next: MonotonicInstant | None = fixed_engine.next_run_monotonic("fixed-queue")
+nox.test.assert_true(fixed_next is not None, "fixed-delay recurrence remains scheduled")
+if fixed_next is not None:
+    nox.test.assert_eq_int(fixed_next.value_ms, 6070, "fixed-delay still anchors to completion")

@@ -46,9 +46,19 @@ Bounded synchronous listeners observe registration, scheduling, execution, cance
 
 An exact-boundary occurrence is not a misfire. A late occurrence uses the job's millisecond-grace policy: `skip` records no execution and advances to the first future anchored occurrence, while `fire-once` dispatches one occurrence when within grace and otherwise skips. `catch-up` enumerates bounded planned occurrences, dispatches up to the configured count, coalesces evaluated excess, and jumps directly to the first future anchored occurrence. Fixed-rate and cron anchors are not shifted. A skipped fixed-delay occurrence uses observed skip time as its next delay base because there is no completion timestamp; fixed-delay rejects catch-up.
 
-The default job configuration preserves the earlier bounded behavior by firing one late occurrence with maximum grace. Queue-one overlap and retry are not yet implemented; `Scheduler.add` rejects those configurations before mutating the registry. Every due or catch-up snapshot item is rechecked against generation, enabled state, planned time, and matching clock immediately before dispatch, so removal/shutdown invalidates remaining work and a backward UTC correction cannot start a later callback early.
+The default job configuration preserves the earlier bounded behavior by firing one late occurrence with maximum grace and forbidding overlap. Queue-one is supported in the inline/reentrant model; retry is not yet implemented, and `Scheduler.add` rejects retry configurations before mutating the registry. Every due or catch-up snapshot item is rechecked against generation, enabled state, planned time, and matching clock immediately before dispatch, so removal/shutdown invalidates remaining work and a backward UTC correction cannot start a later callback early.
 
-`TickResult` reports `succeeded`, `failed`, total `skipped`, `misfired`, `policy_skipped`, `catch_up_dispatched`, `coalesced`, and `coalesced_truncated` counts. `coalesced` is the known bounded count; a positive truncated-batch count means more backlog existed but was deliberately not enumerated. It does not retain handler results.
+`TickResult` reports `succeeded`, `failed`, total `skipped`, `misfired`, `policy_skipped`, `catch_up_dispatched`, `coalesced`, `coalesced_truncated`, `overlap_queued`, and `overlap_skipped` counts. `coalesced` is the known bounded count; a positive truncated-batch count means more backlog existed but was deliberately not enumerated. Deferring an unrelated job during a nested tick is not counted as a skip because the outer tick can still dispatch it. Tick results retain no handler payloads.
+
+## Inline overlap
+
+The inline executor normally prevents overlap by construction. A handler can nevertheless advance an injected clock and call `tick()` reentrantly, making a later occurrence observable while the first callback is still active. That nested tick never recursively starts an unrelated job; the outer tick remains its owner.
+
+With `forbid`, the earliest observed overlapping occurrence is discarded and emits `overlap-skipped`. With `queue-one`, the first observed occurrence is retained in one pending slot and emits `overlap-queued`; a later observed overlap is discarded and emits `overlap-skipped`. A queued occurrence becomes the job's next planned run after the active callback returns and is dispatched only by a later outer tick, where normal misfire policy still applies. Skipped overlaps do not increment execution count or outcome history.
+
+Removing a job drops its pending slot and the cancellation event identifies the queued planned time. Disabling suspends dispatch; enabling clears any pending slot and recomputes from the current clock. Stopping during the active callback prevents the queued run from starting. One-shot, delay, and completion-anchored fixed-delay jobs cannot synthesize an occurrence before completion.
+
+The per-job running count and pending slot are verified only for same-thread reentrant callbacks. They provide no cross-thread synchronization or concurrent executor guarantee.
 
 ## Mutations during callbacks
 

@@ -33,7 +33,7 @@ The cron parser uses explicit expression/item/expansion bounds. Next-fire calcul
 
 No retry, catch-up, overlap, or task-spawn path may grow without a configured finite maximum.
 
-The scheduler rejects queue-one and retry configurations until their bounded runtime paths exist. Misfire skip/fire-once performs at most one dispatch per due job in a tick. Catch-up uses explicit dispatch and evaluation caps, retains no missed-occurrence queue, and reports when its known coalesced count is truncated.
+The scheduler rejects retry configurations until their bounded runtime path exists. Misfire skip/fire-once performs at most one dispatch per due job in a tick. Catch-up uses explicit dispatch and evaluation caps, retains no missed-occurrence queue, and reports when its known coalesced count is truncated. Queue-one overlap retains exactly one pending timestamp and one bounded observation cursor per job rather than an occurrence list; later observed overlaps are discarded.
 
 ## Deferred persistence and distributed work
 

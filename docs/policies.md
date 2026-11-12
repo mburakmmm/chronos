@@ -2,7 +2,7 @@
 
 Status: experimental Phase 3 API for Nox 2.1.0 with partial scheduler integration.
 
-The policy module validates bounded configuration and performs deterministic calculations without reading clocks or executing handlers. `JobPolicies` is accepted by the explicit `make_*_with_policies` job factories. The manual scheduler executes `skip`, `fire-once`, and bounded `catch-up`; it rejects queue-one and retry configurations atomically when a job is added.
+The policy module validates bounded configuration and performs deterministic calculations without reading clocks or executing handlers. `JobPolicies` is accepted by the explicit `make_*_with_policies` job factories. The manual scheduler executes `skip`, `fire-once`, bounded `catch-up`, `forbid`, and bounded `queue-one`; it rejects retry configurations atomically when a job is added.
 
 Factories without the `_with_policies` suffix preserve source compatibility and install defaults: fire one late occurrence with the maximum supported grace, forbid overlap, and no retry. `Job.policy_config()` returns a defensive copy.
 
@@ -26,7 +26,11 @@ Catch-up works for UTC one-shot/cron and monotonic delay/fixed-rate jobs. Comple
 
 The policy model deliberately rejects `allow`. Chronos currently has only an inline executor and has not verified shared scheduler state under concurrent callbacks. `max_concurrent_runs` is therefore one in every supported overlap configuration.
 
-The current scheduler accepts only `forbid`; it rejects `queue-one` until pending-occurrence state is implemented and tested.
+The inline scheduler accepts both modes. While a callback is active, a reentrant `tick()` evaluates only that active job for overlap and defers unrelated callbacks to the outer tick. `queue-one` retains the earliest next planned occurrence in one scalar slot; another observed overlapping occurrence is discarded. `forbid` retains none. These decisions emit `overlap-queued` or `overlap-skipped` and update separate tick counters without incrementing job execution count.
+
+One-shot UTC and delay jobs have no second occurrence to overlap. Fixed-delay recurrence is completion-anchored, so it also has no next occurrence before the active callback returns. Fixed-rate and UTC cron can expose a next planned occurrence during a reentrant tick. Removal cancels the one pending slot; disable followed by enable clears it and recalculates from the current clock.
+
+This is bounded single-thread reentrancy behavior, not thread safety. The scheduler still rejects concurrent `allow`, spawns no tasks, and never invokes two callbacks simultaneously.
 
 ## Retry
 

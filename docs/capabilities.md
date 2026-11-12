@@ -319,3 +319,17 @@ noxc run --backend llvm examples/catch_up.nox       -> exit 0
 noxc run --backend qbe examples/catch_up.nox        -> exit 0
 noxc check --profile freestanding scheduler.nox     -> exit 0
 ```
+
+## Phase 3 bounded overlap evidence
+
+Queue-one tests verify that a same-thread nested tick retains only the earliest next fixed-rate occurrence, discards a later observed overlap, and never recursively starts an unrelated job. Forbid drops the observed fixed-rate and UTC-cron occurrence without incrementing execution count. Completion-anchored fixed-delay produces no synthetic pre-completion occurrence. Removing the active job drops its queued slot and reports the queued planned time in the cancellation event. All overlap state is per job and finite; no concurrent executor or cross-thread safety is claimed.
+
+```text
+noxc test tests                                      -> 16 passed, 0 failed
+noxc run --backend llvm tests/scheduler_overlap_test.nox -> exit 0
+noxc run --backend qbe tests/scheduler_overlap_test.nox  -> exit 0
+noxc run --backend llvm examples/queue_one.nox      -> exit 0
+noxc run --backend qbe examples/queue_one.nox       -> exit 0
+noxc check --profile freestanding events.nox        -> exit 0
+noxc check --profile freestanding scheduler.nox     -> exit 0
+```

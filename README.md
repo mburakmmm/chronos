@@ -4,7 +4,7 @@ Chronos is a Nox-native scheduling library under development. Its planned MVP co
 
 ## Current status
 
-Chronos Phase 1 (`0.1.0`) and Phase 2 (`0.2.0`) implementation work is complete but unreleased. Phase 3 (`0.3.0`) is in development. The application-driven manual scheduler supports UTC one-shot/cron, monotonic delay/fixed-rate, completion-anchored fixed-delay jobs, bounded synchronous lifecycle listeners, and bounded `skip`/`fire-once`/`catch-up` misfire handling. Queue-one overlap and retry execution remain gated.
+Chronos Phase 1 (`0.1.0`) and Phase 2 (`0.2.0`) implementation work is complete but unreleased. Phase 3 (`0.3.0`) is in development. The application-driven manual scheduler supports UTC one-shot/cron, monotonic delay/fixed-rate, completion-anchored fixed-delay jobs, bounded synchronous lifecycle listeners, bounded `skip`/`fire-once`/`catch-up` misfire handling, and a single pending `queue-one` overlap in the inline/reentrant execution model. Retry execution remains gated.
 
 The currently verified development compiler is Nox 2.1.0 on macOS arm64. This is not yet a support commitment; backend and platform claims will be added only after executable tests.
 
@@ -44,6 +44,7 @@ noxc run examples/events.nox
 noxc run examples/policies.nox
 noxc run examples/misfire.nox
 noxc run examples/catch_up.nox
+noxc run examples/queue_one.nox
 ```
 
 ## Development

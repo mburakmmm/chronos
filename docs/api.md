@@ -207,7 +207,7 @@ A validated lifecycle payload with:
 - `attempt`;
 - safe `error_category`.
 
-Kinds are exported as `EVENT_REGISTERED`, `EVENT_SCHEDULED`, `EVENT_STARTED`, `EVENT_SUCCEEDED`, `EVENT_FAILED`, `EVENT_MISFIRED`, `EVENT_SKIPPED`, `EVENT_COALESCED`, `EVENT_CANCELLED`, `EVENT_SCHEDULER_STARTED`, and `EVENT_SCHEDULER_STOPPED`.
+Kinds are exported as `EVENT_REGISTERED`, `EVENT_SCHEDULED`, `EVENT_STARTED`, `EVENT_SUCCEEDED`, `EVENT_FAILED`, `EVENT_MISFIRED`, `EVENT_SKIPPED`, `EVENT_COALESCED`, `EVENT_OVERLAP_QUEUED`, `EVENT_OVERLAP_SKIPPED`, `EVENT_CANCELLED`, `EVENT_SCHEDULER_STARTED`, and `EVENT_SCHEDULER_STOPPED`.
 
 `coalesced_count` and `coalesced_truncated` are meaningful only for `EVENT_COALESCED`. A truncated count is a bounded known lower bound, not a claim that the complete backlog was enumerated.
 
@@ -219,7 +219,7 @@ See `docs/events.md` for field semantics, ordering, reentrancy, retention, and s
 
 ## `chronos.policy`
 
-This configuration/calculation surface remains pure. `JobPolicies` bundles misfire, overlap, and retry settings. Explicit job factories accept the bundle; scheduler dispatch implements skip/fire-once/catch-up with forbid/no-retry.
+This configuration/calculation surface remains pure. `JobPolicies` bundles misfire, overlap, and retry settings. Explicit job factories accept the bundle; scheduler dispatch implements skip/fire-once/catch-up with forbid/queue-one and no-retry.
 
 ### `MisfirePolicy`
 
@@ -232,11 +232,11 @@ This configuration/calculation surface remains pure. `JobPolicies` bundles misfi
 
 Grace uses milliseconds and an inclusive boundary. Catch-up dispatch is capped by `MAX_CATCH_UP_COUNT` (1,024) and evaluation by `MAX_CATCH_UP_EVALUATION_STEPS` (10,000).
 
-`default_job_policies()` returns fire-once with maximum grace, forbid, and no-retry. `copy_job_policies(source)` makes a defensive copy. Queue-one and retry-configured jobs are rejected until their execution paths exist. Catch-up is accepted except for completion-anchored fixed-delay jobs.
+`default_job_policies()` returns fire-once with maximum grace, forbid, and no-retry. `copy_job_policies(source)` makes a defensive copy. Queue-one is accepted by the inline/reentrant scheduler; retry-configured jobs remain rejected. Catch-up is accepted except for completion-anchored fixed-delay jobs.
 
 ### `OverlapPolicy`
 
-`forbid_overlap()` retains no pending occurrence. `queue_one_overlap()` retains at most one. Both have `max_concurrent_runs = 1`; an `allow` configuration is rejected until a concurrent executor and shared-state safety are verified.
+`forbid_overlap()` retains no pending occurrence. `queue_one_overlap()` retains at most one planned occurrence observed by a same-thread nested tick. Both have `max_concurrent_runs = 1`; an `allow` configuration is rejected until a concurrent executor and shared-state safety are verified.
 
 ### `RetryPolicy`
 
@@ -267,7 +267,7 @@ Creates an application-owned manual scheduler with injected `Clock`, bounded `Jo
 - `listener_failure_count() -> int`
 - `tick() -> TickResult`
 
-`TickResult` exposes `succeeded`, `failed`, `skipped`, `misfired`, `policy_skipped`, `catch_up_dispatched`, `coalesced`, `coalesced_truncated`, and `dispatched()`.
+`TickResult` exposes `succeeded`, `failed`, `skipped`, `misfired`, `policy_skipped`, `catch_up_dispatched`, `coalesced`, `coalesced_truncated`, `overlap_queued`, `overlap_skipped`, and `dispatched()`.
 
 Exact registration boundaries are inclusive; recurring calculation is exclusive. UTC eligibility uses wall time, while delay/interval eligibility and fixed-delay completion use monotonic time. Due work is ordered UTC-domain first, then monotonic-domain; within a domain it uses planned time then lexical job ID. See `docs/scheduler.md` for lifecycle, mutation, shutdown, and provisional missed-run behavior.
 

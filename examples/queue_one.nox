@@ -1,0 +1,35 @@
+from clock import FakeClock
+from job import Job, JobContext, make_monotonic_job_with_policies
+from policy import JobPolicies, fire_once_misfires, no_retry, queue_one_overlap
+from scheduler import Scheduler, TickResult
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger
+
+class State:
+    calls: int
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+def make_handler(engine: Scheduler, source_clock: FakeClock, state: State) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        state.calls += 1
+        print("run", state.calls, "planned", context.scheduled_time_ms)
+        if state.calls == 1:
+            source_clock.advance(Duration(25))
+            nested: TickResult = engine.tick()
+            print("nested", nested.overlap_queued, nested.overlap_skipped)
+
+    return handle
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 8)
+state: State = State()
+config: JobPolicies = JobPolicies(fire_once_misfires(Duration(MAX_MS)), queue_one_overlap(), no_retry())
+target: Job = make_monotonic_job_with_policies("queue-one", "Queue one", FixedRateTrigger(MonotonicInstant(500), Duration(10)), make_handler(engine, source_clock, state), True, UtcInstant(1000), [], config)
+engine.add(target)
+engine.start()
+
+engine.tick()
+engine.tick()
+engine.stop()

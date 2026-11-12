@@ -290,12 +290,12 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 
 ## Overlap
 
-- [ ] Default `forbid` davranışını tüm trigger tiplerinde aynı şekilde uygula.
-- [ ] `queue_one` için en fazla tek pending occurrence tut.
-- [ ] `allow` yalnızca doğrulanmış concurrent executor ve açık `max_concurrent_runs` ile etkinleşsin.
-- [ ] Skipped overlap'ın execution count/misfire/history etkisini belge ve test et.
-- [ ] Per-job running count/state güncellemelerini race-safe doğrula.
-- [ ] Senkron executor'da anlamsız concurrency vaatlerinden kaçın.
+- [x] Default `forbid` davranışını tüm trigger tiplerinde aynı şekilde uygula.
+- [x] `queue_one` için en fazla tek pending occurrence tut.
+- [x] `allow` yalnızca doğrulanmış concurrent executor ve açık `max_concurrent_runs` ile etkinleşsin; mevcut sürümde açıkça reddet.
+- [x] Skipped overlap'ın execution count/misfire/history etkisini belge ve test et.
+- [x] Per-job running count/state güncellemelerini aynı-thread reentrancy için doğrula; cross-thread güvenliği iddia etme.
+- [x] Senkron executor'da anlamsız concurrency vaatlerinden kaçın.
 
 ## Retry ve failure
 
@@ -504,4 +504,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 3 / `0.3.0`: inline executor sınırında bounded `queue_one` pending state'ini uygulamak; skipped overlap ve cancellation etkisini event/testlerle tanımlamak.
+Phase 3 / `0.3.0`: bounded fixed-delay retry state'ini uygulamak; attempt sayımı ile retry/normal recurrence çakışmasını deterministik ve sonlu bir policy olarak tanımlamak.

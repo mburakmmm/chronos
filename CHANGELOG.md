@@ -51,10 +51,15 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Bounded catch-up dispatch for UTC cron, UTC one-shot, monotonic delay, and fixed-rate jobs with anchor-preserving occurrence snapshots.
 - Coalesced occurrence events with bounded known counts and explicit truncation when evaluation work is exhausted.
 - Catch-up snapshot invalidation after handler removal and compiling catch-up coverage on LLVM and QBE.
+- Bounded per-job queue-one overlap state that retains only the earliest pending occurrence while an inline handler is active.
+- Explicit `overlap-queued` and `overlap-skipped` lifecycle events plus corresponding `TickResult` counters.
+- Reentrant nested-tick isolation that observes the active job's overlap without recursively dispatching unrelated callbacks.
+- Pending-overlap cancellation on removal and recomputation on re-enable, with deterministic LLVM/QBE tests and a compiling queue-one example.
 
 ### Limitations
 
 - Configurable execution policies remain incomplete.
-- Retry and queue-one do not execute yet; scheduler registration rejects those configurations. Completion-anchored fixed-delay rejects catch-up because it has no missed planned-occurrence sequence.
+- Retry does not execute yet and scheduler registration rejects retry configurations. Completion-anchored fixed-delay rejects catch-up because it has no missed planned-occurrence sequence.
+- Queue-one overlap is verified only for the inline, single-threaded reentrant scheduler model; it is not a concurrent-executor or thread-safety claim.
 - Platform and backend compatibility work is incomplete.
 - UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.
