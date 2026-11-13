@@ -342,12 +342,12 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 
 ## Backend ve platform matrisi
 
-- [ ] LLVM ve QBE tam test/örnek matrisini çalıştır.
-- [ ] Nox 2.1.98 QBE cooperative scheduler, task-local sleep ve channel wake davranışını Phase 4 compatibility kaydıyla sabitle.
-- [ ] macOS için gerçek CI/yerel kanıt oluştur.
-- [ ] Linux ve Windows desteğini yalnızca gerçek CI sonucu varsa ilan et.
-- [ ] Saf cron/time calculation modüllerinin freestanding derlenebilirliğini test et; başarısızsa limitation yaz.
-- [ ] Platform/backend sonuçlarını `docs/compatibility.md` içine tarih ve compiler sürümüyle kaydet.
+- [x] LLVM ve QBE tam test/örnek matrisini çalıştır: iki backend'de 18 test ve 16 örnek geçti.
+- [x] Nox 2.1.98 QBE cooperative scheduler, task-local sleep ve channel wake davranışını Phase 4 compatibility kaydıyla sabitle.
+- [x] macOS arm64 için Nox/compiler/backend sürümleriyle gerçek yerel kanıt oluştur.
+- [x] Linux ve Windows için gerçek CI olmadığı için destek ilan etme; compatibility tablosunda unverified bırak.
+- [x] Clock-bağımsız 11 core modülün LLVM ve QBE freestanding type-check matrisini çalıştır; `SystemClock` capability sınırını ayrıca doğrula.
+- [x] Platform/backend sonuçlarını `docs/compatibility.md` içine tarih ve compiler sürümüyle kaydet.
 
 ## Performans ve kaynak sınırları
 
@@ -505,4 +505,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 4 / `0.4.0`: Nox 2.1.98 üzerinde tam LLVM/QBE test ve örnek matrisini compatibility kaydına dönüştür; ardından ölçülebilir performans ve public API sağlamlaştırma işlerine geç.
+Phase 4 / `0.4.0`: cron parse/next-fire ve 100/1k/10k job due-lookup benchmark altyapısını ekle; ölçüm olmadan veri yapısını değiştirme.

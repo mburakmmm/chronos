@@ -64,6 +64,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Deterministic terminal shutdown coverage for stop-before-start, pending retry, queued overlap, and multi-item catch-up snapshots on LLVM and QBE.
 - A portable background-command proof using cooperative `Channel.wait(ms)`, class-valued channel messages, and bounded worker shutdown on Nox 2.1.98.
 - Re-audit of retained Nox limitations on 2.1.98: class-list parameter insertion and negative-epoch conversion are resolved; module-alias shadowing and cross-module optional defaults remain open; non-awaiting work remains cooperatively non-interruptible.
+- Phase 4 compatibility baseline covering all 18 tests, all 16 examples, and 11 clock-independent freestanding modules on LLVM and QBE with Nox 2.1.98 on macOS arm64.
+- Explicit platform matrix that keeps Linux, Windows, and untested architectures unverified instead of inferring support from macOS results.
 
 ### Limitations
 
