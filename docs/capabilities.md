@@ -9,7 +9,7 @@ This document separates documentation findings from executable verification. A d
 
 | Item | Observed value | Status |
 |---|---|---|
-| Compiler | `noxc 2.1.98` | latest local verification; original Phase 0 evidence used 2.1.0 |
+| Compiler | `noxc 2.1.111` | latest local verification; original Phase 0 evidence used 2.1.0 |
 | Host | Darwin 27.2.0 arm64 | verified locally |
 | LLVM driver | `/usr/bin/clang` | present; compile/run POC verified |
 | C driver | `/usr/bin/cc` | present |
@@ -161,7 +161,7 @@ This POC verifies wait/wake and command transport primitives only. Chronos backg
 
 ## Minimum Nox version
 
-Not decided. The latest development matrix uses Nox 2.1.98; historical implementation evidence began on 2.1.0. A minimum supported version will be published only after Phase 4 compatibility tests.
+Not decided. The latest development matrix uses Nox 2.1.111; historical implementation evidence began on 2.1.0. A minimum supported version will be published only after Phase 4 compatibility tests.
 
 ## Phase 1 implementation evidence
 
@@ -381,6 +381,6 @@ Manual mode therefore has a complete drain-current shutdown contract without cla
 
 ## Phase 4 local compatibility baseline
 
-The 2026-11-13 Nox 2.1.98 matrix ran all 18 deterministic test programs and all 16 executable examples on both LLVM and QBE. Eleven clock-independent library modules type-checked in the freestanding profile on both backends. `system_clock.nox` passed hosted checking and produced the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
+The 2026-11-13 Nox 2.1.111 local matrix ran all 18 deterministic test programs and all 16 executable examples on both LLVM and QBE. Eleven clock-independent library modules type-checked in the freestanding profile on both backends. `system_clock.nox` passed hosted checking and produced the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
 
 The scheduler sleep probe printed `fast sleeper`, the bounded command-channel proof printed `7`, and the cancellation proof ended with `49995000` on both backends. The exact development platform and unsupported platform rows are recorded in `docs/compatibility.md`.

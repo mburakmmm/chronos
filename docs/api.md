@@ -1,6 +1,6 @@
 # Chronos public API
 
-Status: experimental (`0.2.0` development).
+Status: experimental (`0.4.0` development).
 
 Only APIs listed here are intended for public use. Leading-underscore functions and everything under `proofs/` are internal validation artifacts.
 

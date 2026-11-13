@@ -1,0 +1,55 @@
+name: Feature request
+description: Propose a bounded, Nox-native Chronos capability
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What concrete scheduling problem should Chronos solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Define time domain, lifecycle, error behavior, resource bounds, and public API shape.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Time and clocks
+        - Triggers and cron
+        - Jobs and scheduler
+        - Misfire, overlap, or retry policy
+        - Executor and concurrency
+        - Observability
+        - Documentation or tooling
+        - Deferred scope
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain why application code or an existing primitive is insufficient.
+  - type: textarea
+    id: nox-evidence
+    attributes:
+      label: Nox capability evidence
+      description: Link documentation or provide a compiling proof for any required Nox primitive.
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Scope acknowledgement
+      options:
+        - label: I understand Chronos does not promise exactly-once execution.
+          required: true
+        - label: I identified finite limits for retained work and state.
+          required: true
+        - label: I searched existing issues and the release roadmap.
+          required: true

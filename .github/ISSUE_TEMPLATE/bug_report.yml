@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a reproducible Chronos defect
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Remove secrets and private job payloads from every example and log.
+  - type: input
+    id: nox-version
+    attributes:
+      label: Nox version
+      description: Output of `noxc version`.
+      placeholder: noxc 2.1.111
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - LLVM
+        - QBE
+        - Both
+        - Unknown
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and architecture
+      placeholder: macOS 27.2 arm64
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the smallest Nox source and exact commands that reproduce the problem.
+      render: nox
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include bounded, redacted output. Do not include secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: timing
+    attributes:
+      label: Clock and scheduling context
+      description: Note UTC/monotonic values, trigger type, policy, clock jumps, and reentrancy if relevant.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and NOX_LIMITATIONS.md.
+          required: true
+        - label: This report contains no secrets or private job data.
+          required: true
+        - label: I can reproduce this on an unmodified Nox compiler/runtime.
+          required: true

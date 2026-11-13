@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NOX_VERSION: 2.1.111
+  NOX_POOL_WORKERS: 2
+
+jobs:
+  verify:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-latest
+            platform: linux-x64
+            sha256: 6ccbe9f9c20813e14bab767c07622a92f680d6d9701b4d941f698a260d4e4b13
+          - name: Linux arm64
+            runner: ubuntu-24.04-arm
+            platform: linux-arm64
+            sha256: 3937e4db3fc670e2b1dc0d328823eecaa157d39ef97028aa26d31d60119da3ee
+          - name: macOS arm64
+            runner: macos-15
+            platform: macos-arm64
+            sha256: 3d672b5943dcaf856b2204fb146269c41971f6584548128109384f9245215743
+          - name: Windows x64
+            runner: windows-latest
+            platform: windows-x64
+            sha256: e26b0124e179d9e2a99b4cfb7d89244301f373760df029960293e132289c195a
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Nox
+        uses: ./.github/actions/setup-nox
+        with:
+          version: ${{ env.NOX_VERSION }}
+          platform: ${{ matrix.platform }}
+          sha256: ${{ matrix.sha256 }}
+
+      - name: Install Zig for the Windows LLVM backend
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zigVersion = "0.16.0"
+          $archive = Join-Path $env:RUNNER_TEMP "zig.zip"
+          Invoke-WebRequest -Uri "https://ziglang.org/download/$zigVersion/zig-x86_64-windows-$zigVersion.zip" -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $env:RUNNER_TEMP -Force
+          (Join-Path $env:RUNNER_TEMP "zig-x86_64-windows-$zigVersion") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run complete verification matrix
+        env:
+          NOX_HOME: ${{ runner.temp }}/chronos-nox-home
+        run: python scripts/verify.py
+
+      - name: Check repository whitespace
+        run: git diff --check

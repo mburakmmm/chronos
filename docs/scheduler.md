@@ -1,6 +1,6 @@
 # Manual scheduler
 
-Status: experimental Phase 3 manual scheduler verified with Nox 2.1.98.
+Status: experimental Phase 3 manual scheduler; latest matrix uses Nox 2.1.111.
 
 ## Ownership and lifecycle
 

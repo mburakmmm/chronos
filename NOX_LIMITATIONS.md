@@ -2,11 +2,11 @@
 
 This file tracks compiler/runtime behavior encountered while implementing Chronos. It is intentionally separate from Chronos feature limitations. Entries remain open until the relevant Nox fix is verified with the recorded reproducer on every affected backend.
 
-Original observations used Nox 2.1.0 on macOS arm64. The latest audit used Nox 2.1.98 on macOS arm64 on 2026-11-13. Chronos does not modify the Nox compiler, runtime, or standard library.
+Original observations used Nox 2.1.0 on macOS arm64. The latest audit used Nox 2.1.111 on macOS arm64 on 2026-11-13. Chronos does not modify the Nox compiler, runtime, or standard library.
 
 ## NXL-001 — production-shaped optional primitive fields reach unsupported codegen
 
-Status: open; no reliable minimal reproducer is available for a Nox 2.1.98 re-audit
+Status: open; no reliable minimal reproducer is available for a Nox 2.1.111 re-audit
 
 Observed: 2026-11-10
 
@@ -73,6 +73,8 @@ Fix verification: compile `proofs/limitations/module_alias_shadow.nox` and confi
 
 Latest audit (2026-11-13, Nox 2.1.98): still open. `noxc check` reports the same `UndefinedFunction` errors for `clock.advance` and `clock.now_utc`.
 
+Nox 2.1.111 audit: still open with the same two `UndefinedFunction` errors.
+
 ## NXL-004 — pre-epoch `DateTime.to_epoch_ms()` did not complete
 
 Status: resolved in Nox 2.1.98; Chronos nonnegative public range remains an explicit compatibility decision
@@ -126,11 +128,13 @@ Fix verification:
 
 Latest audit (2026-11-13, Nox 2.1.98): still open. The producer module passes checking, while the importing consumer still fails with `TypeMismatch` when it omits the trailing optional argument.
 
+Nox 2.1.111 audit: still open with the same cross-module `TypeMismatch`.
+
 ## NXL-006 — task cancellation cannot interrupt non-awaiting callback work
 
 Status: open capability limitation
 
-Observed: 2026-11-09; reverified 2026-11-13 with Nox 2.1.98
+Observed: 2026-11-09; reverified 2026-11-13 with Nox 2.1.111
 
 Affected stage: hosted task runtime and shutdown/timeout design
 
@@ -146,6 +150,34 @@ Fix/capability verification:
 2. Demonstrate bounded termination of non-awaiting work on LLVM and QBE.
 3. Keep cooperative `Task.cancel()` semantics distinct from hard isolation in Nox documentation and types.
 4. Add a separate Chronos executor only after handler ownership, cleanup, and result propagation pass integration tests.
+
+## NXL-007 — a package cannot use one internal import form in both its own project and a consumer
+
+Status: open
+
+Observed: 2026-11-13 with Nox 2.1.111 on macOS arm64
+
+Affected stage: project/package module resolution
+
+Nox packages are documented to import their own modules through the package's manifest name. For example, a Chronos module should use `from chronos.time import UtcInstant`. This works when Chronos is loaded as a dependency because the resolver reads the dependency's `nox.json.name` and strips that first segment.
+
+The same source does not resolve when checked from the Chronos project itself. The top-level project resolver does not bind its own manifest name to its project root, so `chronos.time` is searched as `<project>/chronos/time.nox` instead of `<project>/time.nox`. The retained reproducer is `proofs/limitations/package_self_import.nox`:
+
+```text
+noxc check proofs/limitations/package_self_import.nox
+-> import: unknown alias, or project file not found
+```
+
+Using an unqualified internal import such as `from time import UtcInstant` makes the source checkout compile, but it is not a safe package workaround. When the module is loaded through a dependency alias, that unqualified import is resolved against the consumer's project root. It either fails when the consumer has no matching file or can bind to unrelated consumer code.
+
+Chronos impact: Chronos remains source-checkout-only and does not claim working `noxc add` consumption while this limitation is open. README examples use checkout-local imports. CI still verifies all implemented behavior directly on every claimed platform/backend.
+
+Fix verification:
+
+1. Bind the current project's own `nox.json.name` to its project root during recursive import resolution, using the same own-name rule already applied inside dependencies.
+2. Convert Chronos internal imports to `chronos.*`.
+3. Run the complete Chronos matrix from the repository root.
+4. Fetch Chronos into a separate consumer under both the `chronos` alias and a deliberately different alias; compile and run the public cron and scheduler examples in both cases.
 
 ## New entry template
 

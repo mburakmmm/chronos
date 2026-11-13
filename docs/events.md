@@ -1,6 +1,6 @@
 # Lifecycle events
 
-Status: experimental Phase 3 API verified with Nox 2.1.98.
+Status: experimental Phase 3 API; latest matrix uses Nox 2.1.111.
 
 Chronos exposes synchronous lifecycle observation without retaining an event history or creating a background worker. `Scheduler(clock, max_jobs, max_listeners=16)` accepts from zero through 64 listeners. Zero disables listener registration; attempting to exceed the configured capacity raises `EventListenerLimitError`.
 

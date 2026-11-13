@@ -1,6 +1,6 @@
 # Concurrency and execution model
 
-Status: Phase 3 execution and shutdown decision; reverified with Nox 2.1.98.
+Status: Phase 3 execution and shutdown decision; reverified with Nox 2.1.111.
 
 ## Portable baseline
 
@@ -30,11 +30,11 @@ Cancellation is therefore not an execution timeout. Chronos will not advertise c
 
 The LLVM backend uses a multi-core M:N scheduler. QBE remains single-threaded and cooperative.
 
-Nox 2.1.98 documents and implements `nox.time.sleep_ms()` inside an async task as suspension of only the calling fiber on both backends. The latest two-task probe printed `fast sleeper` on LLVM and QBE. Calling `sleep_ms()` outside an async task still blocks the calling thread.
+Nox 2.1.111 documents and implements `nox.time.sleep_ms()` inside an async task as suspension of only the calling fiber on both backends. The latest two-task probe printed `fast sleeper` on LLVM and QBE. Calling `sleep_ms()` outside an async task still blocks the calling thread.
 
 The earlier Nox 2.1.0 ordering probe was scheduling-order-sensitive and is not retained as evidence that task-local sleep blocks the complete QBE scheduler.
 
-Nox 2.1.98 also provides `Channel.wait(ms)` for a cooperative bounded timeout. A new proof sends class-valued commands through `Channel[BackgroundCommand]`, wakes a worker, and performs bounded shutdown on both LLVM and QBE. This verifies building blocks, not transfer of a live Chronos scheduler or job registry across a spawned boundary.
+Nox 2.1.111 provides `Channel.wait(ms)` for a cooperative bounded timeout. A proof sends class-valued commands through `Channel[BackgroundCommand]`, wakes a worker, and performs bounded shutdown on both LLVM and QBE. This verifies building blocks, not transfer of a live Chronos scheduler or job registry across a spawned boundary.
 
 ## Background scheduling
 

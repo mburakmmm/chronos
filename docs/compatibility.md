@@ -8,7 +8,7 @@ Last verified: 2026-11-13
 
 | Component | Verified value | Evidence status |
 |---|---|---|
-| Nox compiler | `noxc 2.1.98` | verified locally |
+| Nox compiler | `noxc 2.1.111` | verified locally |
 | Host | macOS 27.2 (`Darwin 27.2.0`) arm64 | verified locally |
 | LLVM backend | Apple clang 21.0.0, arm64 target | full test/example matrix passed |
 | QBE backend | Nox-installed QBE toolchain | full test/example matrix passed |
@@ -29,7 +29,7 @@ This table records a reproducible development baseline, not a promise that every
 | Cooperative cancellation proof | output ends with `49995000` | output ends with `49995000` |
 | Clock-independent freestanding modules | 11 passed | 11 passed |
 
-The QBE backend is single-threaded and cooperative, while LLVM uses the documented multi-core scheduler. With Nox 2.1.98, `sleep_ms()` inside an async task suspends only the calling fiber on both tested backends. `Channel.wait(ms)` also provides a cooperative bounded wake primitive.
+The QBE backend is single-threaded and cooperative, while LLVM uses the documented multi-core scheduler. With Nox 2.1.111, `sleep_ms()` inside an async task suspends only the calling fiber on both tested backends. `Channel.wait(ms)` also provides a cooperative bounded wake primitive.
 
 Cancellation remains cooperative: a task reaches cancellation at an await/checkpoint, but non-awaiting computation runs to completion. Chronos therefore does not claim forceful callback cancellation or enforceable in-process execution timeouts.
 

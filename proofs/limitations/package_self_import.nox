@@ -1,0 +1,3 @@
+import chronos.errors
+
+print("package self-import resolved")

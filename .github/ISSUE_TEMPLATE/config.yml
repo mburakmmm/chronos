@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage and design discussions
+    url: https://github.com/mburakmmm/chronos/discussions
+    about: Ask questions and discuss designs before opening a feature request.
+  - name: Private security report
+    url: https://github.com/mburakmmm/chronos/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public security issue.

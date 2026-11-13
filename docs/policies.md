@@ -1,6 +1,6 @@
 # Execution policies
 
-Status: experimental Phase 3 API verified with Nox 2.1.98.
+Status: experimental Phase 3 API; latest matrix uses Nox 2.1.111.
 
 The policy module validates bounded configuration and performs deterministic calculations without reading clocks or executing handlers. `JobPolicies` is accepted by the explicit `make_*_with_policies` job factories. The manual scheduler executes `skip`, `fire-once`, bounded `catch-up`, `forbid`, bounded `queue-one`, fixed-delay retry, and capped exponential retry.
 

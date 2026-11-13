@@ -1,6 +1,6 @@
 # Jobs and registry
 
-Status: implemented experimental Phase 2 foundation; latest matrix uses Nox 2.1.98.
+Status: implemented experimental Phase 2 foundation; latest matrix uses Nox 2.1.111.
 
 ## Job identity and construction
 

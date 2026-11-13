@@ -1,6 +1,6 @@
 # Time semantics
 
-Status: Phase 0 design record; latest capability audit uses Nox 2.1.98.
+Status: Phase 0 design record; latest capability audit uses Nox 2.1.111.
 
 Chronos treats calendar deadlines, elapsed delays, and calendar field values as different concepts. Values are not converted between clock domains implicitly.
 
