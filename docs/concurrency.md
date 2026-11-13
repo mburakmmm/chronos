@@ -1,6 +1,6 @@
 # Concurrency and execution model
 
-Status: Phase 0 architecture decision for Nox 2.1.0.
+Status: Phase 3 execution and shutdown decision; reverified with Nox 2.1.98.
 
 ## Portable baseline
 
@@ -12,7 +12,7 @@ Chronos MVP uses an application-owned manual-tick scheduler and an inline/synchr
 - A handler failure is caught and recorded without stopping unrelated jobs.
 - There is no hidden global task, worker thread, or scheduler singleton.
 
-This mode is portable across the tested LLVM and QBE backends and avoids relying on an unverified scheduler wake-up primitive.
+This mode is portable across the tested LLVM and QBE backends and keeps callback ownership explicit.
 
 ## Verified Nox task behavior
 
@@ -26,27 +26,35 @@ The Phase 0 concurrency proof ran on both backends and verified:
 
 Cancellation is therefore not an execution timeout. Chronos will not advertise callback interruption or timeout enforcement for in-process handlers.
 
-## Backend differences
+## Current backend findings
 
-The LLVM backend uses an M:N scheduler. In the two-worker sleep probe, a fast task progressed while another task was inside `nox.time.sleep_ms`.
+The LLVM backend uses a multi-core M:N scheduler. QBE remains single-threaded and cooperative.
 
-The QBE backend is single-threaded and cooperative. In the same probe, `sleep_ms` blocked the scheduler until the sleeping task returned.
+Nox 2.1.98 documents and implements `nox.time.sleep_ms()` inside an async task as suspension of only the calling fiber on both backends. The latest two-task probe printed `fast sleeper` on LLVM and QBE. Calling `sleep_ms()` outside an async task still blocks the calling thread.
 
-For this reason, a portable Chronos background loop must not be implemented as a spawned task that repeatedly calls `sleep_ms`.
+The earlier Nox 2.1.0 ordering probe was scheduling-order-sensitive and is not retained as evidence that task-local sleep blocks the complete QBE scheduler.
 
-QBE also rejected a spawned task whose argument was a class instance, while LLVM accepted it. Portable spawned boundaries must use only types demonstrated on both backends, such as scalar values and channels. Scheduler/job class objects will not be sent directly to a portable spawned worker.
+Nox 2.1.98 also provides `Channel.wait(ms)` for a cooperative bounded timeout. A new proof sends class-valued commands through `Channel[BackgroundCommand]`, wakes a worker, and performs bounded shutdown on both LLVM and QBE. This verifies building blocks, not transfer of a live Chronos scheduler or job registry across a spawned boundary.
 
 ## Background scheduling
 
-Background mode is deferred. It may be added only after all of the following are demonstrated on both claimed backends:
+Background mode remains deferred. The wait/wake and command transport primitives are now verified, but a production mode may be added only after all of the following are integrated and demonstrated on both claimed backends:
 
-- a bounded, non-busy wait strategy;
-- a wake-up path for newly added earlier jobs and cancellation;
-- owned task shutdown with bounded waiting;
-- safe communication without mutable module globals;
+- one worker owns all mutable scheduler/job state;
+- add/remove/inspect commands have a bounded request/response contract;
+- newly earlier jobs and cancellation wake and recompute the deadline;
+- the worker task has bounded, observable startup and shutdown;
 - explicit behavior for callbacks still running during shutdown.
 
 Until then, manual tick is the supported portable lifecycle.
+
+## Shutdown contract
+
+Manual mode owns no background task and therefore exposes no artificial shutdown wait or timeout parameter. If no callback is active, `stop()` transitions directly to `stopped`. If an inline handler calls `stop()`, the scheduler enters `stopping`, lets only that trusted handler return, records its outcome, emits one terminal `scheduler-stopped` event, and starts no later due, catch-up, retry, or queued-overlap callback.
+
+Repeated stop requests are idempotent. A stopped scheduler rejects `start()` and `tick()` and cannot restart. Pending in-memory schedule metadata may remain inspectable, but it has no execution path after terminal shutdown.
+
+This is cooperative drain-current shutdown, not forceful callback cancellation. Nox task cancellation cannot interrupt non-awaiting work, and Chronos offers no immediate-stop or execution-timeout guarantee for inline handlers. The capability boundary is tracked as NXL-006.
 
 ## Reentrancy
 

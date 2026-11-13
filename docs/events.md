@@ -1,6 +1,6 @@
 # Lifecycle events
 
-Status: experimental Phase 3 API for Nox 2.1.0.
+Status: experimental Phase 3 API verified with Nox 2.1.98.
 
 Chronos exposes synchronous lifecycle observation without retaining an event history or creating a background worker. `Scheduler(clock, max_jobs, max_listeners=16)` accepts from zero through 64 listeners. Zero disables listener registration; attempting to exceed the configured capacity raises `EventListenerLimitError`.
 
@@ -24,6 +24,8 @@ Chronos exposes synchronous lifecycle observation without retaining an event his
 | `scheduler-stopped` | Lifecycle entered `stopped` | absent |
 
 Initial registration emits `registered` and, when a next occurrence exists, `scheduled`. Successful and terminally failed recurring executions emit another `scheduled` event after their next time is calculated. A retryable failure emits `failed` followed by `retried`; the latter carries the upcoming monotonic deadline. A late occurrence emits `misfired`; policy rejection then emits `skipped`, while bounded catch-up may emit `coalesced`. Reentrant overlap observation emits `overlap-queued` for the single retained occurrence or `overlap-skipped` for a discarded occurrence. Removing a queued job or retry emits `cancelled` with the pending deadline; removing a completed job still emits `cancelled`, but without a pending planned time.
+
+`scheduler-stopped` is terminal and emitted exactly once, including stop-before-start and stop requested from an active handler. Repeated `stop()` calls emit nothing further. When stop is requested during a handler, its execution outcome is emitted before the terminal scheduler event; no event for a newly started callback can follow it.
 
 ## Timestamp fields
 

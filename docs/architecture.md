@@ -209,3 +209,15 @@ Bounded catch-up expands planned occurrences into the same generation-checked du
 Queue-one overlap uses a per-entry running count, one optional pending timestamp, and one last-observed cursor, never a list. A same-thread nested tick evaluates only the active entry: the first eligible later occurrence may fill the slot, while later distinct observed occurrences are discarded once. The cursor prevents repeated nested ticks from reporting the same occurrence repeatedly and is cleared after completion or re-enable. Unrelated jobs remain owned by the outer snapshot. Removal drops the slot, and enable recomputes rather than reviving stale pending work. This decision deliberately makes no thread-safety or concurrent executor claim.
 
 Retry is represented by one monotonic eligibility deadline, one upcoming attempt, and the original occurrence identity. Fixed or overflow-safe exponentially capped delay calculation feeds the same state. It temporarily suspends the regular trigger rather than merging monotonic retry time with UTC calendar time. Terminal success or exhaustion resumes the unchanged trigger strictly after completion, while completion-anchored fixed-delay starts from terminal completion. This precedence prevents retry/recurrence overlap without inventing a cross-domain timestamp comparison.
+
+## ADR-008: manual shutdown drains only the active callback
+
+Decision date: 2026-11-13
+
+Status: accepted for Phase 3
+
+The manual scheduler owns no background task. A stop request with no active handler therefore reaches `stopped` immediately. A stop request from an active inline handler changes the lifecycle to `stopping`; the current handler returns through the normal outcome boundary, then the scheduler emits one terminal stopped event and invalidates every remaining due, catch-up, retry, or pending-overlap dispatch path.
+
+The scheduler does not expose immediate force-cancellation, shutdown join timeouts, or callback execution timeouts. Nox cancellation remains cooperative for work without an await point, so those APIs would promise control the runtime has not demonstrated. A stopped scheduler is terminal and cannot restart.
+
+Nox 2.1.98 verifies cooperative task-local sleep, `Channel.wait(ms)`, and class-valued channel command transport on LLVM and QBE. These primitives make a future owned worker feasible, but they do not prove correct ownership of Chronos jobs, bounded command responses, deadline recomputation, or handler shutdown. Background mode remains a separate future executor/lifecycle design rather than being hidden inside the manual scheduler.

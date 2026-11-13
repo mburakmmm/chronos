@@ -1,6 +1,6 @@
 # Time semantics
 
-Status: Phase 0 design record for Nox 2.1.0.
+Status: Phase 0 design record; latest capability audit uses Nox 2.1.98.
 
 Chronos treats calendar deadlines, elapsed delays, and calendar field values as different concepts. Values are not converted between clock domains implicitly.
 
@@ -15,7 +15,7 @@ Absolute deadlines and cron fire times use nonnegative Unix epoch milliseconds i
 - `nox.time.now()` and `nox.time.from_epoch_ms()` produce UTC `DateTime` values.
 - A wall-clock jump changes when an absolute UTC deadline becomes due.
 - Cron calculations operate on UTC calendar fields and never infer the machine's local timezone.
-- Pre-1970 timestamps are rejected before Nox calendar conversion. The installed Nox 2.1.0 toolchain did not complete the tested negative-epoch conversion path, so Chronos does not advertise that range.
+- Pre-1970 timestamps remain rejected by the current Chronos public types. The original Nox 2.1.0 toolchain did not complete the tested negative-epoch conversion path; Nox 2.1.98 resolves that runtime issue, but expanding Chronos's range is a separate versioned API change requiring calendar, trigger, and cron regression coverage.
 
 ## Elapsed time and delays
 

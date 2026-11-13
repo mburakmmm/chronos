@@ -61,11 +61,16 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Explicit retry cancellation, late-retry single dispatch, overflow failure handling, and fixed-rate/fixed-delay recurrence tests on LLVM and QBE.
 - Exponential retry scheduler integration with overflow-safe doubling, maximum-delay saturation, terminal success, and bounded exhaustion tests.
 - Compiling exponential retry example for LLVM and QBE.
+- Deterministic terminal shutdown coverage for stop-before-start, pending retry, queued overlap, and multi-item catch-up snapshots on LLVM and QBE.
+- A portable background-command proof using cooperative `Channel.wait(ms)`, class-valued channel messages, and bounded worker shutdown on Nox 2.1.98.
+- Re-audit of retained Nox limitations on 2.1.98: class-list parameter insertion and negative-epoch conversion are resolved; module-alias shadowing and cross-module optional defaults remain open; non-awaiting work remains cooperatively non-interruptible.
 
 ### Limitations
 
-- Configurable execution policies remain incomplete.
+- Jitter is not implemented; fixed and exponential retry delays are deterministic.
 - Retry cannot yet be combined with catch-up or queue-one overlap. Completion-anchored fixed-delay rejects catch-up because it has no missed planned-occurrence sequence.
 - Queue-one overlap is verified only for the inline, single-threaded reentrant scheduler model; it is not a concurrent-executor or thread-safety claim.
 - Platform and backend compatibility work is incomplete.
-- UTC timestamps before 1970-01-01 are rejected because the installed Nox 2.1.0 negative-epoch calendar conversion did not complete reliably.
+- Chronos still rejects UTC timestamps before 1970-01-01 as an explicit public-range decision, although the original Nox negative-epoch runtime issue is resolved in 2.1.98.
+- Background scheduling is not a supported Chronos mode yet. Nox wait/wake primitives are verified, but worker ownership, bounded command/response handling, and lifecycle integration remain unimplemented.
+- Inline handlers cannot be force-cancelled or given an enforceable execution timeout; terminal shutdown drains only the active callback and starts no later work.

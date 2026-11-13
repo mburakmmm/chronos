@@ -4,9 +4,9 @@ Chronos is a Nox-native scheduling library under development. Its planned MVP co
 
 ## Current status
 
-Chronos Phase 1 (`0.1.0`) and Phase 2 (`0.2.0`) implementation work is complete but unreleased. Phase 3 (`0.3.0`) is in development. The application-driven manual scheduler supports UTC one-shot/cron, monotonic delay/fixed-rate, completion-anchored fixed-delay jobs, bounded synchronous lifecycle listeners, bounded `skip`/`fire-once`/`catch-up` misfire handling, a single pending `queue-one` overlap in the inline/reentrant execution model, and bounded fixed or exponential handler retries.
+Chronos Phase 1 (`0.1.0`) and Phase 2 (`0.2.0`) implementation work is complete but unreleased. Phase 3 (`0.3.0`) implementation and its deterministic shutdown contract are complete but unreleased. The application-driven manual scheduler supports UTC one-shot/cron, monotonic delay/fixed-rate, completion-anchored fixed-delay jobs, bounded synchronous lifecycle listeners, bounded `skip`/`fire-once`/`catch-up` misfire handling, a single pending `queue-one` overlap in the inline/reentrant execution model, and bounded fixed or exponential handler retries.
 
-The currently verified development compiler is Nox 2.1.0 on macOS arm64. This is not yet a support commitment; backend and platform claims will be added only after executable tests.
+The latest verified development compiler is Nox 2.1.98 on macOS arm64 (2026-11-13). This is not yet a minimum-version or cross-platform support commitment; those claims require the Phase 4 compatibility matrix.
 
 ## Design boundaries
 
@@ -16,7 +16,7 @@ The currently verified development compiler is Nox 2.1.0 on macOS arm64. This is
 - The portable baseline will be a manual-tick scheduler with an inline executor.
 - Schedules will be in-memory and will not survive process exit.
 - Chronos will not claim exactly-once execution.
-- Time zones, persistence, background execution, and distributed coordination are deferred until their prerequisites are verified.
+- Time zones, persistence, background execution, and distributed coordination are deferred until their complete ownership and lifecycle prerequisites are verified. Current Nox task sleep and channel wake primitives are recorded as feasible building blocks, not as a supported Chronos background scheduler.
 - The core will not depend on Nyx, Aether, Aura, Feather, Nova, Rune, or Noxen.
 
 ## Repository layout

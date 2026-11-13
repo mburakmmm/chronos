@@ -307,32 +307,32 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 - [x] Handler, scheduler, cancellation ve infrastructure failure kategorilerini ayır.
 - [x] Permanently invalid schedule için retry çalıştırma.
 - [x] Error summary ve execution history retention sınırlarını uygula.
-- [ ] Jitter yalnızca injectable deterministic RNG ve açık ihtiyaç varsa eklenir; aksi halde sonraki backlog'a bırakılır.
+- [x] Jitter için mevcut sürümde ihtiyaç olmadığına karar ver; doğrulanmış injectable deterministic RNG tasarımıyla sonraki backlog'a bırak.
 
 ## Shutdown ve opsiyonel background mode
 
-- [ ] Graceful/immediate stop semantiğini tanımla.
-- [ ] Graceful stop beklemesini doğrulanmış ve bounded timeout ile sınırla.
-- [ ] Running work ownership'ini kaybetme; tamamlanma/cancellation sınırını açıkça raporla.
-- [ ] Safe wake-up ve bounded executor POC'leri iki backend'de başarılıysa background mode uygula.
-- [ ] Background mode güvenli değilse bu sürümde manual tick ile kal ve limitation'ı belgede açık bırak.
-- [ ] `sleep_ms` ile QBE üzerinde busy-loop veya tüm programı gizlice bloke eden tasarım oluşturma.
-- [ ] Execution timeout yalnızca gerçek interruption/isolation kanıtlanırsa sunulsun.
+- [x] Shutdown'ı drain-current olarak tanımla: aktif inline callback tamamlanır, sonraki callback başlamaz; force-immediate cancellation sunma.
+- [x] Manual modun background task sahibi olmadığını ve bu nedenle yapay join/timeout API'si gerektirmediğini belge; aktif handler'ın bounded sürede kesilemediğini açıkça raporla.
+- [x] Running work ownership'ini callback dönüşüne kadar koru; outcome ve terminal stopped event sırasını test et.
+- [x] Nox 2.1.98 üzerinde `Channel.wait(ms)`, class-valued command channel ve bounded worker shutdown POC'lerini LLVM/QBE'de doğrula.
+- [x] Tam Scheduler/Job ownership ve bounded request/response lifecycle henüz entegre olmadığı için bu sürümde manual tick ile kal; background mode'u desteklenmiyor olarak belge.
+- [x] `sleep_ms` task-local davranışını Nox 2.1.98 ile yeniden doğrula; Chronos içinde sleep tabanlı background veya busy-loop oluşturma.
+- [x] Execution timeout'u gerçek interruption/isolation kanıtlanmadığı için sunma ve NXL-006 ile takip et.
 
 ## Test, örnek ve belge
 
 - [x] Misfire, catch-up cap, overlap, queue-one, retry/backoff/exhaustion ve shutdown testlerini ekle.
 - [x] Policy kombinasyonları için regression matrisi ekle.
 - [x] `retry` örneğini LLVM ve QBE üzerinde derle/çalıştır.
-- [ ] Background mode desteklenirse lifecycle örneğini derle/çalıştır; desteklenmezse limitation'ı açıkça belge.
+- [x] Background mode'un desteklenmediğini açıkça belge; yalnızca capability POC'sini iki backend'de derle/çalıştır.
 - [x] `docs/policies.md`, `docs/scheduler.md`, `docs/concurrency.md`, API ve README güncelle.
 - [x] Side-effecting job'lar için idempotency rehberi ekle; exactly-once vaat etme.
 
 ### `0.3.0` çıkış kapısı
 
 - [x] Retry, catch-up, pending overlap, concurrency ve history için sınırsız yol kalmasın.
-- [ ] Shutdown testlerinde hidden hang veya shutdown sonrası callback görülmesin.
-- [ ] Desteklenmeyen cancellation/timeout/background davranışları dürüstçe işaretlenmiş olsun.
+- [x] Shutdown testlerinde hidden hang veya shutdown sonrası callback görülmesin.
+- [x] Desteklenmeyen cancellation/timeout/background davranışları dürüstçe işaretlenmiş olsun.
 
 ---
 
@@ -343,7 +343,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 ## Backend ve platform matrisi
 
 - [ ] LLVM ve QBE tam test/örnek matrisini çalıştır.
-- [ ] QBE single-thread scheduler ve blocking sleep etkisini integration test ile kaydet.
+- [ ] Nox 2.1.98 QBE cooperative scheduler, task-local sleep ve channel wake davranışını Phase 4 compatibility kaydıyla sabitle.
 - [ ] macOS için gerçek CI/yerel kanıt oluştur.
 - [ ] Linux ve Windows desteğini yalnızca gerçek CI sonucu varsa ilan et.
 - [ ] Saf cron/time calculation modüllerinin freestanding derlenebilirliğini test et; başarısızsa limitation yaz.
@@ -505,4 +505,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 3 / `0.3.0`: inline executor için shutdown semantiğini formalize et; stop-during-callback, pending retry/overlap ve shutdown-sonrası callback invariants'ını tamamlayıp background mode feasibility kararını belge.
+Phase 4 / `0.4.0`: Nox 2.1.98 üzerinde tam LLVM/QBE test ve örnek matrisini compatibility kaydına dönüştür; ardından ölçülebilir performans ve public API sağlamlaştırma işlerine geç.

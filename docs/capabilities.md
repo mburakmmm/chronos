@@ -1,7 +1,7 @@
 # Nox capability matrix
 
-Last updated: 2026-11-10  
-Chronos phase: 2 (`0.2.0` development)
+Last updated: 2026-11-13
+Chronos phase: 3 (`0.3.0` implementation complete, unreleased)
 
 This document separates documentation findings from executable verification. A documented API is not marked fully verified until an appropriate Chronos proof of concept compiles and runs.
 
@@ -9,7 +9,7 @@ This document separates documentation findings from executable verification. A d
 
 | Item | Observed value | Status |
 |---|---|---|
-| Compiler | `noxc 2.1.0` | verified locally |
+| Compiler | `noxc 2.1.98` | latest local verification; original Phase 0 evidence used 2.1.0 |
 | Host | Darwin 27.2.0 arm64 | verified locally |
 | LLVM driver | `/usr/bin/clang` | present; compile/run POC verified |
 | C driver | `/usr/bin/cc` | present |
@@ -38,7 +38,7 @@ This document separates documentation findings from executable verification. A d
 | `nox.time.instant_now()` | Monotonic interval clock | verified on LLVM/QBE |
 | `Instant.elapsed_ms()` | Monotonic elapsed milliseconds | verified on LLVM/QBE |
 | `nox.time.boot_ms()` | Monotonic counter including device suspend | difference measurement verified on LLVM/QBE; physical suspend not emulated |
-| `nox.time.sleep_ms(ms)` | Blocks the current thread | call and backend-specific scheduler impact verified on LLVM/QBE |
+| `nox.time.sleep_ms(ms)` | Outside a task it blocks the thread; inside an async task Nox 2.1.98 suspends only that fiber | latest two-task probe verified on LLVM/QBE |
 | Time zones | Not provided by documented `nox.time` | missing; UTC-only MVP |
 | Clock capability | Clock-reading APIs unavailable in freestanding profile | pure calendar accepted and clock APIs rejected with `CapabilityNotGranted` |
 
@@ -52,10 +52,11 @@ The documented suspend behavior of `Instant` differs by platform, while `boot_ms
 | Task exception propagation | `await` re-raises task failures | verified on LLVM/QBE |
 | `Task.cancel()` | Cooperative; observed at an `await` point | verified on LLVM/QBE |
 | `Channel[T]` | Typed bounded/rendezvous channel | bounded channel verified on LLVM/QBE |
+| `Channel.wait(ms)` | Cooperative bounded timeout/wake | background-command proof verified on LLVM/QBE |
 | LLVM scheduler | Multi-core M:N work-stealing | two-worker sleep probe allowed fast task to progress |
-| QBE scheduler | Single-threaded cooperative | sleep probe blocked fast task until sleeper returned |
-| `sleep_ms` under QBE | Blocks the sole scheduler thread | verified by ordering probe |
-| QBE task value restrictions | Class spawn argument rejected; portable channel/scalar forms succeeded | verified |
+| QBE scheduler | Single-threaded cooperative | task-local sleep and channel wake both allowed the peer task to progress on 2.1.98 |
+| Class-valued channel messages | `Channel[BackgroundCommand]` command transport | verified on LLVM/QBE with Nox 2.1.98 |
+| Direct class spawn arguments | Historical 2.1.0 QBE proof rejected the form | not used by Chronos; current command POC uses channels |
 | Execution interruption | Pure computation is not stopped by cooperative task cancellation | verified limitation; no timeout claim |
 
 ## Language model capabilities
@@ -148,17 +149,19 @@ An explicit generic call written as `identity[str]("ok")` failed on the installe
 
 ### P0-CONC-001 — tasks, channels, cancellation, and blocking sleep
 
-Sources: `proofs/concurrency_model.nox`, `proofs/scheduler_sleep_probe.nox`, and `proofs/qbe_class_spawn_rejection.nox`.
+Sources: `proofs/concurrency_model.nox`, `proofs/scheduler_sleep_probe.nox`, `proofs/qbe_class_spawn_rejection.nox`, and `proofs/background_command_model.nox`.
 
 The portable concurrency proof produced identical output on LLVM and QBE. Task failures crossed `await`, cancellation surfaced at an awaited operation, and a cancelled task containing no `await` completed normally. This confirms that task cancellation cannot enforce a callback timeout.
 
-With `NOX_POOL_WORKERS=2`, the LLVM sleep probe printed `fast sleeper`. QBE printed `sleeper fast`, showing that `sleep_ms` blocked the only scheduler thread.
+The original Nox 2.1.0 run printed `fast sleeper` on LLVM and `sleeper fast` on QBE. The same source on Nox 2.1.98 printed `fast sleeper` on both backends. Current Nox documentation and runtime source define task-local `sleep_ms` as fiber suspension on both backends, so the old ordering result is not treated as a robust whole-scheduler blocking proof.
 
-A spawned task with a class argument ran on LLVM and was rejected by QBE. Chronos will not pass scheduler/job class instances through spawned-task boundaries in portable code.
+A spawned task with a class argument ran on LLVM and was rejected by QBE under the original 2.1.0 audit. Chronos does not depend on that boundary. On 2.1.98, `proofs/background_command_model.nox` transported class-valued commands through a typed channel, used `Channel.wait(1000)` for cooperative wake, shut down the owned worker, and printed `7` on LLVM and QBE.
+
+This POC verifies wait/wake and command transport primitives only. Chronos background mode remains deferred until one worker can own the full scheduler/job state, provide bounded command responses, recompute earlier deadlines, and expose observable bounded lifecycle handling.
 
 ## Minimum Nox version
 
-Not decided. Development currently uses Nox 2.1.0. A minimum supported version will be published only after compatibility tests.
+Not decided. The latest development matrix uses Nox 2.1.98; historical implementation evidence began on 2.1.0. A minimum supported version will be published only after Phase 4 compatibility tests.
 
 ## Phase 1 implementation evidence
 
@@ -360,3 +363,18 @@ noxc run --backend llvm examples/exponential_retry.nox -> exit 0
 noxc run --backend qbe examples/exponential_retry.nox  -> exit 0
 noxc check --profile freestanding scheduler.nox     -> exit 0
 ```
+
+## Phase 3 deterministic shutdown evidence
+
+The shutdown matrix verifies stop-before-start, idempotent terminal events, restart/tick rejection, pending-retry suppression, queued-overlap suppression, and invalidation of the remaining bounded catch-up snapshot after a handler requests stop. An active inline handler returns and records its outcome; no later callback starts. The test contains no real sleep or background task and completed on both backends without a hang.
+
+```text
+noxc version                                         -> noxc 2.1.98
+noxc test tests                                      -> 18 passed, 0 failed
+noxc run --backend llvm tests/scheduler_shutdown_test.nox -> exit 0
+noxc run --backend qbe tests/scheduler_shutdown_test.nox  -> exit 0
+noxc run --backend llvm proofs/background_command_model.nox -> exit 0, 7
+noxc run --backend qbe proofs/background_command_model.nox  -> exit 0, 7
+```
+
+Manual mode therefore has a complete drain-current shutdown contract without claiming interruption, timeout enforcement, or a production background scheduler. Cooperative non-interruption of pure work is tracked as NXL-006.

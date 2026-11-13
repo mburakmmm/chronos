@@ -1,0 +1,31 @@
+class BackgroundCommand:
+    kind: str
+    value: int
+
+    def __init__(self, kind: str, value: int) -> None:
+        self.kind = kind
+        self.value = value
+
+async def command_worker(commands: Channel[BackgroundCommand], results: Channel[int]) -> None:
+    total: int = 0
+    running: bool = True
+    while running:
+        if commands.wait(1000):
+            command: BackgroundCommand = await commands.recv()
+            if command.kind == "add":
+                total += command.value
+            elif command.kind == "stop":
+                running = False
+    await results.send(total)
+
+async def run() -> None:
+    commands: Channel[BackgroundCommand] = Channel[BackgroundCommand](2)
+    results: Channel[int] = Channel[int](1)
+    await commands.send(BackgroundCommand("add", 7))
+    worker: Task[None] = spawn command_worker(commands, results)
+    await commands.send(BackgroundCommand("stop", 0))
+    print(await results.recv())
+    await worker
+
+main_task: Task[None] = spawn run()
+await main_task

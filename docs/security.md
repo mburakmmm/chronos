@@ -25,7 +25,7 @@ Cron expressions and serialized job configuration are data, never executable Nox
 
 Handlers are trusted code and can perform any action available to the application. Chronos does not sandbox them.
 
-A handler exception is caught at the executor boundary and converted to a bounded safe failure summary. Chronos must not claim it can interrupt pure computation: Nox task cancellation is cooperative and cannot enforce a general callback timeout.
+A handler exception is caught at the executor boundary and converted to a bounded safe failure summary. Chronos must not claim it can interrupt pure computation: Nox task cancellation is cooperative and cannot enforce a general callback timeout. Shutdown prevents every later callback from starting but permits the active trusted inline handler to return normally; a non-returning handler can therefore prevent the owning application thread from making progress.
 
 ## Resource denial of service
 

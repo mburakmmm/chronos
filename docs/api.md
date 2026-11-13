@@ -270,6 +270,8 @@ Creates an application-owned manual scheduler with injected `Clock`, bounded `Jo
 
 `TickResult` exposes `succeeded`, `failed`, `skipped`, `misfired`, `policy_skipped`, `catch_up_dispatched`, `coalesced`, `coalesced_truncated`, `overlap_queued`, `overlap_skipped`, `retry_dispatched`, `retries_scheduled`, and `dispatched()`.
 
+`stop()` is terminal and idempotent. With no active callback it stops immediately. From an active inline handler it marks the scheduler as stopping, lets that handler return, then stops without starting remaining snapshot, retry, or queued-overlap work. There is no force-cancel, restart, background join, or execution-timeout API in the manual scheduler.
+
 Exact registration boundaries are inclusive; recurring calculation is exclusive. UTC eligibility uses wall time, while delay/interval eligibility and fixed-delay completion use monotonic time. Due work is ordered UTC-domain first, then monotonic-domain; within a domain it uses planned time then lexical job ID. See `docs/scheduler.md` for lifecycle, mutation, shutdown, and provisional missed-run behavior.
 
 ## Consumer imports

@@ -2,11 +2,11 @@
 
 This file tracks compiler/runtime behavior encountered while implementing Chronos. It is intentionally separate from Chronos feature limitations. Entries remain open until the relevant Nox fix is verified with the recorded reproducer on every affected backend.
 
-Environment for current observations: Nox 2.1.0, macOS arm64. Chronos does not modify the Nox compiler, runtime, or standard library.
+Original observations used Nox 2.1.0 on macOS arm64. The latest audit used Nox 2.1.98 on macOS arm64 on 2026-11-13. Chronos does not modify the Nox compiler, runtime, or standard library.
 
 ## NXL-001 — production-shaped optional primitive fields reach unsupported codegen
 
-Status: open
+Status: open; no reliable minimal reproducer is available for a Nox 2.1.98 re-audit
 
 Observed: 2026-11-10
 
@@ -24,7 +24,7 @@ Fix verification:
 
 ## NXL-002 — mutating a class-valued list parameter with `insert` reaches unsupported codegen
 
-Status: open
+Status: resolved in Nox 2.1.98; Chronos workaround retained because no refactor is required
 
 Observed: 2026-11-10
 
@@ -48,6 +48,8 @@ Fix verification:
 2. Restore the helper-shaped scheduler implementation.
 3. Run the full scheduler matrix before removing the workaround.
 
+Resolution evidence (2026-11-13): the retained reproducer printed `7` on both LLVM and QBE with Nox 2.1.98. Chronos does not immediately reintroduce the helper because the local-list implementation is correct and a refactor has no current product benefit.
+
 ## NXL-003 — local names matching imported module aliases resolve as modules
 
 Status: open
@@ -69,9 +71,11 @@ noxc check --backend qbe proofs/limitations/module_alias_shadow.nox -> same erro
 
 Fix verification: compile `proofs/limitations/module_alias_shadow.nox` and confirm the local binding wins consistently on LLVM and QBE, printing `1`.
 
+Latest audit (2026-11-13, Nox 2.1.98): still open. `noxc check` reports the same `UndefinedFunction` errors for `clock.advance` and `clock.now_utc`.
+
 ## NXL-004 — pre-epoch `DateTime.to_epoch_ms()` did not complete
 
-Status: open
+Status: resolved in Nox 2.1.98; Chronos nonnegative public range remains an explicit compatibility decision
 
 Observed: 2026-11-10
 
@@ -86,6 +90,8 @@ Fix verification:
 1. Run bounded pre-epoch round trips around 1969-12-31 and earlier leap-year boundaries.
 2. Verify identical finite results on LLVM and QBE.
 3. Extend Chronos timestamp range only after regression tests cover conversion and cron traversal.
+
+Resolution evidence (2026-11-13): the retained reproducer completed on LLVM and QBE with Nox 2.1.98 and printed `-432000000`. Chronos continues to reject negative `UtcInstant` values until a separate versioned range expansion includes calendar, trigger, and cron regression coverage.
 
 ## NXL-005 — omitted default optional argument fails across a module boundary
 
@@ -117,6 +123,29 @@ Fix verification:
 1. Reduce the failure to an exported function with a protocol parameter, closure parameter, and trailing optional class default.
 2. Verify an importing module can omit the argument on LLVM and QBE.
 3. Consider consolidating the companion factories only after the original call form remains source-compatible.
+
+Latest audit (2026-11-13, Nox 2.1.98): still open. The producer module passes checking, while the importing consumer still fails with `TypeMismatch` when it omits the trailing optional argument.
+
+## NXL-006 — task cancellation cannot interrupt non-awaiting callback work
+
+Status: open capability limitation
+
+Observed: 2026-11-09; reverified 2026-11-13 with Nox 2.1.98
+
+Affected stage: hosted task runtime and shutdown/timeout design
+
+`Task.cancel()` is cooperative. A task observes cancellation at an `await`/cancellation checkpoint, but pure computation with no such point runs to completion. `proofs/concurrency_model.nox` cancels both forms: the awaiting worker raises `CancelledError`, while the pure loop still returns `49995000` on LLVM and QBE.
+
+Chronos impact: an inline trusted handler cannot be interrupted safely. Chronos therefore offers no immediate callback cancellation or execution-timeout guarantee. `stop()` lets the active inline callback finish and prevents every later callback from starting.
+
+This is not treated as a correctness bug in documented cooperative cancellation. It is tracked because a future Nox isolation or hard-cancellation primitive would enable a distinct executor with enforceable timeout semantics.
+
+Fix/capability verification:
+
+1. Provide an explicitly isolated execution primitive whose termination does not corrupt the host runtime or shared state.
+2. Demonstrate bounded termination of non-awaiting work on LLVM and QBE.
+3. Keep cooperative `Task.cancel()` semantics distinct from hard isolation in Nox documentation and types.
+4. Add a separate Chronos executor only after handler ownership, cleanup, and result propagation pass integration tests.
 
 ## New entry template
 

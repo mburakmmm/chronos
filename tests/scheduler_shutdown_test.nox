@@ -1,0 +1,144 @@
+import nox.test
+from clock import FakeClock
+from errors import SchedulerStateError
+from events import ChronosEvent, EVENT_SCHEDULER_STOPPED
+from job import Job, JobContext, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
+from policy import JobPolicies, catch_up_misfires, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap
+from scheduler import STATE_CREATED, STATE_STOPPED, Scheduler, TickResult
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger, OnceTrigger
+
+class PlannedFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class ShutdownRecorder:
+    calls: int
+    events: list[ChronosEvent]
+    nested_queued: int
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.events = []
+        self.nested_queued = 0
+
+def record_handler(recorder: ShutdownRecorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls += 1
+
+    return handle
+
+def failing_handler(recorder: ShutdownRecorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls += 1
+        raise PlannedFailure("create pending retry")
+
+    return handle
+
+def stop_handler(engine: Scheduler, recorder: ShutdownRecorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls += 1
+        engine.stop()
+
+    return handle
+
+def queue_then_stop_handler(engine: Scheduler, source_clock: FakeClock, recorder: ShutdownRecorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        recorder.calls += 1
+        source_clock.advance(Duration(30))
+        nested: TickResult = engine.tick()
+        recorder.nested_queued += nested.overlap_queued
+        engine.stop()
+
+    return handle
+
+def record_event(recorder: ShutdownRecorder) -> (ChronosEvent) -> None:
+    def observe(occurrence: ChronosEvent) -> None:
+        recorder.events.append(occurrence)
+
+    return observe
+
+def count_events(recorder: ShutdownRecorder, kind: str) -> int:
+    count: int = 0
+    for occurrence in recorder.events:
+        if occurrence.kind == kind:
+            count += 1
+    return count
+
+def tick_rejected(engine: Scheduler) -> bool:
+    try:
+        engine.tick()
+    except SchedulerStateError as error:
+        return error.state == STATE_STOPPED
+    return False
+
+def start_rejected(engine: Scheduler) -> bool:
+    try:
+        engine.start()
+    except SchedulerStateError as error:
+        return error.state == STATE_STOPPED
+    return False
+
+created_clock: FakeClock = FakeClock(1000, 100)
+created_recorder: ShutdownRecorder = ShutdownRecorder()
+created_engine: Scheduler = Scheduler(created_clock, 2, 1)
+created_engine.add_listener(record_event(created_recorder))
+created_engine.add(make_utc_job("created-stop", "Created stop", OnceTrigger(UtcInstant(1000)), record_handler(created_recorder), True, UtcInstant(1000), []))
+nox.test.assert_eq_str(created_engine.state(), STATE_CREATED, "created scheduler has not started")
+created_engine.stop()
+created_engine.stop()
+nox.test.assert_eq_str(created_engine.state(), STATE_STOPPED, "stop before start is terminal and idempotent")
+nox.test.assert_eq_int(created_recorder.calls, 0, "stop before start invokes no callback")
+nox.test.assert_eq_int(count_events(created_recorder, EVENT_SCHEDULER_STOPPED), 1, "idempotent stop emits one terminal event")
+nox.test.assert_true(tick_rejected(created_engine), "tick is rejected after pre-start stop")
+nox.test.assert_true(start_rejected(created_engine), "stopped scheduler cannot restart")
+
+retry_clock: FakeClock = FakeClock(2000, 200)
+retry_recorder: ShutdownRecorder = ShutdownRecorder()
+retry_engine: Scheduler = Scheduler(retry_clock, 2, 1)
+retry_engine.add_listener(record_event(retry_recorder))
+retry_config: JobPolicies = JobPolicies(fire_once_misfires(Duration(MAX_MS)), forbid_overlap(), fixed_retry(Duration(10), 2))
+retry_job: Job = make_utc_job_with_policies("pending-retry", "Pending retry", OnceTrigger(UtcInstant(2000)), failing_handler(retry_recorder), True, UtcInstant(2000), [], retry_config)
+retry_engine.add(retry_job)
+retry_engine.start()
+nox.test.assert_eq_int(retry_engine.tick().retries_scheduled, 1, "failure creates one pending retry before stop")
+nox.test.assert_true(retry_engine.next_retry_monotonic("pending-retry") is not None, "pending retry remains inspectable")
+retry_engine.stop()
+retry_engine.stop()
+nox.test.assert_eq_str(retry_engine.state(), STATE_STOPPED, "idle running scheduler stops immediately")
+retry_clock.advance(Duration(10))
+nox.test.assert_true(tick_rejected(retry_engine), "pending retry cannot dispatch after stop")
+nox.test.assert_eq_int(retry_recorder.calls, 1, "shutdown starts no retry callback")
+nox.test.assert_eq_int(count_events(retry_recorder, EVENT_SCHEDULER_STOPPED), 1, "retry shutdown emits one stopped event")
+
+queue_clock: FakeClock = FakeClock(3000, 300)
+queue_recorder: ShutdownRecorder = ShutdownRecorder()
+queue_engine: Scheduler = Scheduler(queue_clock, 2, 1)
+queue_engine.add_listener(record_event(queue_recorder))
+queue_config: JobPolicies = JobPolicies(fire_once_misfires(Duration(MAX_MS)), queue_one_overlap(), no_retry())
+queue_job: Job = make_monotonic_job_with_policies("queue-stop", "Queue stop", FixedRateTrigger(MonotonicInstant(300), Duration(10)), queue_then_stop_handler(queue_engine, queue_clock, queue_recorder), True, UtcInstant(3000), [], queue_config)
+queue_engine.add(queue_job)
+queue_engine.start()
+queue_tick: TickResult = queue_engine.tick()
+nox.test.assert_eq_int(queue_tick.succeeded, 1, "active queue-one callback completes during stop")
+nox.test.assert_eq_int(queue_recorder.nested_queued, 1, "overlap was pending before stop request")
+nox.test.assert_eq_str(queue_engine.state(), STATE_STOPPED, "stop inside active callback finalizes after return")
+nox.test.assert_true(tick_rejected(queue_engine), "queued overlap cannot dispatch after stop")
+nox.test.assert_eq_int(queue_recorder.calls, 1, "shutdown starts no queued overlap callback")
+nox.test.assert_eq_int(count_events(queue_recorder, EVENT_SCHEDULER_STOPPED), 1, "active shutdown emits one stopped event")
+
+catch_clock: FakeClock = FakeClock(4000, 400)
+catch_recorder: ShutdownRecorder = ShutdownRecorder()
+catch_engine: Scheduler = Scheduler(catch_clock, 2, 1)
+catch_engine.add_listener(record_event(catch_recorder))
+catch_config: JobPolicies = JobPolicies(catch_up_misfires(Duration(100), 3, 8), forbid_overlap(), no_retry())
+catch_job: Job = make_monotonic_job_with_policies("catch-stop", "Catch stop", FixedRateTrigger(MonotonicInstant(400), Duration(10)), stop_handler(catch_engine, catch_recorder), True, UtcInstant(4000), [], catch_config)
+catch_engine.add(catch_job)
+catch_engine.start()
+catch_clock.advance(Duration(30))
+catch_tick: TickResult = catch_engine.tick()
+nox.test.assert_eq_int(catch_tick.succeeded, 1, "first bounded catch-up callback completes during stop")
+nox.test.assert_eq_int(catch_recorder.calls, 1, "remaining catch-up snapshot never starts")
+nox.test.assert_eq_str(catch_engine.state(), STATE_STOPPED, "catch-up stop reaches terminal state")
+nox.test.assert_true(tick_rejected(catch_engine), "catch-up cannot resume after stop")
+nox.test.assert_eq_int(count_events(catch_recorder, EVENT_SCHEDULER_STOPPED), 1, "catch-up shutdown emits one stopped event")

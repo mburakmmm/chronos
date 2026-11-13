@@ -1,6 +1,6 @@
 # Manual scheduler
 
-Status: experimental Phase 3 manual scheduler for Nox 2.1.0.
+Status: experimental Phase 3 manual scheduler verified with Nox 2.1.98.
 
 ## Ownership and lifecycle
 
@@ -12,10 +12,14 @@ Lifecycle states are `created`, `running`, `stopping`, `stopped`, and `failed`.
 - A stopped scheduler cannot restart.
 - `stop()` is idempotent after a stop request.
 - A stop requested inside the active inline callback enters `stopping`; that callback finishes, the scheduler becomes `stopped`, and no later due callback starts.
+- A stop with no active callback, including before `start()`, reaches `stopped` immediately.
+- Terminal shutdown emits `scheduler-stopped` exactly once and rejects every later `start()` or `tick()`.
 - `tick()` is valid only while running.
 - An unrecoverable failure while recording an execution outcome changes the scheduler to `failed`.
 
 The application decides when to call `tick()`. Chronos does not sleep or busy-loop.
+
+Manual mode owns no worker task, so `stop()` has no background join or graceful-timeout parameter. It provides drain-current semantics only: Chronos never interrupts the active trusted handler, but it revalidates lifecycle before each remaining snapshot dispatch. Thus pending catch-up items, retries, and queued overlaps cannot start after the stop request. Immediate force-cancellation and handler execution timeouts are unsupported because Nox cancellation is cooperative for non-awaiting work.
 
 ## Trigger support
 
