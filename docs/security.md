@@ -33,7 +33,7 @@ The cron parser uses explicit expression/item/expansion bounds. Next-fire calcul
 
 No retry, catch-up, overlap, or task-spawn path may grow without a configured finite maximum.
 
-Fixed retry retains one deadline, upcoming attempt, and original planned timestamp per job, with no retry list or payload history. Attempts are capped at 64 and only the safe `handler-error` category is retryable. Exponential retry remains rejected until its bounded runtime path exists. Misfire skip/fire-once performs at most one dispatch per due job in a tick. Catch-up uses explicit dispatch and evaluation caps, retains no missed-occurrence queue, and reports when its known coalesced count is truncated. Queue-one overlap retains exactly one pending timestamp and one bounded observation cursor per job rather than an occurrence list; later observed overlaps are discarded.
+Fixed and exponential retry retain one deadline, upcoming attempt, and original planned timestamp per job, with no retry list or payload history. Attempts are capped at 64; exponential delay saturates at its configured maximum; and only the safe `handler-error` category is retryable. Misfire skip/fire-once performs at most one dispatch per due job in a tick. Catch-up uses explicit dispatch and evaluation caps, retains no missed-occurrence queue, and reports when its known coalesced count is truncated. Queue-one overlap retains exactly one pending timestamp and one bounded observation cursor per job rather than an occurrence list; later observed overlaps are discarded.
 
 Retries cannot make side effects exactly once. Applications must make side-effecting handlers idempotent or use their own transactional deduplication because a handler may commit an effect before raising.
 

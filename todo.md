@@ -301,7 +301,7 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 
 - [x] Default `no retry` davranışını uygula; desteklenmeyen retry konfigürasyonunu registration'da atomik reddet.
 - [x] Bounded fixed-delay retry uygula.
-- [ ] Bounded exponential backoff ve maximum delay uygula.
+- [x] Bounded exponential backoff ve maximum delay uygula.
 - [x] Maximum attempt sınırı ve attempt count semantiğini tanımla.
 - [x] Retry ile normal recurrence çakışmasını deterministik policy ile çöz.
 - [x] Handler, scheduler, cancellation ve infrastructure failure kategorilerini ayır.
@@ -321,8 +321,8 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 
 ## Test, örnek ve belge
 
-- [ ] Misfire, catch-up cap, overlap, queue-one, retry/backoff/exhaustion ve shutdown testlerini ekle.
-- [ ] Policy kombinasyonları için regression matrisi ekle.
+- [x] Misfire, catch-up cap, overlap, queue-one, retry/backoff/exhaustion ve shutdown testlerini ekle.
+- [x] Policy kombinasyonları için regression matrisi ekle.
 - [x] `retry` örneğini LLVM ve QBE üzerinde derle/çalıştır.
 - [ ] Background mode desteklenirse lifecycle örneğini derle/çalıştır; desteklenmezse limitation'ı açıkça belge.
 - [x] `docs/policies.md`, `docs/scheduler.md`, `docs/concurrency.md`, API ve README güncelle.
@@ -330,7 +330,7 @@ Amaç: Misfire, overlap, retry ve shutdown davranışlarını açık ve sınırl
 
 ### `0.3.0` çıkış kapısı
 
-- [ ] Retry, catch-up, pending overlap, concurrency ve history için sınırsız yol kalmasın.
+- [x] Retry, catch-up, pending overlap, concurrency ve history için sınırsız yol kalmasın.
 - [ ] Shutdown testlerinde hidden hang veya shutdown sonrası callback görülmesin.
 - [ ] Desteklenmeyen cancellation/timeout/background davranışları dürüstçe işaretlenmiş olsun.
 
@@ -505,4 +505,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 3 / `0.3.0`: bounded exponential retry scheduler entegrasyonunu uygula; maximum delay saturation ve exhaustion davranışını fixed retry ile aynı lifecycle kurallarında doğrula.
+Phase 3 / `0.3.0`: inline executor için shutdown semantiğini formalize et; stop-during-callback, pending retry/overlap ve shutdown-sonrası callback invariants'ını tamamlayıp background mode feasibility kararını belge.

@@ -60,6 +60,9 @@ def count_events(recorder: RetryRecorder, kind: str) -> int:
 def fixed_config(delay_ms: int, max_attempts: int) -> JobPolicies:
     return JobPolicies(fire_once_misfires(Duration(MAX_MS)), forbid_overlap(), fixed_retry(Duration(delay_ms), max_attempts))
 
+def exponential_config(base_delay_ms: int, maximum_delay_ms: int, max_attempts: int) -> JobPolicies:
+    return JobPolicies(fire_once_misfires(Duration(MAX_MS)), forbid_overlap(), exponential_retry(Duration(base_delay_ms), Duration(maximum_delay_ms), max_attempts))
+
 def unsupported_add_rejected(engine: Scheduler, target: Job) -> bool:
     try:
         engine.add(target)
@@ -210,13 +213,81 @@ nox.test.assert_eq_int(stopped.retries_scheduled, 0, "shutdown prevents retry sc
 nox.test.assert_eq_str(stop_engine.state(), STATE_STOPPED, "stop completes after active failed callback")
 nox.test.assert_true(stop_engine.next_retry_monotonic("retry-stop") is None, "stopped scheduler owns no retry deadline")
 
-unsupported_clock: FakeClock = FakeClock(50000, 5000)
+exponential_clock: FakeClock = FakeClock(50000, 5000)
+exponential_recorder: RetryRecorder = RetryRecorder()
+exponential_engine: Scheduler = Scheduler(exponential_clock, 2, 1)
+exponential_engine.add_listener(record_event(exponential_recorder))
+exponential_job: Job = make_utc_job_with_policies("retry-exponential", "Retry exponential", OnceTrigger(UtcInstant(50000)), flaky_handler(exponential_recorder, 4), True, UtcInstant(50000), [], exponential_config(10, 25, 5))
+exponential_engine.add(exponential_job)
+exponential_engine.start()
+nox.test.assert_eq_int(exponential_engine.tick().retries_scheduled, 1, "exponential initial failure schedules attempt two")
+exponential_next: MonotonicInstant | None = exponential_engine.next_retry_monotonic("retry-exponential")
+nox.test.assert_true(exponential_next is not None, "exponential attempt two is pending")
+if exponential_next is not None:
+    nox.test.assert_eq_int(exponential_next.value_ms, 5010, "exponential attempt two uses base delay")
+
+exponential_clock.advance(Duration(10))
+nox.test.assert_eq_int(exponential_engine.tick().retries_scheduled, 1, "attempt two schedules attempt three")
+exponential_next = exponential_engine.next_retry_monotonic("retry-exponential")
+if exponential_next is not None:
+    nox.test.assert_eq_int(exponential_next.value_ms, 5030, "exponential attempt three doubles delay")
+
+exponential_clock.advance(Duration(20))
+nox.test.assert_eq_int(exponential_engine.tick().retries_scheduled, 1, "attempt three schedules attempt four")
+exponential_next = exponential_engine.next_retry_monotonic("retry-exponential")
+if exponential_next is not None:
+    nox.test.assert_eq_int(exponential_next.value_ms, 5055, "exponential attempt four saturates at maximum")
+
+exponential_clock.advance(Duration(25))
+nox.test.assert_eq_int(exponential_engine.tick().retries_scheduled, 1, "attempt four schedules terminal attempt")
+exponential_next = exponential_engine.next_retry_monotonic("retry-exponential")
+if exponential_next is not None:
+    nox.test.assert_eq_int(exponential_next.value_ms, 5080, "exponential terminal attempt remains capped")
+
+exponential_clock.advance(Duration(25))
+exponential_terminal: TickResult = exponential_engine.tick()
+nox.test.assert_eq_int(exponential_terminal.succeeded, 1, "exponential terminal attempt succeeds")
+nox.test.assert_eq_int(exponential_terminal.retry_dispatched, 1, "terminal exponential attempt is a retry dispatch")
+nox.test.assert_true(exponential_engine.is_completed("retry-exponential"), "successful exponential one-shot completes")
+nox.test.assert_eq_int(exponential_job.execution_count, 5, "exponential chain obeys total attempt count")
+nox.test.assert_eq_int(count_events(exponential_recorder, EVENT_RETRIED), 4, "exponential chain emits one event per scheduled retry")
+for i in range(5):
+    nox.test.assert_eq_int(exponential_recorder.attempts[i], i + 1, "exponential context attempts increase monotonically")
+
+exponential_event_index: int = 0
+for occurrence in exponential_recorder.events:
+    if occurrence.kind == EVENT_RETRIED:
+        if exponential_event_index == 0:
+            nox.test.assert_eq_int(occurrence.scheduled_time_ms, 5010, "first exponential event uses base deadline")
+        elif exponential_event_index == 1:
+            nox.test.assert_eq_int(occurrence.scheduled_time_ms, 5030, "second exponential event uses doubled deadline")
+        elif exponential_event_index == 2:
+            nox.test.assert_eq_int(occurrence.scheduled_time_ms, 5055, "third exponential event reaches cap")
+        else:
+            nox.test.assert_eq_int(occurrence.scheduled_time_ms, 5080, "later exponential event stays capped")
+        exponential_event_index += 1
+
+exponential_exhaust_clock: FakeClock = FakeClock(55000, 5500)
+exponential_exhaust_recorder: RetryRecorder = RetryRecorder()
+exponential_exhaust_engine: Scheduler = Scheduler(exponential_exhaust_clock, 2)
+exponential_exhaust_job: Job = make_utc_job_with_policies("exponential-exhaust", "Exponential exhaust", OnceTrigger(UtcInstant(55000)), flaky_handler(exponential_exhaust_recorder, 3), True, UtcInstant(55000), [], exponential_config(2, 4, 3))
+exponential_exhaust_engine.add(exponential_exhaust_job)
+exponential_exhaust_engine.start()
+nox.test.assert_eq_int(exponential_exhaust_engine.tick().retries_scheduled, 1, "exponential exhaustion schedules attempt two")
+exponential_exhaust_clock.advance(Duration(2))
+nox.test.assert_eq_int(exponential_exhaust_engine.tick().retries_scheduled, 1, "exponential exhaustion schedules final attempt")
+exponential_exhaust_clock.advance(Duration(4))
+exponential_exhausted: TickResult = exponential_exhaust_engine.tick()
+nox.test.assert_eq_int(exponential_exhausted.failed, 1, "exponential final failure is recorded")
+nox.test.assert_eq_int(exponential_exhausted.retries_scheduled, 0, "exponential exhaustion schedules nothing further")
+nox.test.assert_true(exponential_exhaust_engine.is_completed("exponential-exhaust"), "exhausted exponential one-shot completes")
+nox.test.assert_eq_int(exponential_exhaust_job.execution_count, 3, "exponential exhaustion stops at configured attempts")
+
+unsupported_clock: FakeClock = FakeClock(57000, 5700)
 unsupported_engine: Scheduler = Scheduler(unsupported_clock, 4)
-exponential_job: Job = make_utc_job_with_policies("exponential", "Exponential", OnceTrigger(UtcInstant(50000)), flaky_handler(RetryRecorder(), 1), True, UtcInstant(50000), [], JobPolicies(fire_once_misfires(Duration(100)), forbid_overlap(), exponential_retry(Duration(10), Duration(20), 3)))
-nox.test.assert_true(unsupported_add_rejected(unsupported_engine, exponential_job), "exponential scheduler integration remains gated")
-catch_job: Job = make_monotonic_job_with_policies("retry-catch", "Retry catch", FixedRateTrigger(MonotonicInstant(5000), Duration(10)), flaky_handler(RetryRecorder(), 1), True, UtcInstant(50000), [], JobPolicies(catch_up_misfires(Duration(100), 2, 4), forbid_overlap(), fixed_retry(Duration(10), 2)))
+catch_job: Job = make_monotonic_job_with_policies("retry-catch", "Retry catch", FixedRateTrigger(MonotonicInstant(5700), Duration(10)), flaky_handler(RetryRecorder(), 1), True, UtcInstant(57000), [], JobPolicies(catch_up_misfires(Duration(100), 2, 4), forbid_overlap(), exponential_retry(Duration(10), Duration(20), 3)))
 nox.test.assert_true(unsupported_add_rejected(unsupported_engine, catch_job), "catch-up and retry combination is rejected")
-queue_job: Job = make_utc_job_with_policies("retry-queue", "Retry queue", CronTrigger(parse("* * * * *")), flaky_handler(RetryRecorder(), 1), True, UtcInstant(50000), [], JobPolicies(fire_once_misfires(Duration(100)), queue_one_overlap(), fixed_retry(Duration(10), 2)))
+queue_job: Job = make_utc_job_with_policies("retry-queue", "Retry queue", CronTrigger(parse("* * * * *")), flaky_handler(RetryRecorder(), 1), True, UtcInstant(57000), [], JobPolicies(fire_once_misfires(Duration(100)), queue_one_overlap(), fixed_retry(Duration(10), 2)))
 nox.test.assert_true(unsupported_add_rejected(unsupported_engine, queue_job), "queue-one and retry combination is rejected")
 nox.test.assert_eq_int(len(unsupported_engine.list_jobs()), 0, "unsupported retry combinations fail atomically")
 

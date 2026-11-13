@@ -336,7 +336,7 @@ noxc check --profile freestanding scheduler.nox     -> exit 0
 
 ## Phase 3 bounded fixed-retry evidence
 
-Fixed retry tests verify monotonic delay deadlines, attempts one through the configured total cap, original occurrence identity across attempts, late single dispatch, success, exhaustion, removal, and explicit deadline-overflow failure. Regular recurrence is suspended during retry and resumes from the unchanged fixed-rate anchor or terminal fixed-delay completion. Unsupported exponential, catch-up-plus-retry, and queue-one-plus-retry configurations fail atomically. Execution and retry events expose bounded attempt/deadline data without raw exception payloads.
+Fixed retry tests verify monotonic delay deadlines, attempts one through the configured total cap, original occurrence identity across attempts, late single dispatch, success, exhaustion, removal, and explicit deadline-overflow failure. Regular recurrence is suspended during retry and resumes from the unchanged fixed-rate anchor or terminal fixed-delay completion. Catch-up-plus-retry and queue-one-plus-retry configurations fail atomically. Execution and retry events expose bounded attempt/deadline data without raw exception payloads.
 
 ```text
 noxc test tests                                      -> 17 passed, 0 failed
@@ -345,5 +345,18 @@ noxc run --backend qbe tests/scheduler_retry_test.nox  -> exit 0
 noxc run --backend llvm examples/retry.nox          -> exit 0
 noxc run --backend qbe examples/retry.nox           -> exit 0
 noxc check --profile freestanding events.nox        -> exit 0
+noxc check --profile freestanding scheduler.nox     -> exit 0
+```
+
+## Phase 3 bounded exponential-retry evidence
+
+Exponential scheduler tests verify base delay, doubling, maximum-delay saturation across repeated attempts, terminal success, and a separate exhaustion chain. The scheduler reuses the same single monotonic deadline state as fixed retry; it adds no retry collection or background waiter. Catch-up and queue-one combinations remain atomically rejected for both retry modes.
+
+```text
+noxc test tests                                      -> 17 passed, 0 failed
+noxc run --backend llvm tests/scheduler_retry_test.nox -> exit 0
+noxc run --backend qbe tests/scheduler_retry_test.nox  -> exit 0
+noxc run --backend llvm examples/exponential_retry.nox -> exit 0
+noxc run --backend qbe examples/exponential_retry.nox  -> exit 0
 noxc check --profile freestanding scheduler.nox     -> exit 0
 ```

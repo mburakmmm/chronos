@@ -27,7 +27,7 @@ The time domain is never inferred from the integer. Scheduler code must construc
 
 Retry attempts preserve the original occurrence's planned timestamp and domain while incrementing `attempt`. Total execution count counts every callback attempt; the bounded latest outcome replaces the preceding attempt summary and no per-attempt history is retained.
 
-Fixed-delay jobs are a distinct subtype rather than a pure monotonic trigger. Their first deadline is registration plus delay; every later deadline is actual monotonic completion plus delay. An overdue first deadline coalesces into one execution at the observed monotonic time rather than a catch-up loop. Without retry, success or handler failure is terminal for that occurrence. With fixed retry, the regular delay begins only after terminal success or attempt exhaustion. Removing the job prevents future runs but cannot interrupt the active inline callback.
+Fixed-delay jobs are a distinct subtype rather than a pure monotonic trigger. Their first deadline is registration plus delay; every later deadline is actual monotonic completion plus delay. An overdue first deadline coalesces into one execution at the observed monotonic time rather than a catch-up loop. Without retry, success or handler failure is terminal for that occurrence. With fixed or exponential retry, the regular delay begins only after terminal success or attempt exhaustion. Removing the job prevents future runs but cannot interrupt the active inline callback.
 
 Handlers are trusted in-process application code. Chronos does not serialize a closure or function pointer, evaluate strings, or reconstruct executable code. A future persistent definition will store a handler key and require the application to register its trusted implementation.
 

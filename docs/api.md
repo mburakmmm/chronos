@@ -219,7 +219,7 @@ See `docs/events.md` for field semantics, ordering, reentrancy, retention, and s
 
 ## `chronos.policy`
 
-This configuration/calculation surface remains pure. `JobPolicies` bundles misfire, overlap, and retry settings. Explicit job factories accept the bundle; scheduler dispatch implements skip/fire-once/catch-up, forbid/queue-one, no-retry, and fixed retry under documented combination limits.
+This configuration/calculation surface remains pure. `JobPolicies` bundles misfire, overlap, and retry settings. Explicit job factories accept the bundle; scheduler dispatch implements skip/fire-once/catch-up, forbid/queue-one, no-retry, fixed retry, and exponential retry under documented combination limits.
 
 ### `MisfirePolicy`
 
@@ -232,7 +232,7 @@ This configuration/calculation surface remains pure. `JobPolicies` bundles misfi
 
 Grace uses milliseconds and an inclusive boundary. Catch-up dispatch is capped by `MAX_CATCH_UP_COUNT` (1,024) and evaluation by `MAX_CATCH_UP_EVALUATION_STEPS` (10,000).
 
-`default_job_policies()` returns fire-once with maximum grace, forbid, and no-retry. `copy_job_policies(source)` makes a defensive copy. Fixed retry is accepted except with catch-up or queue-one; exponential retry remains rejected. Catch-up is accepted except for completion-anchored fixed-delay jobs.
+`default_job_policies()` returns fire-once with maximum grace, forbid, and no-retry. `copy_job_policies(source)` makes a defensive copy. Fixed and exponential retry are accepted except with catch-up or queue-one. Catch-up is accepted except for completion-anchored fixed-delay jobs.
 
 ### `OverlapPolicy`
 

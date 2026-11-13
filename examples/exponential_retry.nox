@@ -1,0 +1,54 @@
+from clock import FakeClock
+from job import Job, JobContext, make_utc_job_with_policies
+from policy import JobPolicies, exponential_retry, fire_once_misfires, forbid_overlap
+from scheduler import Scheduler
+from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from trigger import OnceTrigger
+
+class PlannedFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class State:
+    calls: int
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+def flaky_handler(state: State) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        state.calls += 1
+        print("attempt", context.attempt)
+        if state.calls < 4:
+            raise PlannedFailure("retry with backoff")
+
+    return handle
+
+source_clock: FakeClock = FakeClock(1000, 500)
+engine: Scheduler = Scheduler(source_clock, 8)
+state: State = State()
+config: JobPolicies = JobPolicies(fire_once_misfires(Duration(MAX_MS)), forbid_overlap(), exponential_retry(Duration(10), Duration(15), 4))
+target: Job = make_utc_job_with_policies("exponential", "Exponential retry", OnceTrigger(UtcInstant(1000)), flaky_handler(state), True, UtcInstant(1000), [], config)
+engine.add(target)
+engine.start()
+
+engine.tick()
+next_retry: MonotonicInstant | None = engine.next_retry_monotonic("exponential")
+if next_retry is not None:
+    print("next", next_retry.value_ms)
+
+source_clock.advance(Duration(10))
+engine.tick()
+next_retry = engine.next_retry_monotonic("exponential")
+if next_retry is not None:
+    print("next", next_retry.value_ms)
+
+source_clock.advance(Duration(15))
+engine.tick()
+next_retry = engine.next_retry_monotonic("exponential")
+if next_retry is not None:
+    print("next", next_retry.value_ms)
+
+source_clock.advance(Duration(15))
+engine.tick()
+engine.stop()

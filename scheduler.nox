@@ -3,7 +3,7 @@ from errors import DuplicateJobError, InvalidJobError, InvalidPolicyError, JobNo
 from events import ChronosEvent, EVENT_CANCELLED, EVENT_COALESCED, EVENT_FAILED, EVENT_MISFIRED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED, EVENT_REGISTERED, EVENT_RETRIED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
 from executor import ExecutionOutcome, InlineExecutor
 from job import Job, JobContext
-from policy import MISFIRE_CATCH_UP, MISFIRE_SKIP, OVERLAP_QUEUE_ONE, RETRY_EXPONENTIAL, RETRY_NONE, JobPolicies
+from policy import MISFIRE_CATCH_UP, MISFIRE_SKIP, OVERLAP_QUEUE_ONE, RETRY_NONE, JobPolicies
 from registry import JobRegistry
 from time import Duration, MAX_MS, MonotonicInstant, UtcInstant, add_monotonic_duration
 
@@ -630,8 +630,6 @@ class Scheduler:
         policy_config: JobPolicies = target.policy_config()
         if policy_config.misfire.kind == MISFIRE_CATCH_UP and target.trigger_kind() == "fixed-delay":
             raise InvalidPolicyError("catch-up is not defined for completion-anchored fixed-delay")
-        if policy_config.retry.kind == RETRY_EXPONENTIAL:
-            raise InvalidPolicyError("exponential retry scheduler integration is not implemented")
         if policy_config.retry.kind != RETRY_NONE and policy_config.misfire.kind == MISFIRE_CATCH_UP:
             raise InvalidPolicyError("retry cannot be combined with catch-up")
         if policy_config.retry.kind != RETRY_NONE and policy_config.overlap.kind == OVERLAP_QUEUE_ONE:
