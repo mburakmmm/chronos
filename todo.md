@@ -343,9 +343,9 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 ## Backend ve platform matrisi
 
 - [x] LLVM ve QBE tam test/örnek matrisini çalıştır: iki backend'de 18 test ve 16 örnek geçti.
-- [x] Nox 2.1.98 QBE cooperative scheduler, task-local sleep ve channel wake davranışını Phase 4 compatibility kaydıyla sabitle.
+- [x] Nox 2.1.111 üzerinde QBE cooperative scheduler, task-local sleep ve channel wake davranışını Phase 4 compatibility kaydıyla sabitle.
 - [x] macOS arm64 için Nox/compiler/backend sürümleriyle gerçek yerel kanıt oluştur.
-- [x] Linux ve Windows için gerçek CI olmadığı için destek ilan etme; compatibility tablosunda unverified bırak.
+- [x] Linux x64/arm64, macOS arm64 ve Windows x64 için checksum-pinned Nox 2.1.111 ile gerçek GitHub Actions kanıtı oluştur.
 - [x] Clock-bağımsız 11 core modülün LLVM ve QBE freestanding type-check matrisini çalıştır; `SystemClock` capability sınırını ayrıca doğrula.
 - [x] Platform/backend sonuçlarını `docs/compatibility.md` içine tarih ve compiler sürümüyle kaydet.
 
@@ -365,11 +365,11 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 - [ ] Core bağımlılığı yaratmadan ayrı Nyx/Aether integration örneklerini, ilgili sürümlerle gerçekten derlenebiliyorsa ekle.
 - [ ] Breaking 0.x değişikliklerini migration guide ve changelog'a yaz.
 - [ ] Security review: parser complexity, secret leakage, callback authority, resource bounds, arbitrary execution.
-- [ ] Tüm executable örnekleri CI içinde derle ve çalıştır.
+- [x] Tüm 16 executable örneği CI içinde LLVM ve QBE ile derle ve çalıştır.
 
 ### `0.4.0` çıkış kapısı
 
-- [ ] Uyumluluk tablosundaki her destek iddiasının çalışan CI veya kaydedilmiş test kanıtı olsun.
+- [x] Uyumluluk tablosundaki her destek iddiasının çalışan CI veya kaydedilmiş test kanıtı olsun; diğer mimarileri açıkça unverified bırak.
 - [ ] Public MVP API'si testli, belgeli ve gereksiz framework bağımlılıklarından arınmış olsun.
 - [ ] Benchmark sonuçları correctness tavizi olmadan kabul edilebilir sınırda olsun.
 

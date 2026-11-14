@@ -68,6 +68,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Explicit platform matrix that keeps Linux, Windows, and untested architectures unverified instead of inferring support from macOS results.
 - Professional GitHub repository surface with a verified quick start, feature/support matrix, documentation map, security and support policies, structured issue forms, pull request checklist, and code ownership.
 - Checksum-pinned cross-platform CI for Linux x64/arm64, macOS arm64, and Windows x64, running the full LLVM/QBE test, example, concurrency, and freestanding matrix on Nox 2.1.111.
+- First complete cross-platform CI evidence: all four platform jobs passed in GitHub Actions run 43460710827 for commit `a8211b0`.
 - NXL-007 records the Nox 2.1.111 package self-import resolution gap; external `noxc add` consumption is not advertised until source-root and consumer imports share one safe form.
 
 ### Limitations
@@ -75,7 +76,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Jitter is not implemented; fixed and exponential retry delays are deterministic.
 - Retry cannot yet be combined with catch-up or queue-one overlap. Completion-anchored fixed-delay rejects catch-up because it has no missed planned-occurrence sequence.
 - Queue-one overlap is verified only for the inline, single-threaded reentrant scheduler model; it is not a concurrent-executor or thread-safety claim.
-- Platform and backend compatibility work is incomplete.
+- Platform coverage outside Linux x64/arm64, macOS arm64, and Windows x64 remains unverified.
 - Chronos still rejects UTC timestamps before 1970-01-01 as an explicit public-range decision, although the original Nox negative-epoch runtime issue is resolved in 2.1.98.
 - Background scheduling is not a supported Chronos mode yet. Nox wait/wake primitives are verified, but worker ownership, bounded command/response handling, and lifecycle integration remain unimplemented.
 - Inline handlers cannot be force-cancelled or given an enforceable execution timeout; terminal shutdown drains only the active callback and starts no later work.

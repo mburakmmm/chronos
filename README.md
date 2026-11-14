@@ -134,7 +134,7 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 | macOS | arm64 | LLVM and QBE |
 | Windows | x64 | LLVM and QBE |
 
-The matrix runs all deterministic tests, every executable example, concurrency proofs, and freestanding module checks with checksum-pinned Nox 2.1.111 release archives. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
+The matrix runs all deterministic tests, every executable example, concurrency proofs, and freestanding module checks with checksum-pinned Nox 2.1.111 release archives. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
 
 Run the complete local matrix with:
 

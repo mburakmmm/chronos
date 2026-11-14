@@ -379,8 +379,10 @@ noxc run --backend qbe proofs/background_command_model.nox  -> exit 0, 7
 
 Manual mode therefore has a complete drain-current shutdown contract without claiming interruption, timeout enforcement, or a production background scheduler. Cooperative non-interruption of pure work is tracked as NXL-006.
 
-## Phase 4 local compatibility baseline
+## Phase 4 compatibility baseline
 
-The 2026-11-13 Nox 2.1.111 local matrix ran all 18 deterministic test programs and all 16 executable examples on both LLVM and QBE. Eleven clock-independent library modules type-checked in the freestanding profile on both backends. `system_clock.nox` passed hosted checking and produced the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
+The 2026-11-14 Nox 2.1.111 local matrix ran all 18 deterministic test programs and all 16 executable examples on both LLVM and QBE. Eleven clock-independent library modules type-checked in the freestanding profile on both backends. `system_clock.nox` passed hosted checking and produced the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
 
 The scheduler sleep probe printed `fast sleeper`, the bounded command-channel proof printed `7`, and the cancellation proof ended with `49995000` on both backends. The exact development platform and unsupported platform rows are recorded in `docs/compatibility.md`.
+
+[GitHub Actions run 43460710827](https://github.com/mburakmmm/chronos/actions/runs/43460710827) repeated that full matrix successfully on Linux x64, Linux arm64, macOS arm64, and Windows x64 for commit `a8211b0`. This is execution evidence only for those runner architectures and Nox 2.1.111; it does not imply support for untested platforms or Nox versions.

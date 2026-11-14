@@ -1,21 +1,21 @@
 # Compatibility
 
-Status: Phase 4 local compatibility baseline; not yet a cross-platform support commitment.
+Status: Phase 4 cross-platform compatibility baseline.
 
-Last verified: 2026-11-13
+Last verified: 2026-11-14
 
 ## Verified development target
 
 | Component | Verified value | Evidence status |
 |---|---|---|
-| Nox compiler | `noxc 2.1.111` | verified locally |
+| Nox compiler | `noxc 2.1.111` | verified locally and in cross-platform CI |
 | Host | macOS 27.2 (`Darwin 27.2.0`) arm64 | verified locally |
 | LLVM backend | Apple clang 21.0.0, arm64 target | full test/example matrix passed |
 | QBE backend | Nox-installed QBE toolchain | full test/example matrix passed |
 | Default profile | hosted | core, scheduler, examples, and `SystemClock` verified |
 | Freestanding profile | no clock capability | 11 clock-independent modules type-checked on LLVM and QBE |
 
-This table records a reproducible development baseline, not a promise that every earlier or later Nox release behaves identically. A minimum supported Nox version has not been selected.
+This table records a reproducible development baseline, not a promise that every earlier or later Nox release behaves identically. A minimum supported Nox version has not been selected. The complete cross-platform run is recorded in [GitHub Actions run 43460710827](https://github.com/mburakmmm/chronos/actions/runs/43460710827) for commit `a8211b0`.
 
 ## Backend matrix
 
@@ -57,13 +57,14 @@ The following modules type-check with `--profile freestanding` on LLVM and QBE:
 
 | Platform | Status |
 |---|---|
-| macOS arm64 | locally verified with the matrix above |
-| Linux | unverified; no support claim yet |
-| Windows | unverified; no support claim yet |
+| Linux x64 | verified in GitHub Actions with the complete matrix above |
+| Linux arm64 | verified in GitHub Actions with the complete matrix above |
+| macOS arm64 | verified locally and in GitHub Actions with the complete matrix above |
+| Windows x64 | verified in GitHub Actions with the complete matrix above |
 | Other architectures | unverified; no support claim yet |
 | Freestanding targets | pure/manual modules type-check; no hosted clock or runtime execution claim |
 
-Linux, Windows, and other architecture rows may move to verified only after real CI or recorded execution on those platforms. Documentation must not infer portability solely from successful macOS compilation.
+The CI workflow uses checksum-pinned Nox release archives on `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-15`, and `windows-latest`. Other architecture rows may move to verified only after real CI or recorded execution on those platforms. Documentation must not infer portability beyond the tested runner matrix.
 
 ## Reproduction commands
 
