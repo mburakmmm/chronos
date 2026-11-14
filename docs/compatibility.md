@@ -64,7 +64,7 @@ The following modules type-check with `--profile freestanding` on LLVM and QBE:
 | Other architectures | unverified; no support claim yet |
 | Freestanding targets | pure/manual modules type-check; no hosted clock or runtime execution claim |
 
-The CI workflow uses checksum-pinned Nox release archives on `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-15`, and `windows-latest`. Other architecture rows may move to verified only after real CI or recorded execution on those platforms. Documentation must not infer portability beyond the tested runner matrix.
+The CI workflow uses checksum-pinned Nox release archives on `ubuntu-24.04`, `ubuntu-24.04-arm`, `macos-15`, and `windows-latest`. Other architecture rows may move to verified only after real CI or recorded execution on those platforms. Documentation must not infer portability beyond the tested runner matrix.
 
 ## Reproduction commands
 

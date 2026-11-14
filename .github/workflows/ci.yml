@@ -27,7 +27,7 @@ jobs:
       matrix:
         include:
           - name: Linux x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             platform: linux-x64
             sha256: 6ccbe9f9c20813e14bab767c07622a92f680d6d9701b4d941f698a260d4e4b13
           - name: Linux arm64
@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -68,7 +68,7 @@ jobs:
           (Join-Path $env:RUNNER_TEMP "zig-x86_64-windows-$zigVersion") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.x"
 

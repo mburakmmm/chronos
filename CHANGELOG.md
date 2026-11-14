@@ -69,6 +69,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Professional GitHub repository surface with a verified quick start, feature/support matrix, documentation map, security and support policies, structured issue forms, pull request checklist, and code ownership.
 - Checksum-pinned cross-platform CI for Linux x64/arm64, macOS arm64, and Windows x64, running the full LLVM/QBE test, example, concurrency, and freestanding matrix on Nox 2.1.111.
 - First complete cross-platform CI evidence: all four platform jobs passed in GitHub Actions run 43460710827 for commit `a8211b0`.
+- Node.js 24-based checkout/Python actions and an explicit Ubuntu 24.04 x64 runner, avoiding deprecated action runtimes and `ubuntu-latest` image drift.
 - NXL-007 records the Nox 2.1.111 package self-import resolution gap; external `noxc add` consumption is not advertised until source-root and consumer imports share one safe form.
 
 ### Limitations
