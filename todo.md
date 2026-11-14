@@ -354,7 +354,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 - [x] Cron parse ve dense/sparse next-fire benchmark'larını LLVM/QBE için ekle ve Nox 2.1.111 baseline'ını kaydet.
 - [x] 100/1k/10k job için none-due, one-due ve all-due lookup benchmark'larını ekle.
 - [x] Scheduler taramasını incele/ölç: internal millisecond loop yok; her application-driven tick tüm schedule'ları tarıyor ve mevcut registry lookup/sıralama yolu karesel büyüyor.
-- [ ] Min-heap veya başka yapı yalnızca ölçüm doğru ihtiyacı gösterirse ve Nox implementasyonu doğrulanırsa kullan.
+- [x] Ölçüm sonrası O(1) identity indexleri ve deterministic keyed sort uygula; 10k no-due iki optimize koşuda 0.04–0.11 ms olduğu için stale-entry riski taşıyan heap'i şimdilik ertele.
 - [ ] Wake latency, schedule drift ve callback execution süresini ayrı ölç.
 - [ ] Memory retention sınırlarını job metadata, event, error ve history için test et.
 

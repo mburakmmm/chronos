@@ -14,24 +14,27 @@ class RegisteredJob:
 
 class JobRegistry:
     entries: list[RegisteredJob]
+    by_id: dict[str, RegisteredJob]
     max_jobs: int
 
     def __init__(self, max_jobs: int) -> None:
         if max_jobs < 1 or max_jobs > MAX_REGISTRY_JOBS:
             raise InvalidJobError("registry max jobs must be between 1 and 10000")
         self.entries = []
+        self.by_id = {}
         self.max_jobs = max_jobs
 
     def count(self) -> int:
 
-        return len(self.entries)
+        return len(self.by_id)
 
     def contains(self, job_id: str) -> bool:
 
-        index: int = self._find_index(job_id)
-        if index < 0:
+        if job_id not in self.by_id:
             return False
-        self._assert_entry_intact(index)
+        registered: RegisteredJob = self.by_id[job_id]
+        if registered.job_id != job_id or registered.job.job_id != job_id:
+            raise InvalidJobError("registered job ID was mutated")
         return True
 
     def add(self, job: Job) -> None:
@@ -47,15 +50,18 @@ class JobRegistry:
             if job.job_id < self.entries[i].job_id:
                 insertion_index = i
                 break
-        self.entries.insert(insertion_index, RegisteredJob(job))
+        registered: RegisteredJob = RegisteredJob(job)
+        self.entries.insert(insertion_index, registered)
+        self.by_id[job.job_id] = registered
 
     def find(self, job_id: str) -> Job | None:
 
-        index: int = self._find_index(job_id)
-        if index < 0:
+        if job_id not in self.by_id:
             return None
-        self._assert_entry_intact(index)
-        return self.entries[index].job
+        registered: RegisteredJob = self.by_id[job_id]
+        if registered.job_id != job_id or registered.job.job_id != job_id:
+            raise InvalidJobError("registered job ID was mutated")
+        return registered.job
 
     def get(self, job_id: str) -> Job:
 
@@ -87,6 +93,7 @@ class JobRegistry:
             raise JobNotFoundError(job_id)
         self._assert_entry_intact(index)
         removed: RegisteredJob = self.entries.pop(index)
+        del self.by_id[job_id]
         return removed.job
 
     def _find_index(self, job_id: str) -> int:
@@ -98,10 +105,18 @@ class JobRegistry:
 
     def _assert_entry_intact(self, index: int) -> None:
 
-        if self.entries[index].job.job_id != self.entries[index].job_id:
+        expected_id: str = self.entries[index].job_id
+        if self.entries[index].job.job_id != expected_id:
+            raise InvalidJobError("registered job ID was mutated")
+        if expected_id not in self.by_id:
+            raise InvalidJobError("registry identity index is inconsistent")
+        indexed: RegisteredJob = self.by_id[expected_id]
+        if indexed.job_id != expected_id or indexed.job.job_id != expected_id:
             raise InvalidJobError("registered job ID was mutated")
 
     def _validate_entries(self) -> None:
 
+        if len(self.entries) != len(self.by_id):
+            raise InvalidJobError("registry identity index is inconsistent")
         for i in range(len(self.entries)):
             self._assert_entry_intact(i)

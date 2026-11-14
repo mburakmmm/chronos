@@ -52,6 +52,16 @@ def detects_id_mutation() -> bool:
         return True
     return False
 
+def detects_snapshot_mutation() -> bool:
+    store: JobRegistry = JobRegistry(2)
+    store.add(make_job("stable"))
+    store.by_id["stable"].job_id = "changed"
+    try:
+        store.get("stable")
+    except InvalidJobError:
+        return True
+    return False
+
 store: JobRegistry = JobRegistry(4)
 store.add(make_job("beta"))
 store.add(make_job("alpha"))
@@ -77,8 +87,11 @@ nox.test.assert_true(reports_missing(store), "missing job reported")
 removed: Job = store.remove("beta")
 nox.test.assert_eq_str(removed.job_id, "beta", "remove returns job")
 nox.test.assert_true(not store.contains("beta"), "removed job absent")
+nox.test.assert_eq_int(len(store.by_id), 2, "removal clears identity index")
 store.add(make_job("beta"))
 nox.test.assert_true(store.contains("beta"), "ID reusable after registry removal")
+nox.test.assert_eq_int(len(store.by_id), 3, "re-add restores one identity index entry")
 nox.test.assert_true(enforces_capacity(), "registry capacity bounded")
 nox.test.assert_true(rejects_invalid_capacity(), "invalid registry capacity rejected")
 nox.test.assert_true(detects_id_mutation(), "registered ID mutation detected")
+nox.test.assert_true(detects_snapshot_mutation(), "registered snapshot mutation detected")

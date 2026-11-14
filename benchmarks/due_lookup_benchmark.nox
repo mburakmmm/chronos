@@ -31,8 +31,12 @@ def build_scheduler(job_count: int, due_count: int) -> Scheduler:
 
         # Benchmark-only setup bypasses public add() so registration cost is not
         # mixed into the due-collection measurement.
-        engine.registry.entries.append(RegisteredJob(target))
-        engine.schedules.append(ScheduledEntry(job_id, i + 1, "utc", True, target_ms))
+        registered: RegisteredJob = RegisteredJob(target)
+        engine.registry.entries.append(registered)
+        engine.registry.by_id[job_id] = registered
+        scheduled: ScheduledEntry = ScheduledEntry(job_id, i + 1, "utc", True, target_ms)
+        engine.schedules.append(scheduled)
+        engine.schedule_by_id[job_id] = scheduled
     return engine
 
 def measure(label: str, job_count: int, due_count: int, iterations: int) -> None:
@@ -44,14 +48,14 @@ def measure(label: str, job_count: int, due_count: int, iterations: int) -> None
         checksum += len(candidates)
     print("BENCH", label, job_count, iterations, due_count, timer.elapsed_ms(), checksum)
 
-measure("due_none", 100, 0, 100)
-measure("due_none", 1000, 0, 10)
-measure("due_none", 10000, 0, 1)
+measure("due_none", 100, 0, 10000)
+measure("due_none", 1000, 0, 1000)
+measure("due_none", 10000, 0, 100)
 
-measure("due_one", 100, 1, 100)
-measure("due_one", 1000, 1, 10)
-measure("due_one", 10000, 1, 1)
+measure("due_one", 100, 1, 10000)
+measure("due_one", 1000, 1, 1000)
+measure("due_one", 10000, 1, 100)
 
-measure("due_all", 100, 100, 10)
-measure("due_all", 1000, 1000, 1)
-measure("due_all", 10000, 10000, 1)
+measure("due_all", 100, 100, 1000)
+measure("due_all", 1000, 1000, 100)
+measure("due_all", 10000, 10000, 10)

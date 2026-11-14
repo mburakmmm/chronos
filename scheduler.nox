@@ -1,3 +1,4 @@
+import nox.strings
 from clock import Clock
 from errors import DuplicateJobError, InvalidJobError, InvalidPolicyError, JobNotFoundError, SchedulerStateError
 from events import ChronosEvent, EVENT_CANCELLED, EVENT_COALESCED, EVENT_FAILED, EVENT_MISFIRED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED, EVENT_REGISTERED, EVENT_RETRIED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED, EventDispatcher
@@ -12,6 +13,7 @@ STATE_RUNNING: str = "running"
 STATE_STOPPING: str = "stopping"
 STATE_STOPPED: str = "stopped"
 STATE_FAILED: str = "failed"
+SORT_TIMESTAMP_WIDTH: int = 19
 
 class ScheduledEntry:
     job_id: str
@@ -124,6 +126,14 @@ class DueItem:
         self.attempt = attempt
         self.due_time_ms = due_time_ms
 
+def _due_sort_key(item: DueItem) -> str:
+    domain: str = "0"
+    if item.retry or item.time_domain == "monotonic":
+        domain = "1"
+    timestamp: str = str(item.due_time_ms)
+    padding: int = SORT_TIMESTAMP_WIDTH - nox.strings.byte_len(timestamp)
+    return domain + ":" + nox.strings.repeat("0", padding) + timestamp + ":" + item.job_id
+
 class TickResult:
     succeeded: int
     failed: int
@@ -161,6 +171,7 @@ class Scheduler:
     registry: JobRegistry
     executor: InlineExecutor
     schedules: list[ScheduledEntry]
+    schedule_by_id: dict[str, ScheduledEntry]
     state_value: str
     generation_counter: int
     has_active_job: bool
@@ -173,6 +184,7 @@ class Scheduler:
         self.registry = JobRegistry(max_jobs)
         self.executor = InlineExecutor()
         self.schedules = []
+        self.schedule_by_id = {}
         self.state_value = STATE_CREATED
         self.generation_counter = 0
         self.has_active_job = False
@@ -249,7 +261,9 @@ class Scheduler:
                 next_time_ms = next_monotonic.value_ms
         self.registry.add(target)
         self.generation_counter += 1
-        self.schedules.append(ScheduledEntry(target.job_id, self.generation_counter, time_domain, has_next, next_time_ms))
+        scheduled: ScheduledEntry = ScheduledEntry(target.job_id, self.generation_counter, time_domain, has_next, next_time_ms)
+        self.schedules.append(scheduled)
+        self.schedule_by_id[target.job_id] = scheduled
         self._emit_job_event(EVENT_REGISTERED, target.job_id, time_domain, False, 0)
         if has_next:
             self._emit_job_event(EVENT_SCHEDULED, target.job_id, time_domain, True, next_time_ms)
@@ -261,7 +275,7 @@ class Scheduler:
         if index < 0:
             raise JobNotFoundError(job_id)
         removed: Job = self.registry.remove(job_id)
-        removed_entry: ScheduledEntry = self.schedules[index]
+        removed_entry: ScheduledEntry = self.schedule_by_id[job_id]
         cancelled_time_ms: int = removed_entry.next_time_ms
         cancelled_time_domain: str = removed_entry.time_domain
         if removed_entry.has_pending_overlap:
@@ -270,6 +284,7 @@ class Scheduler:
             cancelled_time_ms = removed_entry.retry_due_monotonic_ms
             cancelled_time_domain = "monotonic"
         self.schedules.pop(index)
+        del self.schedule_by_id[job_id]
         self._emit_job_event(EVENT_CANCELLED, job_id, cancelled_time_domain, removed_entry.has_next or removed_entry.has_retry, cancelled_time_ms)
         return removed
 
@@ -277,10 +292,9 @@ class Scheduler:
 
         self._require_mutable()
         target: Job = self.registry.get(job_id)
-        index: int = self._required_schedule(job_id)
+        entry: ScheduledEntry = self._required_schedule(job_id)
         updated_at: UtcInstant = self.clock.now_utc()
         target.set_enabled(True, updated_at)
-        entry: ScheduledEntry = self.schedules[index]
         entry.clear_overlap()
         entry.clear_overlap_cursor()
         entry.clear_retry()
@@ -304,8 +318,7 @@ class Scheduler:
 
     def next_run_utc(self, job_id: str) -> UtcInstant | None:
 
-        index: int = self._required_schedule(job_id)
-        entry: ScheduledEntry = self.schedules[index]
+        entry: ScheduledEntry = self._required_schedule(job_id)
         if entry.time_domain != "utc":
             raise InvalidJobError("monotonic schedule has no UTC next run")
         if not entry.has_next:
@@ -314,8 +327,7 @@ class Scheduler:
 
     def next_run_monotonic(self, job_id: str) -> MonotonicInstant | None:
 
-        index: int = self._required_schedule(job_id)
-        entry: ScheduledEntry = self.schedules[index]
+        entry: ScheduledEntry = self._required_schedule(job_id)
         if entry.time_domain != "monotonic":
             raise InvalidJobError("UTC schedule has no monotonic next run")
         if not entry.has_next:
@@ -324,13 +336,11 @@ class Scheduler:
 
     def is_completed(self, job_id: str) -> bool:
 
-        index: int = self._required_schedule(job_id)
-        return self.schedules[index].completed
+        return self._required_schedule(job_id).completed
 
     def next_retry_monotonic(self, job_id: str) -> MonotonicInstant | None:
 
-        index: int = self._required_schedule(job_id)
-        entry: ScheduledEntry = self.schedules[index]
+        entry: ScheduledEntry = self._required_schedule(job_id)
         if not entry.has_retry:
             return None
         return MonotonicInstant(entry.retry_due_monotonic_ms)
@@ -351,11 +361,11 @@ class Scheduler:
             if self.state_value != STATE_RUNNING:
                 break
 
-            schedule_index: int = self._find_schedule(due.job_id)
-            if schedule_index < 0:
+            scheduled_optional: ScheduledEntry | None = self.schedule_by_id.get(due.job_id)
+            if scheduled_optional is None:
                 result.skipped += 1
                 continue
-            scheduled: ScheduledEntry = self.schedules[schedule_index]
+            scheduled: ScheduledEntry = scheduled_optional
             valid_due: bool = scheduled.generation == due.generation and scheduled.time_domain == due.time_domain
             if due.retry:
                 valid_due = valid_due and scheduled.has_retry and scheduled.retry_due_monotonic_ms == due.due_time_ms and scheduled.retry_attempt == due.attempt and scheduled.retry_scheduled_time_ms == due.scheduled_time_ms
@@ -446,10 +456,10 @@ class Scheduler:
                 self._emit_scheduler_event(EVENT_SCHEDULER_STOPPED)
                 break
 
-            current_index: int = self._find_schedule(due.job_id)
+            current_optional: ScheduledEntry | None = self.schedule_by_id.get(due.job_id)
             current_job: Job | None = self.registry.find(due.job_id)
-            if current_index >= 0 and current_job is not None and current_job.enabled:
-                current: ScheduledEntry = self.schedules[current_index]
+            if current_optional is not None and current_job is not None and current_job.enabled:
+                current: ScheduledEntry = current_optional
                 if current.generation == due.generation:
                     current_policies: JobPolicies = current_job.policy_config()
                     retry_scheduled: bool = False
@@ -508,10 +518,10 @@ class Scheduler:
 
         candidates: list[DueItem] = []
         for scheduled in self.schedules:
-            retry_target: Job | None = self.registry.find(scheduled.job_id)
-            if scheduled.has_retry and scheduled.retry_due_monotonic_ms <= now_monotonic.value_ms and retry_target is not None and retry_target.enabled:
-                candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.retry_scheduled_time_ms, False, False, False, 0, False, False, 0, True, scheduled.retry_attempt, scheduled.retry_due_monotonic_ms))
             if scheduled.has_retry:
+                retry_target: Job | None = self.registry.find(scheduled.job_id)
+                if scheduled.retry_due_monotonic_ms <= now_monotonic.value_ms and retry_target is not None and retry_target.enabled:
+                    candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.retry_scheduled_time_ms, False, False, False, 0, False, False, 0, True, scheduled.retry_attempt, scheduled.retry_due_monotonic_ms))
                 continue
             now_ms: int = now_utc.epoch_ms
             if scheduled.time_domain == "monotonic":
@@ -571,31 +581,13 @@ class Scheduler:
                     else:
                         candidates.append(DueItem(scheduled.job_id, scheduled.generation, scheduled.time_domain, scheduled.next_time_ms, False, False, False, 0, False, False, 0, False, 1, scheduled.next_time_ms))
 
-        result: list[DueItem] = []
-        for candidate in candidates:
-            insertion_index: int = len(result)
-            for i in range(len(result)):
-                existing: DueItem = result[i]
-                candidate_sort_domain: str = candidate.time_domain
-                candidate_sort_time_ms: int = candidate.due_time_ms
-                if candidate.retry:
-                    candidate_sort_domain = "monotonic"
-                existing_sort_domain: str = existing.time_domain
-                existing_sort_time_ms: int = existing.due_time_ms
-                if existing.retry:
-                    existing_sort_domain = "monotonic"
-                earlier_domain: bool = candidate_sort_domain == "utc" and existing_sort_domain == "monotonic"
-                same_domain: bool = candidate_sort_domain == existing_sort_domain
-                earlier_time: bool = same_domain and candidate_sort_time_ms < existing_sort_time_ms
-                same_time_earlier_id: bool = same_domain and candidate_sort_time_ms == existing_sort_time_ms and candidate.job_id < existing.job_id
-                if earlier_domain or earlier_time or same_time_earlier_id:
-                    insertion_index = i
-                    break
-            result.insert(insertion_index, candidate)
-        return result
+        candidates.sort(key=_due_sort_key)
+        return candidates
 
     def _find_schedule(self, job_id: str) -> int:
 
+        if job_id not in self.schedule_by_id:
+            return -1
         for i in range(len(self.schedules)):
             if self.schedules[i].job_id == job_id:
                 return i
@@ -668,12 +660,14 @@ class Scheduler:
         result.overlap_skipped += 1
         self._emit_job_event(EVENT_OVERLAP_SKIPPED, entry.job_id, entry.time_domain, True, candidate_time_ms)
 
-    def _required_schedule(self, job_id: str) -> int:
+    def _required_schedule(self, job_id: str) -> ScheduledEntry:
 
-        index: int = self._find_schedule(job_id)
-        if index < 0:
+        found: ScheduledEntry | None = self.schedule_by_id.get(job_id)
+        if found is None:
             raise JobNotFoundError(job_id)
-        return index
+        if found.job_id != job_id:
+            raise InvalidJobError("schedule identity index is inconsistent")
+        return found
 
     def _require_mutable(self) -> None:
 

@@ -1,0 +1,24 @@
+class Entry:
+    job_id: str
+    sort_key: str
+
+    def __init__(self, job_id: str, sort_key: str) -> None:
+        self.job_id = job_id
+        self.sort_key = sort_key
+
+def entry_sort_key(entry: Entry) -> str:
+    return entry.sort_key
+
+first: Entry = Entry("a", "0:0002:a")
+second: Entry = Entry("b", "0:0001:b")
+by_id: dict[str, Entry] = {}
+by_id[first.job_id] = first
+by_id[second.job_id] = second
+
+ordered: list[Entry] = [first, second]
+ordered.sort(key=entry_sort_key)
+for entry in ordered:
+    print(by_id[entry.job_id].job_id)
+
+del by_id["a"]
+print("a" not in by_id and "b" in by_id)

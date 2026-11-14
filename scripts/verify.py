@@ -29,6 +29,7 @@ FREESTANDING_MODULES = (
 PROOF_EXPECTATIONS = {
     "proofs/background_command_model.nox": "7",
     "proofs/concurrency_model.nox": "5\ntask failed\ncancelled at await\n49995000",
+    "proofs/indexed_due_order.nox": "b\na\nTrue",
     "proofs/scheduler_sleep_probe.nox": "fast sleeper",
 }
 BENCHMARK_SOURCES = (
@@ -111,7 +112,7 @@ def main() -> int:
     print(
         "Verified "
         f"{len(test_sources)} tests, {len(example_sources)} examples, "
-        f"{len(PROOF_EXPECTATIONS)} concurrency proofs, and "
+        f"{len(PROOF_EXPECTATIONS)} runtime proofs, and "
         f"{len(FREESTANDING_MODULES)} freestanding modules on both backends; "
         f"type-checked {len(BENCHMARK_SOURCES)} benchmarks on both backends."
     )

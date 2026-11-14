@@ -63,8 +63,28 @@ Due-collection results:
 | All due | 1,000 | 1 | 19.0000 | 23.0000 |
 | All due | 10,000 | 1 | 2,192.0000 | 2,239.0000 |
 
+## Optimized due-collection baseline — 2026-11-14
+
+After the initial measurement, Chronos added bounded job/schedule identity dictionaries and replaced candidate insertion ordering with one deterministic composite-key sort. The workload was unchanged, but iteration counts were increased to keep optimized timings above the clock's millisecond resolution.
+
+| Scenario | Jobs | Iterations | LLVM before | LLVM after | QBE before | QBE after |
+|---|---:|---:|---:|---:|---:|---:|
+| None due | 100 | 10,000 | 0.0300 ms | 0.0004 ms | 0.0400 ms | 0.0008 ms |
+| None due | 1,000 | 1,000 | 2.7000 ms | 0.0030 ms | 3.7000 ms | 0.0040 ms |
+| None due | 10,000 | 100 | 299.0000 ms | 0.0500 ms | 352.0000 ms | 0.0400 ms |
+| One due | 100 | 10,000 | 0.0300 ms | 0.0008 ms | 0.0500 ms | 0.0008 ms |
+| One due | 1,000 | 1,000 | 3.7000 ms | 0.0050 ms | 4.1000 ms | 0.0040 ms |
+| One due | 10,000 | 100 | 343.0000 ms | 0.0400 ms | 400.0000 ms | 0.0400 ms |
+| All due | 100 | 1,000 | 0.2000 ms | 0.0350 ms | 0.2000 ms | 0.0420 ms |
+| All due | 1,000 | 100 | 19.0000 ms | 0.3900 ms | 23.0000 ms | 0.4400 ms |
+| All due | 10,000 | 10 | 2,192.0000 ms | 5.0000 ms | 2,239.0000 ms | 4.8000 ms |
+
+The checksums remained identical after the change. Existing scheduler tests plus explicit numeric-timestamp, lexical-ID, mixed-domain, reentrant removal, retry, overlap, and shutdown coverage passed on LLVM and QBE.
+
 ## Interpretation
 
-Chronos has no internal millisecond polling loop: the application explicitly decides when to call `tick()`. However, every explicit tick currently scans the full schedule list. `_collect_due` also performs a linear registry lookup for every schedule, and due candidates are ordered with insertion sort. The roughly 95–115× increase when moving from 1,000 to 10,000 jobs is consistent with quadratic work in the current representation.
+Chronos has no internal millisecond polling loop: the application explicitly decides when to call `tick()`. Every explicit tick still scans the bounded schedule list, so the no-due path remains O(n). Identity lookup is now expected O(1), and sorting is O(k log k) for `k` due candidates. The optimized 1,000→10,000 job measurements grow roughly in line with those bounds rather than the earlier quadratic curve.
 
-The 10,000-job numbers are not an acceptable basis for claiming low-latency large-registry scheduling. They provide concrete justification to evaluate an indexed registry plus a deterministic due-time structure. No data structure has been changed yet. Any optimization must preserve deterministic ordering, mixed clock-domain separation, generation checks, overlap/misfire semantics, reentrant mutation behavior, and shutdown safety. A replacement must be benchmarked against this same suite and covered by regression tests before adoption.
+The initial 10,000-job numbers justified the index/sort change. Across two optimized local runs, the 10,000-job none-due path ranged from 0.04–0.11 ms and the all-due path from 4.8–9.1 ms, illustrating ordinary host timing variation. A heap was deliberately not adopted: in the application-driven manual scheduler, the remaining bounded O(n) scan is already small, while a heap would introduce stale-entry invalidation and compaction obligations across reentrant mutation, retries, overlaps, enable/disable, and clock-domain changes. This decision can be revisited if background wake-deadline requirements or new measurements demonstrate a need.
+
+These observations do not create a latency guarantee. Future optimizations must preserve deterministic ordering, mixed clock-domain separation, generation checks, overlap/misfire semantics, reentrant mutation behavior, and shutdown safety, and must be measured against this suite.

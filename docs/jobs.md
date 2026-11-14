@@ -48,7 +48,7 @@ Raw exception text is intentionally not retained.
 
 ## Registry behavior
 
-`JobRegistry` is an application-owned in-memory object with an explicit capacity from 1 through 10,000 jobs. It uses lexical job-ID order, so inspection order is deterministic and independent of insertion order.
+`JobRegistry` is an application-owned in-memory object with an explicit capacity from 1 through 10,000 jobs. It retains a lexically ordered list for deterministic inspection and a bounded `job_id` identity index for expected O(1) lookup. Add/remove update both representations before returning; removal deletes the index entry rather than retaining a tombstoned application object.
 
 The registry supports add, find/get, list, enable, disable, remove, contains, and count. Missing required targets raise `JobNotFoundError`.
 

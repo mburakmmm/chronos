@@ -65,6 +65,7 @@ The documented suspend behavior of `Instant` differs by platform, while `boot_ms
 |---|---|---|
 | Typed handler fields | Function value stored and invoked from `Job` | verified on LLVM/QBE |
 | Closures | Captured adder stored in job list/dictionary | verified on LLVM/QBE |
+| Indexed class values and keyed class-list sorting | `dict[str, Entry]`, deletion, membership, and `list[Entry].sort(key=...)` | verified on LLVM/QBE with Nox 2.1.111 |
 | Optional values | `Job | None` narrowing | verified on LLVM/QBE |
 | Custom errors | `HandlerError(Exception)` raised and caught | verified on LLVM/QBE |
 | Structural protocol values | Heterogeneous `list[Trigger]` dispatch | verified on LLVM/QBE |

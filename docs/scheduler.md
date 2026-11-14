@@ -42,7 +42,7 @@ If a fixed-delay job's first deadline is already past when it is added or re-ena
 
 ## Tick and dispatch
 
-Each tick reads both injected clock domains and builds a finite due snapshot. UTC items are dispatched before monotonic items so unlike numeric domains are never compared. Within each domain, items are ordered by planned timestamp then lexical job ID. Jobs sharing a domain and timestamp therefore have stable total ordering.
+Each tick reads both injected clock domains and builds a finite due snapshot. UTC items are dispatched before monotonic items so unlike numeric domains are never compared. Within each domain, items are ordered by planned timestamp then lexical job ID. Jobs sharing a domain and timestamp therefore have stable total ordering. The implementation scans the bounded schedule list once, resolves identities through bounded dictionaries, and applies one composite-key sort to due candidates; it does not insertion-sort candidates or poll autonomously.
 
 The inline executor invokes one trusted handler at a time. It catches handler exceptions and returns the fixed safe category `handler-error`; raw exception text is not retained. The scheduler records the outcome and continues with unrelated due jobs.
 
