@@ -176,7 +176,9 @@ Status: accepted for Phase 2
 
 The shared `Job` type owns identity, handler, enabled state, bounded metadata, and bounded latest-outcome state. `UtcJob` and `MonotonicJob` store their respective structural trigger protocols and override domain-specific next-fire methods. Public factories construct these subtypes; the base constructor is not a supported consumer API.
 
-The registry is a bounded, lexically ordered list rather than a mutable process-global map. This gives deterministic inspection order, avoids hidden lifecycle, and keeps correctness independent of hash iteration. A future benchmark may justify an additional index without changing the public contract.
+The registry is a bounded, lexically ordered list rather than a mutable process-global map. This gives deterministic inspection order, avoids hidden lifecycle, and keeps correctness independent of hash iteration.
+
+The Phase 4 baseline in `docs/benchmarks.md` now shows quadratic growth in due collection: every schedule performs a linear registry lookup, and due candidates use insertion ordering. At 10,000 jobs a no-due collection took 299–352 ms and an all-due collection took 2,192–2,239 ms on the recorded host. This evidence justifies evaluating an additional identity index and due-time structure without changing the public contract; it does not authorize weakening deterministic ordering or lifecycle invariants.
 
 Registry removal means future schedule removal only. It does not cancel an executing handler. The standalone registry allows reuse after removal; the manual scheduler retains an active ID guard until the in-flight callback has finished.
 

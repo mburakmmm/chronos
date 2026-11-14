@@ -1,0 +1,57 @@
+import nox.strings
+import nox.time
+from clock import FakeClock
+from job import Job, JobContext, make_utc_job
+from registry import RegisteredJob
+from scheduler import DueItem, ScheduledEntry, Scheduler
+from time import MonotonicInstant, UtcInstant
+from trigger import OnceTrigger
+
+NOW_MS: int = 100000
+FUTURE_MS: int = 200000
+ID_WIDTH: int = 5
+
+def ignore_handler(context: JobContext) -> None:
+    pass
+
+def benchmark_job_id(index: int) -> str:
+    value: str = str(index)
+    padding: int = ID_WIDTH - nox.strings.byte_len(value)
+    return "bench-" + nox.strings.repeat("0", padding) + value
+
+def build_scheduler(job_count: int, due_count: int) -> Scheduler:
+    engine: Scheduler = Scheduler(FakeClock(NOW_MS, NOW_MS), job_count)
+    first_due: int = job_count - due_count
+    for i in range(job_count):
+        job_id: str = benchmark_job_id(i)
+        target_ms: int = FUTURE_MS
+        if i >= first_due:
+            target_ms = NOW_MS
+        target: Job = make_utc_job(job_id, "Benchmark job", OnceTrigger(UtcInstant(target_ms)), ignore_handler, True, UtcInstant(0), [])
+
+        # Benchmark-only setup bypasses public add() so registration cost is not
+        # mixed into the due-collection measurement.
+        engine.registry.entries.append(RegisteredJob(target))
+        engine.schedules.append(ScheduledEntry(job_id, i + 1, "utc", True, target_ms))
+    return engine
+
+def measure(label: str, job_count: int, due_count: int, iterations: int) -> None:
+    engine: Scheduler = build_scheduler(job_count, due_count)
+    timer: nox.time.Instant = nox.time.instant_now()
+    checksum: int = 0
+    for i in range(iterations):
+        candidates: list[DueItem] = engine._collect_due(UtcInstant(NOW_MS), MonotonicInstant(NOW_MS))
+        checksum += len(candidates)
+    print("BENCH", label, job_count, iterations, due_count, timer.elapsed_ms(), checksum)
+
+measure("due_none", 100, 0, 100)
+measure("due_none", 1000, 0, 10)
+measure("due_none", 10000, 0, 1)
+
+measure("due_one", 100, 1, 100)
+measure("due_one", 1000, 1, 10)
+measure("due_one", 10000, 1, 1)
+
+measure("due_all", 100, 100, 10)
+measure("due_all", 1000, 1000, 1)
+measure("due_all", 10000, 10000, 1)

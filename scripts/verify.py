@@ -31,6 +31,10 @@ PROOF_EXPECTATIONS = {
     "proofs/concurrency_model.nox": "5\ntask failed\ncancelled at await\n49995000",
     "proofs/scheduler_sleep_probe.nox": "fast sleeper",
 }
+BENCHMARK_SOURCES = (
+    "benchmarks/cron_benchmark.nox",
+    "benchmarks/due_lookup_benchmark.nox",
+)
 
 
 def display_command(arguments: list[str]) -> str:
@@ -97,6 +101,8 @@ def main() -> int:
             run([NOXC, "run", "--backend", backend, relative(source)])
         for proof, expected in PROOF_EXPECTATIONS.items():
             run([NOXC, "run", "--backend", backend, proof], expected)
+        for benchmark in BENCHMARK_SOURCES:
+            run([NOXC, "check", "--backend", backend, benchmark])
 
     for module in FREESTANDING_MODULES:
         run([NOXC, "check", "--profile", "freestanding", module])
@@ -106,7 +112,8 @@ def main() -> int:
         "Verified "
         f"{len(test_sources)} tests, {len(example_sources)} examples, "
         f"{len(PROOF_EXPECTATIONS)} concurrency proofs, and "
-        f"{len(FREESTANDING_MODULES)} freestanding modules on both backends."
+        f"{len(FREESTANDING_MODULES)} freestanding modules on both backends; "
+        f"type-checked {len(BENCHMARK_SOURCES)} benchmarks on both backends."
     )
     return 0
 

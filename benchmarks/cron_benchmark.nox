@@ -1,0 +1,39 @@
+import nox.time
+from cron import CronSchedule, parse
+from time import UtcInstant
+
+PARSE_ITERATIONS: int = 20000
+DENSE_ITERATIONS: int = 50000
+SPARSE_ITERATIONS: int = 1000
+
+def benchmark_parse() -> None:
+    timer: nox.time.Instant = nox.time.instant_now()
+    checksum: int = 0
+    for i in range(PARSE_ITERATIONS):
+        schedule: CronSchedule = parse("*/5 0-23/2 1,15,29 1-12/2 1-5")
+        checksum += len(schedule.minute.values)
+        checksum += len(schedule.hour.values)
+        checksum += len(schedule.day_of_month.values)
+        checksum += len(schedule.month.values)
+        checksum += len(schedule.day_of_week.values)
+    print("BENCH", "cron_parse", 1, PARSE_ITERATIONS, 1, timer.elapsed_ms(), checksum)
+
+def benchmark_dense_next_fire() -> None:
+    schedule: CronSchedule = parse("*/5 * * * *")
+    reference: UtcInstant = UtcInstant(nox.time.DateTime(2024, 1, 1, 0, 0, 0).to_epoch_ms())
+    timer: nox.time.Instant = nox.time.instant_now()
+    for i in range(DENSE_ITERATIONS):
+        reference = schedule.next_fire_after(reference)
+    print("BENCH", "cron_next_dense", 1, DENSE_ITERATIONS, 1, timer.elapsed_ms(), reference.epoch_ms)
+
+def benchmark_sparse_next_fire() -> None:
+    schedule: CronSchedule = parse("0 0 29 2 *")
+    reference: UtcInstant = UtcInstant(nox.time.DateTime(1970, 1, 1, 0, 0, 0).to_epoch_ms())
+    timer: nox.time.Instant = nox.time.instant_now()
+    for i in range(SPARSE_ITERATIONS):
+        reference = schedule.next_fire_after(reference)
+    print("BENCH", "cron_next_sparse", 1, SPARSE_ITERATIONS, 1, timer.elapsed_ms(), reference.epoch_ms)
+
+benchmark_parse()
+benchmark_dense_next_fire()
+benchmark_sparse_next_fire()

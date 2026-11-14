@@ -148,6 +148,7 @@ python3 scripts/verify.py
 |---|---|
 | Public API | [docs/api.md](docs/api.md) |
 | Architecture decisions | [docs/architecture.md](docs/architecture.md) |
+| Performance benchmarks | [docs/benchmarks.md](docs/benchmarks.md) |
 | Time semantics | [docs/time-semantics.md](docs/time-semantics.md) |
 | UTC cron grammar | [docs/cron.md](docs/cron.md) |
 | Scheduler lifecycle | [docs/scheduler.md](docs/scheduler.md) |

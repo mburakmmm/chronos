@@ -70,6 +70,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Checksum-pinned cross-platform CI for Linux x64/arm64, macOS arm64, and Windows x64, running the full LLVM/QBE test, example, concurrency, and freestanding matrix on Nox 2.1.111.
 - First complete cross-platform CI evidence: all four platform jobs passed in GitHub Actions run 43460710827 for commit `a8211b0`.
 - Node.js 24-based checkout/Python actions and an explicit Ubuntu 24.04 x64 runner, avoiding deprecated action runtimes and `ubuntu-latest` image drift.
+- Reproducible LLVM/QBE benchmark infrastructure for cron parsing, dense/sparse next-fire calculation, and 100/1k/10k scheduler due collection without timing-based CI gates.
+- Initial Nox 2.1.111 macOS arm64 baseline showing quadratic due-collection growth, including 299–352 ms no-due and 2,192–2,239 ms all-due collections at 10,000 jobs; no scheduler data structure was changed without follow-up correctness work.
 - NXL-007 records the Nox 2.1.111 package self-import resolution gap; external `noxc add` consumption is not advertised until source-root and consumer imports share one safe form.
 
 ### Limitations
