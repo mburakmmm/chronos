@@ -74,6 +74,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Initial Nox 2.1.111 macOS arm64 baseline showing quadratic due-collection growth, including 299–352 ms no-due and 2,192–2,239 ms all-due collections at 10,000 jobs; no scheduler data structure was changed without follow-up correctness work.
 - Measurement-driven job/schedule identity indexes and deterministic composite-key due sorting, reducing the recorded 10,000-job no-due path to 0.04–0.11 ms and all-due collection to 4.8–9.1 ms across two optimized local runs while retaining ordered inspection and lifecycle invariants.
 - Separate LLVM/QBE timing-sensitive integration benchmarks for raw wake overshoot, fixed-rate observed lateness, zero planned-anchor drift, and raw/event-observed callback duration, with no CI timing gates or background-worker claim.
+- A 1,000-execution deterministic retention regression proving bounded metadata, stable registry/schedule/listener cardinality, synchronous event delivery without a queue, and latest-only safe outcome/error state.
 - NXL-007 records the Nox 2.1.111 package self-import resolution gap; external `noxc add` consumption is not advertised until source-root and consumer imports share one safe form.
 
 ### Limitations

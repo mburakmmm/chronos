@@ -51,4 +51,6 @@ Listeners run synchronously in registration order. Each listener call has its ow
 
 There is no event queue, replay log, or retained payload buffer. Listener count is bounded, while delivered event objects are owned by the receiving application. Event delivery exposes job ID, time domain, planned/observed timestamps, attempt, duration, and a safe error category. It does not expose job name, metadata, handler arguments, handler results, or raw exception text.
 
+The 1,000-execution retention regression counts 3,004 synchronous lifecycle deliveries through one listener without storing event objects. After delivery, the scheduler still owns exactly one listener, one registry entry, and one schedule entry; event volume does not create a scheduler-owned history collection.
+
 Scheduler mutation, lifecycle transitions, and nested `tick()` calls from inside listener delivery are rejected and contained as listener failures. Read-only inspection remains available. Job handlers retain the separately documented generation-checked add/remove behavior.

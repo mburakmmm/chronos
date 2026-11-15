@@ -31,6 +31,8 @@ A handler exception is caught at the executor boundary and converted to a bounde
 
 The cron parser uses explicit expression/item/expansion bounds. Next-fire calculation has both a calendar horizon and an iteration cap. The registry and scheduler enforce explicit job and listener-count bounds; due snapshots and retained per-job outcome state are finite. Event delivery is synchronous and retains no queue or history. Events omit job name, metadata, handler arguments/results, and raw exception messages.
 
+A deterministic 1,000-execution regression covers these retention claims together: bounded defensive metadata, constant registry/schedule/listener cardinality, no event buffer, a scalar execution count, and replacement of the latest safe error summary rather than accumulation of exception payloads.
+
 No retry, catch-up, overlap, or task-spawn path may grow without a configured finite maximum.
 
 Fixed and exponential retry retain one deadline, upcoming attempt, and original planned timestamp per job, with no retry list or payload history. Attempts are capped at 64; exponential delay saturates at its configured maximum; and only the safe `handler-error` category is retryable. Misfire skip/fire-once performs at most one dispatch per due job in a tick. Catch-up uses explicit dispatch and evaluation caps, retains no missed-occurrence queue, and reports when its known coalesced count is truncated. Queue-one overlap retains exactly one pending timestamp and one bounded observation cursor per job rather than an occurrence list; later observed overlaps are discarded.

@@ -1,0 +1,104 @@
+import nox.test
+from clock import FakeClock
+from events import ChronosEvent, EVENT_FAILED, EVENT_SUCCEEDED
+from job import Job, JobContext, JobMetadata, make_monotonic_job
+from scheduler import Scheduler, TickResult
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import FixedRateTrigger
+
+EXECUTIONS: int = 1000
+METADATA_LIMIT: int = 16
+
+class RetentionFailure(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class WorkloadState:
+    calls: int
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+class EventCounts:
+    total: int
+    succeeded: int
+    failed: int
+
+    def __init__(self) -> None:
+        self.total = 0
+        self.succeeded = 0
+        self.failed = 0
+
+def alternating_handler(state: WorkloadState) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        state.calls += 1
+        if state.calls % 2 == 1:
+            raise RetentionFailure("TOP-SECRET repeated failure payload")
+
+    return handle
+
+def counting_listener(counts: EventCounts) -> (ChronosEvent) -> None:
+    def listen(occurrence: ChronosEvent) -> None:
+        counts.total += 1
+        if occurrence.kind == EVENT_SUCCEEDED:
+            counts.succeeded += 1
+        if occurrence.kind == EVENT_FAILED:
+            counts.failed += 1
+
+    return listen
+
+def full_metadata() -> list[JobMetadata]:
+    result: list[JobMetadata] = []
+    for i in range(METADATA_LIMIT):
+        result.append(JobMetadata("key-" + str(i), "value-" + str(i)))
+    return result
+
+source_clock: FakeClock = FakeClock(10000, 1000)
+state: WorkloadState = WorkloadState()
+counts: EventCounts = EventCounts()
+metadata: list[JobMetadata] = full_metadata()
+target: Job = make_monotonic_job("retained", "Retention workload", FixedRateTrigger(MonotonicInstant(1000), Duration(1)), alternating_handler(state), True, UtcInstant(10000), metadata)
+
+# Mutating and growing the caller-owned input after construction must not grow
+# or alter the job-owned defensive metadata copy.
+metadata[0].value = "mutated"
+metadata.append(JobMetadata("post-build", "not retained"))
+
+engine: Scheduler = Scheduler(source_clock, 1, 1)
+engine.add_listener(counting_listener(counts))
+engine.add(target)
+engine.start()
+
+succeeded: int = 0
+failed: int = 0
+for i in range(EXECUTIONS):
+    result: TickResult = engine.tick()
+    succeeded += result.succeeded
+    failed += result.failed
+    if i == 0:
+        nox.test.assert_eq_str(target.last_status, "failed", "first failure retained as latest status")
+        nox.test.assert_eq_str(target.last_error_category, "handler-error", "raw first exception reduced to safe category")
+    if i + 1 < EXECUTIONS:
+        source_clock.advance(Duration(1))
+engine.stop()
+
+nox.test.assert_eq_int(state.calls, EXECUTIONS, "all bounded workload callbacks executed")
+nox.test.assert_eq_int(succeeded, 500, "alternating workload success count")
+nox.test.assert_eq_int(failed, 500, "alternating workload failure count")
+nox.test.assert_eq_int(target.execution_count, EXECUTIONS, "history represented only by scalar execution count")
+nox.test.assert_eq_str(target.last_status, "succeeded", "latest success replaces prior failure status")
+nox.test.assert_eq_str(target.last_error_category, "", "latest success clears prior safe error category")
+nox.test.assert_true(target.has_last_completion, "one latest completion marker retained")
+
+nox.test.assert_eq_int(len(target.metadata), METADATA_LIMIT, "job metadata remains at configured bound")
+nox.test.assert_eq_str(target.metadata[0].value, "value-0", "job metadata remains defensively isolated")
+nox.test.assert_eq_int(engine.registry.count(), 1, "registry retains one job after repeated execution")
+nox.test.assert_eq_int(len(engine.registry.by_id), 1, "registry identity index remains bounded")
+nox.test.assert_eq_int(len(engine.schedules), 1, "scheduler retains one schedule entry")
+nox.test.assert_eq_int(len(engine.schedule_by_id), 1, "schedule identity index remains bounded")
+nox.test.assert_eq_int(engine.listener_count(), 1, "listener collection does not grow with deliveries")
+nox.test.assert_eq_int(engine.listener_failure_count(), 0, "listener failures are not synthesized")
+
+nox.test.assert_eq_int(counts.succeeded, 500, "success events delivered without scheduler history")
+nox.test.assert_eq_int(counts.failed, 500, "failure events delivered without scheduler history")
+nox.test.assert_eq_int(counts.total, 3004, "all lifecycle events delivered synchronously without retained queue")

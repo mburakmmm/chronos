@@ -382,7 +382,11 @@ Manual mode therefore has a complete drain-current shutdown contract without cla
 
 ## Phase 4 compatibility baseline
 
-The 2026-11-14 Nox 2.1.111 local matrix ran all 18 deterministic test programs and all 16 executable examples on both LLVM and QBE. Eleven clock-independent library modules type-checked in the freestanding profile on both backends. `system_clock.nox` passed hosted checking and produced the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
+The 2026-11-15 Nox 2.1.111 local matrix ran all 19 deterministic test programs and all 16 executable examples on both LLVM and QBE. Eleven clock-independent library modules type-checked in the freestanding profile on both backends. `system_clock.nox` passed hosted checking and produced the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
+
+The retention regression executes one fixed-rate job 1,000 times with alternating handler failure/success. LLVM and QBE both preserve one registry entry, one schedule entry, one listener, 16 defensively copied metadata entries, a scalar execution count, and only the latest safe outcome/error summary. Its listener observes 3,004 synchronous events without storing them; Chronos owns no event or execution-history collection.
+
+This is a reachable-state cardinality regression, not a process-RSS or allocator-reclamation measurement. It proves that Chronos exposes no growing retained collection along this execution path; it does not make a claim about backend garbage-collection timing or allocator behavior.
 
 The scheduler sleep probe printed `fast sleeper`, the bounded command-channel proof printed `7`, and the cancellation proof ended with `49995000` on both backends. The exact development platform and unsupported platform rows are recorded in `docs/compatibility.md`.
 

@@ -342,7 +342,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 
 ## Backend ve platform matrisi
 
-- [x] LLVM ve QBE tam test/örnek matrisini çalıştır: iki backend'de 18 test ve 16 örnek geçti.
+- [x] LLVM ve QBE tam test/örnek matrisini çalıştır: iki backend'de 19 test ve 16 örnek geçti.
 - [x] Nox 2.1.111 üzerinde QBE cooperative scheduler, task-local sleep ve channel wake davranışını Phase 4 compatibility kaydıyla sabitle.
 - [x] macOS arm64 için Nox/compiler/backend sürümleriyle gerçek yerel kanıt oluştur.
 - [x] Linux x64/arm64, macOS arm64 ve Windows x64 için checksum-pinned Nox 2.1.111 ile gerçek GitHub Actions kanıtı oluştur.
@@ -356,7 +356,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 - [x] Scheduler taramasını incele/ölç: internal millisecond loop yok; her application-driven tick tüm schedule'ları tarıyor ve mevcut registry lookup/sıralama yolu karesel büyüyor.
 - [x] Ölçüm sonrası O(1) identity indexleri ve deterministic keyed sort uygula; 10k no-due iki optimize koşuda 0.04–0.11 ms olduğu için stale-entry riski taşıyan heap'i şimdilik ertele.
 - [x] Wake latency, fixed-rate planned-anchor drift/observed lateness ve callback execution süresini ayrı ölç; timing-sensitive kaynakları CI'da yalnız type-check et.
-- [ ] Memory retention sınırlarını job metadata, event, error ve history için test et.
+- [x] 1.000 yürütmelik deterministic regression ile job metadata, event delivery, error summary ve history retention sınırlarını LLVM/QBE üzerinde test et.
 
 ## API ve entegrasyon
 

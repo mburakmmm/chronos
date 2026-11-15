@@ -46,6 +46,8 @@ Chronos retains no result object and no execution history in the job. The curren
 
 Raw exception text is intentionally not retained.
 
+`tests/retention_test.nox` drives one recurring job through 1,000 alternating success/failure executions. The job remains at 16 metadata entries, one scalar execution count, and one latest outcome/error summary; the caller-owned metadata list can grow afterward without changing the job-owned copy.
+
 ## Registry behavior
 
 `JobRegistry` is an application-owned in-memory object with an explicit capacity from 1 through 10,000 jobs. It retains a lexically ordered list for deterministic inspection and a bounded `job_id` identity index for expected O(1) lookup. Add/remove update both representations before returning; removal deletes the index entry rather than retaining a tombstoned application object.

@@ -2,7 +2,7 @@
 
 Status: Phase 4 cross-platform compatibility baseline.
 
-Last verified: 2026-11-14
+Last verified: 2026-11-15
 
 ## Verified development target
 
@@ -21,7 +21,7 @@ This table records a reproducible development baseline, not a promise that every
 
 | Verification | LLVM | QBE |
 |---|---:|---:|
-| Deterministic test programs | 18 passed | 18 passed |
+| Deterministic test programs | 19 passed | 19 passed |
 | Executable examples | 16 passed | 16 passed |
 | Shutdown regression | passed | passed |
 | Task-local sleep probe | `fast sleeper` | `fast sleeper` |
