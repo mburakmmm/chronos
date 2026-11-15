@@ -1,0 +1,163 @@
+import nox.time
+from events import ChronosEvent, EVENT_SUCCEEDED
+from job import Job, JobContext, make_monotonic_job
+from scheduler import Scheduler, TickResult
+from system_clock import SystemClock
+from time import Duration, MonotonicInstant, UtcInstant
+from trigger import DelayTrigger, FixedRateTrigger
+
+WAKE_SAMPLES: int = 20
+WAKE_SLEEP_MS: int = 5
+RATE_SAMPLES: int = 40
+RATE_INTERVAL_MS: int = 20
+RATE_WARMUP_MS: int = 50
+CALLBACK_SAMPLES: int = 20
+CALLBACK_SLEEP_MS: int = 5
+CALLBACK_DELAY_MS: int = 10
+
+class BenchmarkError(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class Samples:
+    values: list[int]
+
+    def __init__(self) -> None:
+        self.values = []
+
+    def add(self, value: int) -> None:
+
+        self.values.append(value)
+
+    def total(self) -> int:
+
+        result: int = 0
+        for value in self.values:
+            result += value
+        return result
+
+    def minimum(self) -> int:
+
+        if len(self.values) == 0:
+            raise BenchmarkError("cannot summarize empty timing samples")
+        result: int = self.values[0]
+        for value in self.values:
+            if value < result:
+                result = value
+        return result
+
+    def maximum(self) -> int:
+
+        if len(self.values) == 0:
+            raise BenchmarkError("cannot summarize empty timing samples")
+        result: int = self.values[0]
+        for value in self.values:
+            if value > result:
+                result = value
+        return result
+
+class TimingRecorder:
+    rate_lateness: Samples
+    planned_rate_ms: list[int]
+    callback_raw_duration: Samples
+    callback_event_duration: Samples
+
+    def __init__(self) -> None:
+        self.rate_lateness = Samples()
+        self.planned_rate_ms = []
+        self.callback_raw_duration = Samples()
+        self.callback_event_duration = Samples()
+
+def emit_metric(name: str, requested_ms: int, samples: Samples) -> None:
+    print("TIMING", name, len(samples.values), requested_ms, samples.total(), samples.minimum(), samples.maximum())
+
+def wait_until_monotonic(deadline_ms: int) -> None:
+    while nox.time.boot_ms() < deadline_ms:
+        remaining_ms: int = deadline_ms - nox.time.boot_ms()
+        if remaining_ms > 0:
+            nox.time.sleep_ms(remaining_ms)
+
+def rate_handler(recorder: TimingRecorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        actual_start_ms: int = nox.time.boot_ms()
+        recorder.planned_rate_ms.append(context.scheduled_time_ms)
+        recorder.rate_lateness.add(actual_start_ms - context.scheduled_time_ms)
+
+    return handle
+
+def callback_handler(recorder: TimingRecorder) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        timer: nox.time.Instant = nox.time.instant_now()
+        nox.time.sleep_ms(CALLBACK_SLEEP_MS)
+        recorder.callback_raw_duration.add(timer.elapsed_ms())
+
+    return handle
+
+def callback_event_listener(recorder: TimingRecorder) -> (ChronosEvent) -> None:
+    def listen(occurrence: ChronosEvent) -> None:
+        if occurrence.kind == EVENT_SUCCEEDED and occurrence.job_id == "callback":
+            recorder.callback_event_duration.add(occurrence.duration_ms)
+
+    return listen
+
+def measure_wake_latency() -> Samples:
+    samples: Samples = Samples()
+    for i in range(WAKE_SAMPLES):
+        timer: nox.time.Instant = nox.time.instant_now()
+        nox.time.sleep_ms(WAKE_SLEEP_MS)
+        samples.add(timer.elapsed_ms() - WAKE_SLEEP_MS)
+    return samples
+
+def measure_fixed_rate(recorder: TimingRecorder, source_clock: SystemClock) -> Samples:
+    anchor_ms: int = nox.time.boot_ms() + RATE_WARMUP_MS
+    engine: Scheduler = Scheduler(source_clock, 1)
+    target: Job = make_monotonic_job("rate", "Timing fixed rate", FixedRateTrigger(MonotonicInstant(anchor_ms), Duration(RATE_INTERVAL_MS)), rate_handler(recorder), True, UtcInstant(nox.time.now_ms()), [])
+    engine.add(target)
+    engine.start()
+
+    for i in range(RATE_SAMPLES):
+        expected_ms: int = anchor_ms + i * RATE_INTERVAL_MS
+        wait_until_monotonic(expected_ms)
+        result: TickResult = engine.tick()
+        if result.succeeded != 1:
+            raise BenchmarkError("fixed-rate timing tick did not dispatch exactly once")
+    engine.stop()
+
+    anchor_drift: Samples = Samples()
+    if len(recorder.planned_rate_ms) != RATE_SAMPLES:
+        raise BenchmarkError("fixed-rate timing sample count mismatch")
+    for i in range(RATE_SAMPLES):
+        expected_ms: int = anchor_ms + i * RATE_INTERVAL_MS
+        difference: int = recorder.planned_rate_ms[i] - expected_ms
+        if difference < 0:
+            difference = -difference
+        anchor_drift.add(difference)
+    return anchor_drift
+
+def measure_callback_duration(recorder: TimingRecorder, source_clock: SystemClock) -> None:
+    engine: Scheduler = Scheduler(source_clock, 1, 1)
+    engine.add_listener(callback_event_listener(recorder))
+    engine.start()
+    for i in range(CALLBACK_SAMPLES):
+        registered_at: MonotonicInstant = source_clock.now_monotonic()
+        deadline_ms: int = registered_at.value_ms + CALLBACK_DELAY_MS
+        target: Job = make_monotonic_job("callback", "Timing callback", DelayTrigger(registered_at, Duration(CALLBACK_DELAY_MS)), callback_handler(recorder), True, source_clock.now_utc(), [])
+        engine.add(target)
+        wait_until_monotonic(deadline_ms)
+        result: TickResult = engine.tick()
+        if result.succeeded != 1:
+            raise BenchmarkError("callback timing tick did not dispatch exactly once")
+        engine.remove("callback")
+    engine.stop()
+
+source_clock: SystemClock = SystemClock()
+recorder: TimingRecorder = TimingRecorder()
+wake_latency: Samples = measure_wake_latency()
+anchor_drift: Samples = measure_fixed_rate(recorder, source_clock)
+measure_callback_duration(recorder, source_clock)
+
+emit_metric("wake_latency", WAKE_SLEEP_MS, wake_latency)
+emit_metric("fixed_rate_lateness", RATE_INTERVAL_MS, recorder.rate_lateness)
+emit_metric("fixed_rate_anchor_drift", RATE_INTERVAL_MS, anchor_drift)
+emit_metric("callback_raw_duration", CALLBACK_SLEEP_MS, recorder.callback_raw_duration)
+emit_metric("callback_event_duration", CALLBACK_SLEEP_MS, recorder.callback_event_duration)

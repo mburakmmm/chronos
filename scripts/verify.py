@@ -35,6 +35,7 @@ PROOF_EXPECTATIONS = {
 BENCHMARK_SOURCES = (
     "benchmarks/cron_benchmark.nox",
     "benchmarks/due_lookup_benchmark.nox",
+    "benchmarks/timing_benchmark.nox",
 )
 
 

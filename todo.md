@@ -355,7 +355,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 - [x] 100/1k/10k job için none-due, one-due ve all-due lookup benchmark'larını ekle.
 - [x] Scheduler taramasını incele/ölç: internal millisecond loop yok; her application-driven tick tüm schedule'ları tarıyor ve mevcut registry lookup/sıralama yolu karesel büyüyor.
 - [x] Ölçüm sonrası O(1) identity indexleri ve deterministic keyed sort uygula; 10k no-due iki optimize koşuda 0.04–0.11 ms olduğu için stale-entry riski taşıyan heap'i şimdilik ertele.
-- [ ] Wake latency, schedule drift ve callback execution süresini ayrı ölç.
+- [x] Wake latency, fixed-rate planned-anchor drift/observed lateness ve callback execution süresini ayrı ölç; timing-sensitive kaynakları CI'da yalnız type-check et.
 - [ ] Memory retention sınırlarını job metadata, event, error ve history için test et.
 
 ## API ve entegrasyon
