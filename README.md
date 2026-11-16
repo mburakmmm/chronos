@@ -152,6 +152,7 @@ python3 scripts/verify.py
 | Topic | Document |
 |---|---|
 | Public API | [docs/api.md](docs/api.md) |
+| Development migrations | [docs/migration-guide.md](docs/migration-guide.md) |
 | Architecture decisions | [docs/architecture.md](docs/architecture.md) |
 | Performance benchmarks | [docs/benchmarks.md](docs/benchmarks.md) |
 | Time semantics | [docs/time-semantics.md](docs/time-semantics.md) |

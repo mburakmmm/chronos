@@ -2,7 +2,7 @@
 
 Status: curated experimental surface (`0.4.0` development).
 
-This document is the only authoritative Chronos API allowlist. Nox 2.1.111 has no module export allowlist or `public`/`private` keywords: every top-level name is technically importable, including names beginning with `_`. Importability therefore does not imply support. See `NXL-008` in `NOX_LIMITATIONS.md`.
+This document is the only authoritative Chronos API allowlist. Nox 2.1.111 has no module export allowlist or `public`/`private` keywords: every top-level name is technically importable, including names beginning with `_`. Importability therefore does not imply support. See `NXL-008` in `NOX_LIMITATIONS.md`. Applications pinned to an earlier development commit should follow the [migration guide](migration-guide.md).
 
 ## Stability labels
 

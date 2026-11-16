@@ -82,6 +82,18 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Locked optional integration examples for Nyx `v0.29.0` and Aether `v0.12.0`, verified with Nox 2.1.186 on LLVM/QBE without adding either framework to the core manifest.
 - A separate Linux x64 framework-integration CI job plus explicit request-driven polling, worker-local ownership, idle-progress, latency, and source-overlay limitations.
 
+### Breaking changes for pinned development snapshots
+
+No Chronos version has been tagged or published yet. The following changes affect applications pinned to earlier `0.1.0-dev` or `0.2.0-dev` commits:
+
+- Custom `UtcTrigger` and `MonotonicTrigger` implementations must provide inclusive `next_fire_at_or_after` in addition to strictly-exclusive `next_fire_after`; this preserves exact registration-time boundaries.
+- Direct construction of `UtcJob`, `MonotonicJob`, `FixedDelayJob`, and base `Job` is no longer supported. Use the source-compatible `make_*` factories or the explicit `make_*_with_policies` variants.
+- `JobRegistry`, `RegisteredJob`, `InlineExecutor`, `ExecutionOutcome`, `EventDispatcher`, `ScheduledEntry`, `DueItem`, `CronField`, raw constants, and helper functions are Internal. Use `Scheduler`, job factories, policy factories, cron schedule operations, documented event constants, and scheduler forwarding methods.
+- Missed-run behavior is now explicit and bounded. Default factories use maximum-grace fire-once, forbidden overlap, and no retry; applications needing multiple missed executions must select bounded catch-up.
+- `stop()` is terminal. It drains only the active inline callback and does not provide restart, force-cancel, background join, or execution-timeout semantics.
+- `ChronosEvent` and `TickResult` evolved with policy fields and counters and must be treated as scheduler-produced values rather than directly constructed records.
+- The supported surface is the curated Experimental allowlist in `docs/api.md`; Nox importability does not make an unlisted symbol public. See the [migration guide](docs/migration-guide.md) for replacements and exact development boundaries.
+
 ### Limitations
 
 - Jitter is not implemented; fixed and exponential retry delays are deterministic.

@@ -363,15 +363,15 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 - [x] Public API yüzeyini küçült ve Stable/Experimental/Internal etiketlerini uygula; Nox görünürlük sınırını NXL-008 kanıtıyla kaydet.
 - [x] Contract testleriyle public API davranışını sabitle; allowlist importları ve gözlemlenebilir davranışlar LLVM/QBE üzerinde doğrulansın.
 - [x] Core bağımlılığı yaratmadan Nyx v0.29.0 ve Aether v0.12.0 request-polling integration örneklerini Nox 2.1.186 LLVM/QBE ile ayrı lock ve CI işinde doğrula.
-- [ ] Breaking 0.x değişikliklerini migration guide ve changelog'a yaz.
+- [x] Breaking 0.x değişikliklerini gerçek development snapshot sınırları, public replacement tablosu ve sürüm/tag dürüstlüğüyle migration guide ve changelog'a yaz.
 - [ ] Security review: parser complexity, secret leakage, callback authority, resource bounds, arbitrary execution.
 - [x] Tüm 16 executable örneği CI içinde LLVM ve QBE ile derle ve çalıştır.
 
 ### `0.4.0` çıkış kapısı
 
 - [x] Uyumluluk tablosundaki her destek iddiasının çalışan CI veya kaydedilmiş test kanıtı olsun; diğer mimarileri açıkça unverified bırak.
-- [ ] Public MVP API'si testli, belgeli ve gereksiz framework bağımlılıklarından arınmış olsun.
-- [ ] Benchmark sonuçları correctness tavizi olmadan kabul edilebilir sınırda olsun.
+- [x] Public MVP API'si contract testi, API/migration belgeleri ve boş core dependency listesiyle doğrulanmış olsun.
+- [x] Benchmark sonuçları deterministic ordering ve lifecycle testleri korunarak optimize edilmiş, ölçülmüş ve kabul edilebilir sınırda olsun.
 
 ---
 
