@@ -35,6 +35,8 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 | Overlap policies | Implemented | Forbid and one bounded pending occurrence |
 | Retry policies | Implemented | None, fixed delay, and capped exponential backoff |
 | Lifecycle events | Implemented | Synchronous bounded listeners with safe error categories |
+| Public API contract | Experimental | Curated allowlist; no Stable names before the first tagged release |
+| Compiler-enforced API visibility | Unavailable | Nox imports all top-level names; see NXL-008 |
 | Nox package dependency consumption | Blocked | Nox 2.1.111 self-import limitation; see NXL-007 |
 | Background scheduler | Deferred | Runtime primitives are proven; full worker ownership is not |
 | IANA time zones and DST | Deferred | Current cron and calendar behavior is UTC-only |
@@ -134,7 +136,7 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 | macOS | arm64 | LLVM and QBE |
 | Windows | x64 | LLVM and QBE |
 
-The matrix runs all deterministic tests, every executable example, runtime and concurrency proofs, freestanding module checks, and benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
+The matrix runs all 19 deterministic tests, all 16 executable examples, five runtime/capability proofs, 11 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
 
 Run the complete local matrix with:
 

@@ -1,0 +1,12 @@
+class _InternalCounter:
+    value: int
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def read(self) -> int:
+
+        return self.value
+
+def _internal_value() -> int:
+    return 7

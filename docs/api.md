@@ -1,10 +1,36 @@
 # Chronos public API
 
-Status: experimental (`0.4.0` development).
+Status: curated experimental surface (`0.4.0` development).
 
-Only APIs listed here are intended for public use. Leading-underscore functions and everything under `proofs/` are internal validation artifacts.
+This document is the only authoritative Chronos API allowlist. Nox 2.1.111 has no module export allowlist or `public`/`private` keywords: every top-level name is technically importable, including names beginning with `_`. Importability therefore does not imply support. See `NXL-008` in `NOX_LIMITATIONS.md`.
 
-## `chronos.errors`
+## Stability labels
+
+- **Stable:** compatibility is preserved according to SemVer. Chronos has no Stable names before its first tagged release and external package-consumption test.
+- **Experimental:** supported and tested for the current `0.x` development line, but may change with an explicitly documented `0.x` migration.
+- **Deprecated:** still supported temporarily, with a documented replacement and removal target. There are no Deprecated names today.
+- **Internal:** implementation detail with no compatibility promise. This includes every name not explicitly listed as Experimental below, every leading-underscore name, mutable implementation storage, and everything under `proofs/` and `benchmarks/`.
+
+Methods and fields are supported only when their contract is explicitly described in this document. Constructors for factory-created/result/event types are Internal unless the constructor is explicitly documented.
+
+## Supported surface
+
+| Module | Experimental names |
+|---|---|
+| `errors` | `ChronosError`, `InvalidDurationError`, `TimeRangeError`, `CronParseError`, `CronSearchLimitError`, `InvalidJobError`, `DuplicateJobError`, `JobNotFoundError`, `SchedulerStateError`, `InvalidEventError`, `EventListenerLimitError`, `InvalidPolicyError` |
+| `time` | `MIN_MS`, `MAX_MS`, `UtcInstant`, `MonotonicInstant`, `Duration`, `add_duration`, `subtract_duration`, `add_monotonic_duration`, `elapsed_between`, `multiply_duration`, `require_positive_interval` |
+| `clock` | `Clock`, `FakeClock` |
+| `system_clock` | `SystemClock` |
+| `trigger` | `UtcTrigger`, `MonotonicTrigger`, `OnceTrigger`, `DelayTrigger`, `FixedRateTrigger`, `FixedDelay` |
+| `cron` | `CronSchedule`, `CronTrigger`, `parse` |
+| `job` | `Job`, `JobContext`, `JobMetadata`, `make_utc_job`, `make_utc_job_with_policies`, `make_monotonic_job`, `make_monotonic_job_with_policies`, `make_fixed_delay_job`, `make_fixed_delay_job_with_policies` |
+| `policy` | `JobPolicies`, `MisfirePolicy`, `OverlapPolicy`, `RetryPolicy`, `skip_misfires`, `fire_once_misfires`, `catch_up_misfires`, `forbid_overlap`, `queue_one_overlap`, `no_retry`, `fixed_retry`, `exponential_retry`, `default_job_policies` |
+| `events` | `ChronosEvent` and the documented `EVENT_*` constants |
+| `scheduler` | `Scheduler`, `TickResult` |
+
+The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
+
+## `chronos.errors` — Experimental
 
 ### `ChronosError`
 
@@ -20,6 +46,11 @@ Raised before a timestamp or duration operation would overflow, underflow, rever
 
 Callers should branch on the exception class, not message text.
 
+### Cron errors
+
+- `CronParseError`: invalid cron syntax; `field_name` and bounded `token` identify the rejected input.
+- `CronSearchLimitError`: a valid expression produced no match within the bounded search horizon or transition limit.
+
 ### Job errors
 
 - `InvalidJobError`: invalid job configuration, bounded resource violation, or registry invariant failure.
@@ -30,7 +61,7 @@ Callers should branch on the exception class, not message text.
 - `EventListenerLimitError`: listener registration exceeded the scheduler's configured capacity; `limit` contains that capacity.
 - `InvalidPolicyError`: a policy kind, bound, attempt, delay, or occurrence count violates the finite policy contract.
 
-## `chronos.time`
+## `chronos.time` — Experimental
 
 ### `UtcInstant(epoch_ms)`
 
@@ -57,7 +88,7 @@ All operations reject invalid input or overflow before Nox's wrapping integer ar
 
 `MIN_MS` (`0`) and `MAX_MS` expose the supported UTC/duration millisecond bounds.
 
-## `chronos.clock`
+## `chronos.clock` — Experimental
 
 ### `Clock`
 
@@ -78,7 +109,7 @@ Failed `advance` operations leave both values unchanged.
 
 `chronos.clock` is pure and type-checks in Nox's freestanding profile.
 
-## `chronos.system_clock`
+## `chronos.system_clock` — Experimental
 
 ### `SystemClock`
 
@@ -89,7 +120,7 @@ Production `Clock` implementation:
 
 This module requires Nox's hosted `clock` capability and is unavailable in the freestanding profile.
 
-## `chronos.trigger`
+## `chronos.trigger` — Experimental
 
 Calendar and elapsed-time triggers use distinct protocols so UTC and monotonic values cannot be mixed.
 
@@ -119,7 +150,7 @@ Produces monotonic occurrences anchored to the original start. The interval must
 
 Stores a positive fixed-delay configuration. `next_after_completion(completed_at)` returns completion plus delay. Scheduler state owns the completion timestamp; fixed-delay is not treated as fixed-rate recurrence.
 
-## `chronos.cron`
+## `chronos.cron` — Experimental
 
 ### `parse(expression) -> CronSchedule`
 
@@ -131,7 +162,7 @@ Returns the first UTC minute boundary strictly after `reference`. The algorithm 
 
 If a syntactically valid expression has no match within eight calendar years or 100,000 transitions, it raises `CronSearchLimitError`. Timestamp overflow raises `TimeRangeError` and is distinct from both parse and search errors.
 
-`CronField.values` contains normalized sorted unique values. `CronField.wildcard` is true only for a field written exactly as `*`; enumerating a full range remains restricted syntax for DOM/DOW semantics.
+Parsing normalizes allowed values to sorted unique values. Whether a field was written exactly as `*` remains significant for DOM/DOW semantics. The `CronField` representation and its mutable storage are Internal.
 
 `next_fire_at_or_after(reference)` preserves a matching exact minute boundary. `matches(candidate)` reports whether a minute-aligned UTC instant matches the schedule.
 
@@ -139,7 +170,7 @@ If a syntactically valid expression has no match within eight calendar years or 
 
 Adapts an already parsed `CronSchedule` to the optional-return `UtcTrigger` protocol without parsing the expression again. Search-limit and time-range failures remain explicit exceptions.
 
-## `chronos.job`
+## `chronos.job` — Experimental
 
 ### Job construction
 
@@ -150,15 +181,15 @@ Adapts an already parsed `CronSchedule` to the optional-return `UtcTrigger` prot
 - `make_monotonic_job_with_policies(..., policy_config) -> Job`
 - `make_fixed_delay_job_with_policies(..., policy_config) -> Job`
 
-The factories create the supported UTC or monotonic job subtype. Original factories install default policies; `_with_policies` variants require `JobPolicies`. `Job.policy_config()` returns a defensive copy. `Job` itself is the shared registry/executor view; direct construction of the base class is internal.
+The factories create the supported UTC or monotonic job subtype. Original factories install default policies; `_with_policies` variants require `JobPolicies`. `Job.policy_config()` returns a defensive copy. `Job` is the shared consumer inspection view; direct construction of `Job` or its concrete subtypes is Internal.
 
 `job_id` is 1–128 ASCII bytes using letters, digits, `.`, `-`, `_`, or `:`. Names are 1–256 UTF-8 bytes. Each job owns a defensive copy of at most 16 `JobMetadata` entries; keys are bounded identifiers and values are at most 256 bytes.
 
 Handlers have the verified type `(JobContext) -> None`. A context carries `job_id`, an explicit `time_domain` (`utc` or `monotonic`), `scheduled_time_ms`, and a positive attempt number. The domain must be checked before interpreting the millisecond value.
 
-`record_success` and `record_failure` retain only the latest fixed status, bounded safe error category, completion timestamp, and total execution count. Arbitrary results, exception messages, and history are not retained.
+Chronos retains only the latest fixed status, bounded safe error category, completion timestamp, and total execution count. Arbitrary results, exception messages, and history are not retained. Direct `run`, `set_enabled`, `record_success`, and `record_failure` calls are Internal scheduler/executor operations.
 
-### Trigger access
+### Trigger access — Internal
 
 - `trigger_kind() -> str`
 - `time_domain() -> str`
@@ -172,11 +203,9 @@ Calling the wrong-domain method raises `InvalidJobError`.
 
 `make_fixed_delay_job` stores a `FixedDelay` configuration and calculates its first monotonic deadline from `registered_at`. Only fixed-delay jobs support `next_monotonic_after_completion`; the manual scheduler calls it after both successful and failed handlers.
 
-## `chronos.registry`
+## `chronos.registry` — Internal
 
-### `JobRegistry(max_jobs)`
-
-Creates an application-owned in-memory registry. `max_jobs` must be between 1 and 10,000.
+`JobRegistry` and `RegisteredJob` are scheduler implementation details. Applications use `Scheduler` registration and inspection methods. The current registry is bounded to 10,000 jobs and preserves the following product behavior:
 
 - `add(job)` rejects duplicates; it never replaces implicitly.
 - `find(job_id) -> Job | None` and `get(job_id) -> Job` inspect jobs.
@@ -187,13 +216,11 @@ Creates an application-owned in-memory registry. `max_jobs` must be between 1 an
 
 Removal does not interrupt a handler. The standalone registry permits ID reuse after removal; the manual scheduler rejects reuse while an execution with that ID remains active.
 
-## `chronos.executor`
+## `chronos.executor` — Internal
 
-### `InlineExecutor`
+`InlineExecutor` and `ExecutionOutcome` are not extension points in `0.4.0`. The scheduler invokes trusted handlers synchronously, contains handler exceptions as the safe category `handler-error`, and makes no timeout-enforcement claim. A future executor interface requires a separately verified public design.
 
-`execute(job, context) -> ExecutionOutcome` invokes the trusted handler synchronously. Handler exceptions are contained and represented only by `succeeded = false` and the safe category `handler-error`. The executor does not calculate triggers, record history, spawn work, or claim timeout enforcement.
-
-## `chronos.events`
+## `chronos.events` — Experimental
 
 ### `ChronosEvent`
 
@@ -211,15 +238,15 @@ Kinds are exported as `EVENT_REGISTERED`, `EVENT_SCHEDULED`, `EVENT_STARTED`, `E
 
 `coalesced_count` and `coalesced_truncated` are meaningful only for `EVENT_COALESCED`. A truncated count is a bounded known lower bound, not a claim that the complete backlog was enumerated.
 
-### `EventDispatcher(max_listeners)`
+### `EventDispatcher(max_listeners)` — Internal
 
-Stores zero through `MAX_EVENT_LISTENERS` (64) synchronous listeners. `add_listener(listener)` rejects capacity overflow. `emit(event)` invokes the listener snapshot in registration order, isolates each exception, and increments a saturating failure count. It retains no event queue or history. Scheduler consumers normally use the forwarding methods on `Scheduler` instead of constructing a dispatcher.
+Stores zero through the internal limit of 64 synchronous listeners. It retains no event queue or history. Scheduler consumers use `Scheduler.add_listener`, `listener_count`, and `listener_failure_count`; direct dispatcher construction and emission are unsupported.
 
 See `docs/events.md` for field semantics, ordering, reentrancy, retention, and security boundaries.
 
-## `chronos.policy`
+## `chronos.policy` — Experimental
 
-This configuration/calculation surface remains pure. `JobPolicies` bundles misfire, overlap, and retry settings. Explicit job factories accept the bundle; scheduler dispatch implements skip/fire-once/catch-up, forbid/queue-one, no-retry, fixed retry, and exponential retry under documented combination limits.
+This configuration/calculation surface remains pure. `JobPolicies(misfire, overlap, retry)` bundles the three factory-created policies. Construct individual policies with the named factory functions; direct `MisfirePolicy`, `OverlapPolicy`, and `RetryPolicy` constructors and raw kind/bound constants are Internal. Explicit job factories accept the bundle; scheduler dispatch implements skip/fire-once/catch-up, forbid/queue-one, no-retry, fixed retry, and exponential retry under documented combination limits.
 
 ### `MisfirePolicy`
 
@@ -232,7 +259,7 @@ This configuration/calculation surface remains pure. `JobPolicies` bundles misfi
 
 Grace uses milliseconds and an inclusive boundary. Catch-up dispatch is capped by `MAX_CATCH_UP_COUNT` (1,024) and evaluation by `MAX_CATCH_UP_EVALUATION_STEPS` (10,000).
 
-`default_job_policies()` returns fire-once with maximum grace, forbid, and no-retry. `copy_job_policies(source)` makes a defensive copy. Fixed and exponential retry are accepted except with catch-up or queue-one. Catch-up is accepted except for completion-anchored fixed-delay jobs.
+`default_job_policies()` returns fire-once with maximum grace, forbid, and no-retry. Chronos makes defensive policy copies internally; `copy_job_policies` is not public. Fixed and exponential retry are accepted except with catch-up or queue-one. Catch-up is accepted except for completion-anchored fixed-delay jobs.
 
 ### `OverlapPolicy`
 
@@ -248,7 +275,7 @@ Grace uses milliseconds and an inclusive boundary. Catch-up dispatch is capped b
 
 Attempts include the initial execution and are capped by `MAX_RETRY_ATTEMPTS` (64). Exponential delay saturates at the configured maximum without integer overflow. See `docs/policies.md` for exact semantics and current non-integration limits.
 
-## `chronos.scheduler`
+## `chronos.scheduler` — Experimental
 
 ### `Scheduler(clock, max_jobs, max_listeners=16)`
 
@@ -274,20 +301,20 @@ Creates an application-owned manual scheduler with injected `Clock`, bounded `Jo
 
 Exact registration boundaries are inclusive; recurring calculation is exclusive. UTC eligibility uses wall time, while delay/interval eligibility and fixed-delay completion use monotonic time. Due work is ordered UTC-domain first, then monotonic-domain; within a domain it uses planned time then lexical job ID. See `docs/scheduler.md` for lifecycle, mutation, shutdown, and provisional missed-run behavior.
 
-## Consumer imports
+## Supported consumer imports
 
 For a dependency aliased as `chronos`:
 
 ```nox-fragment
 from chronos.clock import Clock, FakeClock
 from chronos.cron import CronSchedule, CronTrigger, parse
-from chronos.events import ChronosEvent, EventDispatcher
-from chronos.executor import InlineExecutor
+from chronos.events import ChronosEvent, EVENT_FAILED, EVENT_STARTED, EVENT_SUCCEEDED
 from chronos.job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_fixed_delay_job_with_policies, make_monotonic_job, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
-from chronos.policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy
-from chronos.registry import JobRegistry
+from chronos.policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, default_job_policies, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
 from chronos.scheduler import Scheduler, TickResult
 from chronos.system_clock import SystemClock
-from chronos.time import Duration, MonotonicInstant, UtcInstant
-from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
+from chronos.time import MAX_MS, MIN_MS, Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, MonotonicTrigger, OnceTrigger, UtcTrigger
 ```
+
+These dependency-qualified imports describe the intended package surface, but external `noxc add` consumption remains blocked by `NXL-007`. Repository examples use checkout-local module names until that resolver issue is fixed and consumer contract tests pass.

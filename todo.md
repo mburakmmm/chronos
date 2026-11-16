@@ -360,7 +360,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 
 ## API ve entegrasyon
 
-- [ ] Public API yüzeyini küçült ve Stable/Experimental/Internal etiketlerini uygula.
+- [x] Public API yüzeyini küçült ve Stable/Experimental/Internal etiketlerini uygula; Nox görünürlük sınırını NXL-008 kanıtıyla kaydet.
 - [ ] Contract testleriyle public API davranışını sabitle.
 - [ ] Core bağımlılığı yaratmadan ayrı Nyx/Aether integration örneklerini, ilgili sürümlerle gerçekten derlenebiliyorsa ekle.
 - [ ] Breaking 0.x değişikliklerini migration guide ve changelog'a yaz.

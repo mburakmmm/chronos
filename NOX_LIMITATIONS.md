@@ -179,6 +179,34 @@ Fix verification:
 3. Run the complete Chronos matrix from the repository root.
 4. Fetch Chronos into a separate consumer under both the `chronos` alias and a deliberately different alias; compile and run the public cron and scheduler examples in both cases.
 
+## NXL-008 — module visibility cannot enforce a public API allowlist
+
+Status: open capability limitation
+
+Observed: 2026-11-16 with Nox 2.1.111 and 2.1.186 on macOS arm64
+
+Affected stage: language/module API design
+
+Nox documents that every top-level module name is importable. The language has no `public` or `private` keyword, and a leading underscore is only a convention: it does not prevent an importer from naming the symbol.
+
+The retained producer/consumer proof imports a leading-underscore class and function from another module and prints `7` then `9` on LLVM and QBE:
+
+- `proofs/limitations/module_visibility_source.nox`
+- `proofs/limitations/module_visibility_consumer.nox`
+
+Chronos impact: the compiler cannot enforce the curated API allowlist. Internal records such as `ScheduledEntry`, `DueItem`, `RegisteredJob`, and `ExecutionOutcome` remain technically importable even though they carry no compatibility contract.
+
+Chronos workaround: `docs/api.md` is the authoritative allowlist, leading underscores mark helper functions, and the API documentation explicitly labels Experimental and Internal names. Tests and benchmarks may import Internal names only when their purpose requires implementation-level verification; doing so does not promote those names to public API.
+
+This is documented Nox behavior rather than a compiler correctness bug. It remains a capability limitation because a future export list or access modifier would let libraries enforce their supported surface.
+
+Fix/capability verification:
+
+1. Add a documented module export allowlist or access-control mechanism with a clear migration path.
+2. Confirm the retained consumer is rejected when it imports both Internal names.
+3. Apply the mechanism to Chronos modules and verify the supported imports on LLVM and QBE.
+4. Keep reflection, diagnostics, and package consumers consistent with the same visibility rule.
+
 ## New entry template
 
 Every new limitation should record:

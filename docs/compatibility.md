@@ -2,7 +2,7 @@
 
 Status: Phase 4 cross-platform compatibility baseline.
 
-Last verified: 2026-11-15
+Last verified: 2026-11-16
 
 ## Verified development target
 
@@ -27,6 +27,7 @@ This table records a reproducible development baseline, not a promise that every
 | Task-local sleep probe | `fast sleeper` | `fast sleeper` |
 | Class-valued command channel and bounded worker stop | output `7` | output `7` |
 | Cooperative cancellation proof | output ends with `49995000` | output ends with `49995000` |
+| Cross-module Internal-name import proof | output `7`, `9` | output `7`, `9` |
 | Clock-independent freestanding modules | 11 passed | 11 passed |
 
 The QBE backend is single-threaded and cooperative, while LLVM uses the documented multi-core scheduler. With Nox 2.1.111, `sleep_ms()` inside an async task suspends only the calling fiber on both tested backends. `Channel.wait(ms)` also provides a cooperative bounded wake primitive.
@@ -93,3 +94,4 @@ Freestanding checks must exclude `system_clock.nox` or expect its documented `Ca
 - A platform is not listed as verified without execution evidence.
 - New Nox versions require the full test/example matrix plus the retained capability and limitation reproducers.
 - Open and resolved compiler/runtime findings are tracked separately in `NOX_LIMITATIONS.md`.
+- Nox does not enforce library visibility; only names allowlisted by `docs/api.md` carry a Chronos compatibility contract.

@@ -30,6 +30,7 @@ PROOF_EXPECTATIONS = {
     "proofs/background_command_model.nox": "7",
     "proofs/concurrency_model.nox": "5\ntask failed\ncancelled at await\n49995000",
     "proofs/indexed_due_order.nox": "b\na\nTrue",
+    "proofs/limitations/module_visibility_consumer.nox": "7\n9",
     "proofs/scheduler_sleep_probe.nox": "fast sleeper",
 }
 BENCHMARK_SOURCES = (

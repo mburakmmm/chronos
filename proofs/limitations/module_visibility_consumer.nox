@@ -1,0 +1,6 @@
+from proofs.limitations.module_visibility_source import _InternalCounter, _internal_value
+
+counter: _InternalCounter = _InternalCounter(9)
+
+print(_internal_value())
+print(counter.read())

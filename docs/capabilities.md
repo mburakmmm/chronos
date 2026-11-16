@@ -1,7 +1,7 @@
 # Nox capability matrix
 
-Last updated: 2026-11-13
-Chronos phase: 3 (`0.3.0` implementation complete, unreleased)
+Last updated: 2026-11-16
+Chronos phase: 4 (`0.4.0` API hardening, unreleased)
 
 This document separates documentation findings from executable verification. A documented API is not marked fully verified until an appropriate Chronos proof of concept compiles and runs.
 
@@ -72,6 +72,7 @@ The documented suspend behavior of `Instant` differs by platform, while `boot_ms
 | Generic inference | Generic identity function inferred from argument | verified on LLVM/QBE |
 | Explicit generic call syntax | `identity[str](...)` | rejected by installed 2.1.0 despite current documentation; avoid until resolved |
 | Deferred handler mutations | Context collected add/remove requests | verified as language/design POC |
+| Module visibility | All top-level names are importable; `_` is conventional only | verified from Nox 2.1.186 docs and by cross-module LLVM/QBE proof on 2.1.111/2.1.186; tracked as NXL-008 |
 
 ## Test and filesystem capabilities
 
@@ -127,6 +128,12 @@ True
 ### P0-TOOL-001 — project command flow
 
 The Phase 0 project has exercised `noxc fmt`, `check`, `test`, `build`, `run`, and `fetch`. With an empty `requires` list, `fetch` reported no dependencies and did not create `nox.lock`.
+
+### P4-LANG-001 — module visibility
+
+Sources: `proofs/limitations/module_visibility_source.nox` and `proofs/limitations/module_visibility_consumer.nox`.
+
+Nox 2.1.186 `docs/language/modules.md` states that every top-level name is importable, there are no `public`/`private` keywords, and leading underscores do not hide names. The consumer proof imported a leading-underscore class and function and printed `7` then `9` on LLVM and QBE with both the pinned Nox 2.1.111 baseline and local Nox 2.1.186. Chronos therefore enforces its supported surface by a documented allowlist and compatibility policy rather than claiming compiler-enforced privacy.
 
 ### P0-TIME-001 — hosted clock APIs
 

@@ -76,6 +76,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Separate LLVM/QBE timing-sensitive integration benchmarks for raw wake overshoot, fixed-rate observed lateness, zero planned-anchor drift, and raw/event-observed callback duration, with no CI timing gates or background-worker claim.
 - A 1,000-execution deterministic retention regression proving bounded metadata, stable registry/schedule/listener cardinality, synchronous event delivery without a queue, and latest-only safe outcome/error state.
 - NXL-007 records the Nox 2.1.111 package self-import resolution gap; external `noxc add` consumption is not advertised until source-root and consumer imports share one safe form.
+- A curated `0.4.0` API allowlist with explicit Stable, Experimental, Deprecated, and Internal semantics; registry, executor, dispatcher, concrete job types, scheduler records, raw constants, and helper functions are no longer presented as supported extension points.
+- NXL-008 records Nox's documented lack of module access control, backed by a cross-module leading-underscore import proof in the LLVM/QBE verification matrix.
 
 ### Limitations
 
