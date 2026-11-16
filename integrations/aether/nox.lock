@@ -1,0 +1,17 @@
+{
+  "packages": [
+    {
+      "alias": "aether",
+      "repo": "github.com/mburakmmm/aether",
+      "ref": "v0.12.0",
+      "resolved": "eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001",
+      "hpy_schema": 0,
+      "hpy_ahpy_version": "",
+      "hpy_source_commit": "",
+      "hpy_abi": "",
+      "hpy_target": "",
+      "hpy_sha256": "",
+      "hpy_module": ""
+    }
+  ]
+}

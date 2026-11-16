@@ -2,7 +2,7 @@
 
 This file tracks compiler/runtime behavior encountered while implementing Chronos. It is intentionally separate from Chronos feature limitations. Entries remain open until the relevant Nox fix is verified with the recorded reproducer on every affected backend.
 
-Original observations used Nox 2.1.0 on macOS arm64. The latest audit used Nox 2.1.111 on macOS arm64 on 2026-11-13. Chronos does not modify the Nox compiler, runtime, or standard library.
+Original observations used Nox 2.1.0 on macOS arm64. The latest full audit used Nox 2.1.111 on macOS arm64 on 2026-11-13; a targeted framework-integration audit rechecked NXL-003 and NXL-007 with Nox 2.1.186 on 2026-11-16. Chronos does not modify the Nox compiler, runtime, or standard library.
 
 ## NXL-001 — production-shaped optional primitive fields reach unsupported codegen
 
@@ -74,6 +74,8 @@ Fix verification: compile `proofs/limitations/module_alias_shadow.nox` and confi
 Latest audit (2026-11-13, Nox 2.1.98): still open. `noxc check` reports the same `UndefinedFunction` errors for `clock.advance` and `clock.now_utc`.
 
 Nox 2.1.111 audit: still open with the same two `UndefinedFunction` errors.
+
+Nox 2.1.186 integration audit: still open. A flat Chronos/Nyx source overlay resolved Nyx locals named `errors` and `registry` as the Chronos module aliases, producing `module 'errors' has no member named 'append'` and `module 'registry' has no member named 'has'`. Moving Chronos under the qualified `chronos.*` namespace avoids these cross-library collisions without renaming framework locals.
 
 ## NXL-004 — pre-epoch `DateTime.to_epoch_ms()` did not complete
 
@@ -171,6 +173,8 @@ noxc check proofs/limitations/package_self_import.nox
 Using an unqualified internal import such as `from time import UtcInstant` makes the source checkout compile, but it is not a safe package workaround. When the module is loaded through a dependency alias, that unqualified import is resolved against the consumer's project root. It either fails when the consumer has no matching file or can bind to unrelated consumer code.
 
 Chronos impact: Chronos remains source-checkout-only and does not claim working `noxc add` consumption while this limitation is open. README examples use checkout-local imports. CI still verifies all implemented behavior directly on every claimed platform/backend.
+
+Nox 2.1.186 audit (2026-11-16): still open. `noxc check proofs/limitations/package_self_import.nox` reports the same unknown-alias/project-file error on LLVM and QBE checks. Optional framework verification therefore uses a documented temporary `chronos.*` source overlay and is not counted as package-consumer evidence.
 
 Fix verification:
 

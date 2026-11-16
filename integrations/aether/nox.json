@@ -1,0 +1,12 @@
+{
+  "name": "chronos_aether_integration",
+  "version": "0.4.0-dev",
+  "entry": "main.nox",
+  "requires": [
+    {
+      "alias": "aether",
+      "repo": "github.com/mburakmmm/aether",
+      "ref": "v0.12.0"
+    }
+  ]
+}

@@ -55,6 +55,17 @@ The following modules type-check with `--profile freestanding` on LLVM and QBE:
 
 `system_clock.nox` type-checks in the hosted profile. Its freestanding rejection is expected and explicit: `nox.time.now_ms()` and `nox.time.boot_ms()` require the unavailable `clock` capability. Pure scheduling calculation remains usable without that adapter.
 
+## Optional framework integration matrix
+
+Framework packages currently require a newer compiler than the core baseline, so they run in an isolated job rather than changing Chronos's minimum-version claim.
+
+| Integration | Framework pin | Compiler | Local macOS arm64 | CI Linux x64 |
+|---|---|---|---|---|
+| Nyx request polling | `v0.29.0` / `8acc737cadf58e5f7529e91e3838c095bce3c8ad` | Nox 2.1.186 | LLVM/QBE passed | LLVM/QBE passed |
+| Aether request polling | `v0.12.0` / `eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001` | Nox 2.1.186 | LLVM/QBE passed | LLVM/QBE passed |
+
+The job verifies locked framework APIs through the source-overlay mechanism documented in `docs/integrations.md`. It is not external Chronos package-consumption evidence and makes no live-server, multi-worker, background-progress, or exactly-once claim.
+
 ## Platform claims
 
 | Platform | Status |

@@ -1,0 +1,26 @@
+from nox.http import HttpResponse
+from nox.router import Context
+import nyx.app
+from nyx.app import Application
+from chronos.clock import Clock
+from chronos.scheduler import Scheduler
+from chronos.system_clock import SystemClock
+
+def build_scheduler() -> Scheduler:
+    source_clock: Clock = SystemClock()
+    engine: Scheduler = Scheduler(source_clock, 128)
+    engine.start()
+    return engine
+
+def install_request_polling(application: Application, engine: Scheduler) -> None:
+    def poll_before_request(context: Context) -> HttpResponse | None:
+        engine.tick()
+        return None
+
+    def stop_scheduler() -> None:
+        engine.stop()
+
+    application.router.use_before(poll_before_request)
+    nyx.app.on_shutdown(application, stop_scheduler)
+
+print("chronos nyx integration ready")

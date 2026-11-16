@@ -1,0 +1,17 @@
+{
+  "packages": [
+    {
+      "alias": "nyx",
+      "repo": "github.com/mburakmmm/nyx",
+      "ref": "v0.29.0",
+      "resolved": "8acc737cadf58e5f7529e91e3838c095bce3c8ad",
+      "hpy_schema": 0,
+      "hpy_ahpy_version": "",
+      "hpy_source_commit": "",
+      "hpy_abi": "",
+      "hpy_target": "",
+      "hpy_sha256": "",
+      "hpy_module": ""
+    }
+  ]
+}

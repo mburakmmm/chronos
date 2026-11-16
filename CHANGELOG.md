@@ -79,6 +79,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - A curated `0.4.0` API allowlist with explicit Stable, Experimental, Deprecated, and Internal semantics; registry, executor, dispatcher, concrete job types, scheduler records, raw constants, and helper functions are no longer presented as supported extension points.
 - NXL-008 records Nox's documented lack of module access control, backed by a cross-module leading-underscore import proof in the LLVM/QBE verification matrix.
 - A deterministic public API contract test imports the complete Experimental allowlist and fixes time, clock, trigger, cron, policy, job-factory, event, handler-context, scheduler, and tick-result behavior on LLVM and QBE.
+- Locked optional integration examples for Nyx `v0.29.0` and Aether `v0.12.0`, verified with Nox 2.1.186 on LLVM/QBE without adding either framework to the core manifest.
+- A separate Linux x64 framework-integration CI job plus explicit request-driven polling, worker-local ownership, idle-progress, latency, and source-overlay limitations.
 
 ### Limitations
 

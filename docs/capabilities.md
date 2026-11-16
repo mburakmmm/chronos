@@ -9,7 +9,7 @@ This document separates documentation findings from executable verification. A d
 
 | Item | Observed value | Status |
 |---|---|---|
-| Compiler | `noxc 2.1.111` | latest local verification; original Phase 0 evidence used 2.1.0 |
+| Compiler | `noxc 2.1.111` core; `2.1.186` optional integrations | core release baseline plus targeted framework verification; original Phase 0 evidence used 2.1.0 |
 | Host | Darwin 27.2.0 arm64 | verified locally |
 | LLVM driver | `/usr/bin/clang` | present; compile/run POC verified |
 | C driver | `/usr/bin/cc` | present |
@@ -26,6 +26,7 @@ This document separates documentation findings from executable verification. A d
 | Dependency alias import | Root `cron.nox` imported as `chronos.cron` | verified |
 | Nested source namespace | `chronos/cron.nox` required `chronos.chronos.cron` | verified; rejected for Chronos layout |
 | `nox.lock` reproducible pin | Local package refs resolved to exact commits | verified in POC |
+| Namespaced framework source overlay | Real Chronos sources qualified under `chronos.*` beside locked Nyx/Aether packages | verified on LLVM/QBE with Nox 2.1.186; not a fetched-Chronos consumer claim |
 
 ## Time capabilities
 
@@ -398,3 +399,13 @@ This is a reachable-state cardinality regression, not a process-RSS or allocator
 The scheduler sleep probe printed `fast sleeper`, the bounded command-channel proof printed `7`, and the cancellation proof ended with `49995000` on both backends. The exact development platform and unsupported platform rows are recorded in `docs/compatibility.md`.
 
 [GitHub Actions run 43460710827](https://github.com/mburakmmm/chronos/actions/runs/43460710827) repeated that full matrix successfully on Linux x64, Linux arm64, macOS arm64, and Windows x64 for commit `a8211b0`. This is execution evidence only for those runner architectures and Nox 2.1.111; it does not imply support for untested platforms or Nox versions.
+
+### P4-INT-001 — optional Nyx/Aether composition
+
+Date: 2026-11-16
+Compiler: Nox 2.1.186
+Sources: `integrations/nyx/main.nox`, `integrations/aether/main.nox`, `scripts/verify_integrations.py`
+
+Nyx `v0.29.0` resolved to `8acc737cadf58e5f7529e91e3838c095bce3c8ad`; Aether `v0.12.0` resolved to `eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001`. Both locked integrations completed LLVM and QBE code generation and execution locally. The separate Linux x64 CI job repeats the same matrix with the checksum-pinned Nox 2.1.186 release archive.
+
+A flat source overlay failed because the open NXL-003 alias-shadowing behavior confused framework locals named `errors` and `registry` with Chronos root module aliases. Placing the unchanged module bodies under the intended `chronos.*` namespace and mechanically qualifying only Chronos internal import statements eliminated the collisions. Because NXL-007 still blocks those imports in the Chronos root project itself, this is composition evidence rather than external package-install evidence.

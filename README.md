@@ -37,7 +37,8 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 | Lifecycle events | Implemented | Synchronous bounded listeners with safe error categories |
 | Public API contract | Experimental | Curated allowlist; no Stable names before the first tagged release |
 | Compiler-enforced API visibility | Unavailable | Nox imports all top-level names; see NXL-008 |
-| Nox package dependency consumption | Blocked | Nox 2.1.111 self-import limitation; see NXL-007 |
+| Nyx/Aether integration examples | Verified separately | Request-driven manual polling; no core dependency or background claim |
+| Nox package dependency consumption | Blocked | Self-import limitation remains through Nox 2.1.186; see NXL-007 |
 | Background scheduler | Deferred | Runtime primitives are proven; full worker ownership is not |
 | IANA time zones and DST | Deferred | Current cron and calendar behavior is UTC-only |
 | Persistence and distributed coordination | Deferred | No durable or exactly-once claim |
@@ -65,7 +66,7 @@ noxc test tests
 noxc run examples/poll.nox
 ```
 
-Chronos is currently verified from a source checkout. Nox 2.1.111 cannot yet resolve the same package-internal import form both from the package's own project root and from an external consumer. Dependency installation through `noxc add` is therefore not advertised until [NXL-007](NOX_LIMITATIONS.md) is resolved and consumer integration tests pass.
+Chronos is currently verified from a source checkout. Nox 2.1.186 still cannot resolve the same package-internal import form both from the package's own project root and from an external consumer. Dependency installation through `noxc add` is therefore not advertised until [NXL-007](NOX_LIMITATIONS.md) is resolved and consumer integration tests pass.
 
 ## UTC cron example
 
@@ -138,6 +139,8 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 
 The matrix runs all 20 deterministic tests, all 16 executable examples, five runtime/capability proofs, 11 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
 
+A separate Linux x64 CI job uses checksum-pinned Nox 2.1.186 to fetch the exact Nyx `v0.29.0` and Aether `v0.12.0` locks and execute both optional integration examples on LLVM and QBE. These dependencies never enter the core manifest. See [framework integrations](docs/integrations.md) for the request-driven semantics and `NXL-007` source-overlay boundary.
+
 Run the complete local matrix with:
 
 ```sh
@@ -156,6 +159,7 @@ python3 scripts/verify.py
 | Scheduler lifecycle | [docs/scheduler.md](docs/scheduler.md) |
 | Jobs and registry | [docs/jobs.md](docs/jobs.md) |
 | Execution policies | [docs/policies.md](docs/policies.md) |
+| Framework integrations | [docs/integrations.md](docs/integrations.md) |
 | Concurrency boundary | [docs/concurrency.md](docs/concurrency.md) |
 | Security model | [docs/security.md](docs/security.md) |
 | Platform compatibility | [docs/compatibility.md](docs/compatibility.md) |

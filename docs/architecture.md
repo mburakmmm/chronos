@@ -224,4 +224,16 @@ The manual scheduler owns no background task. A stop request with no active hand
 
 The scheduler does not expose immediate force-cancellation, shutdown join timeouts, or callback execution timeouts. Nox cancellation remains cooperative for work without an await point, so those APIs would promise control the runtime has not demonstrated. A stopped scheduler is terminal and cannot restart.
 
+## ADR-009: framework examples remain request-driven and optional
+
+Decision date: 2026-11-16
+
+Status: accepted for Phase 4
+
+Nyx and Aether are not dependencies of Chronos core. Their optional examples construct an application-owned manual scheduler, invoke one `tick()` from a request middleware/interceptor, and stop it through the framework application lifecycle. They do not introduce a framework-specific scheduler subtype or hide task ownership.
+
+Request-driven polling has deliberately limited semantics: it makes progress only when requests arrive, and inline handlers contribute directly to request latency. Each framework worker owns independent module/application state, so registering the same schedule in multiple workers can duplicate execution. The examples therefore do not claim idle-time progress, cross-worker coordination, persistence, or exactly-once delivery.
+
+Nyx `v0.29.0` and Aether `v0.12.0` require Nox 2.1.186, while the core matrix remains pinned to 2.1.111. A separate integration verifier and CI job preserve that version boundary. Until NXL-007 is fixed, the verifier uses a temporary `chronos.*` source namespace with mechanically qualified internal imports. This tests the intended package namespace without presenting source-overlay success as `noxc add chronos` support.
+
 Nox 2.1.111 verifies cooperative task-local sleep, `Channel.wait(ms)`, and class-valued channel command transport on LLVM and QBE. These primitives make a future owned worker feasible, but they do not prove correct ownership of Chronos jobs, bounded command responses, deadline recomputation, or handler shutdown. Background mode remains a separate future executor/lifecycle design rather than being hidden inside the manual scheduler.

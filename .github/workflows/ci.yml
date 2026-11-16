@@ -79,3 +79,31 @@ jobs:
 
       - name: Check repository whitespace
         run: git diff --check
+
+  framework-integrations:
+    name: Framework integrations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Nox 2.1.186
+        uses: ./.github/actions/setup-nox
+        with:
+          version: "2.1.186"
+          platform: linux-x64
+          sha256: a2e3ef3be38067e6c9cb27665dac45e783c1577be82444a6ee97a5e78d692992
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Verify locked framework integrations
+        env:
+          NOX_HOME: ${{ runner.temp }}/chronos-integration-nox-home
+        run: python scripts/verify_integrations.py
