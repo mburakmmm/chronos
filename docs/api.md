@@ -308,7 +308,8 @@ For a dependency aliased as `chronos`:
 ```nox-fragment
 from chronos.clock import Clock, FakeClock
 from chronos.cron import CronSchedule, CronTrigger, parse
-from chronos.events import ChronosEvent, EVENT_FAILED, EVENT_STARTED, EVENT_SUCCEEDED
+from chronos.errors import ChronosError, CronParseError, CronSearchLimitError, DuplicateJobError, EventListenerLimitError, InvalidDurationError, InvalidEventError, InvalidJobError, InvalidPolicyError, JobNotFoundError, SchedulerStateError, TimeRangeError
+from chronos.events import ChronosEvent, EVENT_CANCELLED, EVENT_COALESCED, EVENT_FAILED, EVENT_MISFIRED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED, EVENT_REGISTERED, EVENT_RETRIED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED
 from chronos.job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_fixed_delay_job_with_policies, make_monotonic_job, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
 from chronos.policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, default_job_policies, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
 from chronos.scheduler import Scheduler, TickResult
@@ -317,4 +318,10 @@ from chronos.time import MAX_MS, MIN_MS, Duration, MonotonicInstant, UtcInstant
 from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, MonotonicTrigger, OnceTrigger, UtcTrigger
 ```
 
-These dependency-qualified imports describe the intended package surface, but external `noxc add` consumption remains blocked by `NXL-007`. Repository examples use checkout-local module names until that resolver issue is fixed and consumer contract tests pass.
+These dependency-qualified imports describe the intended package surface, but external `noxc add` consumption remains blocked by `NXL-007`. Repository examples use checkout-local module names until that resolver issue is fixed and external-consumer integration tests pass.
+
+## Contract verification
+
+`tests/api_contract_test.nox` imports every allowlisted name through the current checkout-local module form. It fixes the observable contracts for checked time arithmetic, both clock implementations, trigger boundaries, cron matching, policy bounds, all six job factories, event kind values, handler context, scheduler inspection/mutation, lifecycle, and tick results. CI executes the same contract test independently on LLVM and QBE.
+
+The test intentionally does not import Internal symbols. It is a source-checkout contract, not evidence that dependency-qualified imports work; that separate package-consumer gate remains blocked by `NXL-007`.

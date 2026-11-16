@@ -88,14 +88,14 @@ def main() -> int:
 
     test_sources = sources("tests", "*_test.nox")
     example_sources = sources("examples", "*.nox")
-    if len(test_sources) != 19:
-        raise RuntimeError(f"expected 19 test programs, found {len(test_sources)}")
+    if len(test_sources) != 20:
+        raise RuntimeError(f"expected 20 test programs, found {len(test_sources)}")
     if len(example_sources) != 16:
         raise RuntimeError(f"expected 16 examples, found {len(example_sources)}")
 
     aggregate = run([NOXC, "test", "tests"])
-    if "19 passed, 0 failed" not in aggregate:
-        raise RuntimeError("aggregate test output did not report 19 passed, 0 failed")
+    if "20 passed, 0 failed" not in aggregate:
+        raise RuntimeError("aggregate test output did not report 20 passed, 0 failed")
 
     for backend in BACKENDS:
         for source in test_sources:

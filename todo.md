@@ -342,7 +342,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 
 ## Backend ve platform matrisi
 
-- [x] LLVM ve QBE tam test/örnek matrisini çalıştır: iki backend'de 19 test ve 16 örnek geçti.
+- [x] LLVM ve QBE tam test/örnek matrisini çalıştır: iki backend'de 20 test ve 16 örnek geçti.
 - [x] Nox 2.1.111 üzerinde QBE cooperative scheduler, task-local sleep ve channel wake davranışını Phase 4 compatibility kaydıyla sabitle.
 - [x] macOS arm64 için Nox/compiler/backend sürümleriyle gerçek yerel kanıt oluştur.
 - [x] Linux x64/arm64, macOS arm64 ve Windows x64 için checksum-pinned Nox 2.1.111 ile gerçek GitHub Actions kanıtı oluştur.
@@ -361,7 +361,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 ## API ve entegrasyon
 
 - [x] Public API yüzeyini küçült ve Stable/Experimental/Internal etiketlerini uygula; Nox görünürlük sınırını NXL-008 kanıtıyla kaydet.
-- [ ] Contract testleriyle public API davranışını sabitle.
+- [x] Contract testleriyle public API davranışını sabitle; allowlist importları ve gözlemlenebilir davranışlar LLVM/QBE üzerinde doğrulansın.
 - [ ] Core bağımlılığı yaratmadan ayrı Nyx/Aether integration örneklerini, ilgili sürümlerle gerçekten derlenebiliyorsa ekle.
 - [ ] Breaking 0.x değişikliklerini migration guide ve changelog'a yaz.
 - [ ] Security review: parser complexity, secret leakage, callback authority, resource bounds, arbitrary execution.

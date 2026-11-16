@@ -389,7 +389,7 @@ Manual mode therefore has a complete drain-current shutdown contract without cla
 
 ## Phase 4 compatibility baseline
 
-The 2026-11-15 Nox 2.1.111 local matrix ran all 19 deterministic test programs and all 16 executable examples on both LLVM and QBE. Eleven clock-independent library modules type-checked in the freestanding profile on both backends. `system_clock.nox` passed hosted checking and produced the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
+The current Nox 2.1.111 local matrix runs all 20 deterministic test programs and all 16 executable examples on both LLVM and QBE. The API contract test imports every allowlisted public name and verifies the observable checkout-local API surface on both backends. Eleven clock-independent library modules type-check in the freestanding profile. `system_clock.nox` passes hosted checking and produces the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
 
 The retention regression executes one fixed-rate job 1,000 times with alternating handler failure/success. LLVM and QBE both preserve one registry entry, one schedule entry, one listener, 16 defensively copied metadata entries, a scalar execution count, and only the latest safe outcome/error summary. Its listener observes 3,004 synchronous events without storing them; Chronos owns no event or execution-history collection.
 

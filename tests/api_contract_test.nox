@@ -1,0 +1,178 @@
+import nox.test
+from clock import Clock, FakeClock
+from cron import CronSchedule, CronTrigger, parse
+from errors import ChronosError, CronParseError, CronSearchLimitError, DuplicateJobError, EventListenerLimitError, InvalidDurationError, InvalidEventError, InvalidJobError, InvalidPolicyError, JobNotFoundError, SchedulerStateError, TimeRangeError
+from events import ChronosEvent, EVENT_CANCELLED, EVENT_COALESCED, EVENT_FAILED, EVENT_MISFIRED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED, EVENT_REGISTERED, EVENT_RETRIED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED
+from job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_fixed_delay_job_with_policies, make_monotonic_job, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
+from policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, default_job_policies, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
+from scheduler import Scheduler, TickResult
+from system_clock import SystemClock
+from time import MAX_MS, MIN_MS, Duration, MonotonicInstant, UtcInstant, add_duration, add_monotonic_duration, elapsed_between, multiply_duration, require_positive_interval, subtract_duration
+from trigger import DelayTrigger, FixedDelay, FixedRateTrigger, MonotonicTrigger, OnceTrigger, UtcTrigger
+
+class Observation:
+    calls: int
+    last_job_id: str
+    last_time_domain: str
+    last_scheduled_time_ms: int
+    last_attempt: int
+    event_kinds: list[str]
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.last_job_id = ""
+        self.last_time_domain = ""
+        self.last_scheduled_time_ms = 0
+        self.last_attempt = 0
+        self.event_kinds = []
+
+def observing_handler(observation: Observation) -> (JobContext) -> None:
+    def handle(context: JobContext) -> None:
+        observation.calls += 1
+        observation.last_job_id = context.job_id
+        observation.last_time_domain = context.time_domain
+        observation.last_scheduled_time_ms = context.scheduled_time_ms
+        observation.last_attempt = context.attempt
+
+    return handle
+
+def observing_listener(observation: Observation) -> (ChronosEvent) -> None:
+    def observe(occurrence: ChronosEvent) -> None:
+        observation.event_kinds.append(occurrence.kind)
+
+    return observe
+
+def duration_error_is_chronos_error() -> bool:
+    try:
+        Duration(-1)
+    except ChronosError:
+        return True
+    return False
+
+nox.test.assert_eq_int(MIN_MS, 0, "minimum millisecond bound")
+nox.test.assert_true(MAX_MS > MIN_MS, "maximum millisecond bound")
+nox.test.assert_true(duration_error_is_chronos_error(), "public errors derive from ChronosError")
+nox.test.assert_eq_int(add_duration(UtcInstant(100), Duration(25)).as_epoch_ms(), 125, "UTC addition contract")
+nox.test.assert_eq_int(subtract_duration(UtcInstant(100), Duration(25)).as_epoch_ms(), 75, "UTC subtraction contract")
+nox.test.assert_eq_int(add_monotonic_duration(MonotonicInstant(10), Duration(5)).as_ms(), 15, "monotonic addition contract")
+nox.test.assert_eq_int(elapsed_between(MonotonicInstant(10), MonotonicInstant(35)).as_ms(), 25, "elapsed contract")
+nox.test.assert_eq_int(multiply_duration(Duration(7), 3).as_ms(), 21, "duration multiplication contract")
+nox.test.assert_eq_int(require_positive_interval(Duration(1)).as_ms(), 1, "positive interval contract")
+
+source_clock: FakeClock = FakeClock(1000, 500)
+clock_view: Clock = source_clock
+nox.test.assert_eq_int(clock_view.now_utc().as_epoch_ms(), 1000, "clock UTC contract")
+nox.test.assert_eq_int(clock_view.now_monotonic().as_ms(), 500, "clock monotonic contract")
+source_clock.advance(Duration(10))
+source_clock.jump_utc_ms(-5)
+nox.test.assert_eq_int(source_clock.now_utc().as_epoch_ms(), 1005, "fake clock wall jump contract")
+nox.test.assert_eq_int(source_clock.now_monotonic().as_ms(), 510, "fake clock wall jump preserves monotonic")
+source_clock.set_utc_ms(1000)
+
+host_clock: Clock = SystemClock()
+nox.test.assert_true(host_clock.now_utc().as_epoch_ms() >= MIN_MS, "system UTC clock contract")
+nox.test.assert_true(host_clock.now_monotonic().as_ms() >= MIN_MS, "system monotonic clock contract")
+
+utc_trigger: UtcTrigger = OnceTrigger(UtcInstant(2000))
+next_utc: UtcInstant | None = utc_trigger.next_fire_after(UtcInstant(1000))
+nox.test.assert_true(next_utc is not None, "UTC trigger protocol contract")
+if next_utc is not None:
+    nox.test.assert_eq_int(next_utc.as_epoch_ms(), 2000, "one-shot exclusive contract")
+
+delay: DelayTrigger = DelayTrigger(MonotonicInstant(500), Duration(100))
+monotonic_trigger: MonotonicTrigger = delay
+next_monotonic: MonotonicInstant | None = monotonic_trigger.next_fire_at_or_after(MonotonicInstant(600))
+nox.test.assert_true(next_monotonic is not None, "monotonic trigger protocol contract")
+if next_monotonic is not None:
+    nox.test.assert_eq_int(next_monotonic.as_ms(), 600, "delay inclusive contract")
+
+rate: FixedRateTrigger = FixedRateTrigger(MonotonicInstant(500), Duration(100))
+rate_next: MonotonicInstant | None = rate.next_fire_after(MonotonicInstant(750))
+nox.test.assert_true(rate_next is not None, "fixed-rate next occurrence")
+if rate_next is not None:
+    nox.test.assert_eq_int(rate_next.as_ms(), 800, "fixed-rate anchor contract")
+
+fixed_delay: FixedDelay = FixedDelay(Duration(25))
+nox.test.assert_eq_int(fixed_delay.next_after_completion(MonotonicInstant(700)).as_ms(), 725, "fixed-delay completion contract")
+
+schedule: CronSchedule = parse("*/15 * * * *")
+nox.test.assert_eq_int(schedule.next_fire_at_or_after(UtcInstant(0)).as_epoch_ms(), 0, "cron inclusive contract")
+nox.test.assert_eq_int(schedule.next_fire_after(UtcInstant(0)).as_epoch_ms(), 900000, "cron exclusive contract")
+nox.test.assert_true(schedule.matches(UtcInstant(900000)), "cron match contract")
+cron_trigger: UtcTrigger = CronTrigger(schedule)
+nox.test.assert_true(cron_trigger.next_fire_after(UtcInstant(0)) is not None, "cron trigger adapter contract")
+
+skip: MisfirePolicy = skip_misfires(Duration(100))
+fire_once: MisfirePolicy = fire_once_misfires(Duration(100))
+catch_up: MisfirePolicy = catch_up_misfires(Duration(1000), 3, 8)
+nox.test.assert_eq_int(skip.dispatch_limit(4, Duration(1)), 0, "skip policy contract")
+nox.test.assert_eq_int(fire_once.dispatch_limit(4, Duration(1)), 1, "fire-once policy contract")
+nox.test.assert_eq_int(catch_up.dispatch_limit(4, Duration(1)), 3, "catch-up policy contract")
+nox.test.assert_eq_int(catch_up.evaluation_limit(20), 8, "catch-up evaluation contract")
+
+forbid: OverlapPolicy = forbid_overlap()
+queue_one: OverlapPolicy = queue_one_overlap()
+nox.test.assert_eq_int(forbid.max_pending_runs, 0, "forbid overlap contract")
+nox.test.assert_eq_int(queue_one.max_pending_runs, 1, "queue-one overlap contract")
+
+none: RetryPolicy = no_retry()
+fixed: RetryPolicy = fixed_retry(Duration(10), 2)
+exponential: RetryPolicy = exponential_retry(Duration(10), Duration(25), 4)
+nox.test.assert_true(not none.should_retry_after(1), "no-retry contract")
+nox.test.assert_eq_int(fixed.delay_before_attempt(2).as_ms(), 10, "fixed retry contract")
+nox.test.assert_eq_int(exponential.delay_before_attempt(4).as_ms(), 25, "exponential retry cap contract")
+
+defaults: JobPolicies = default_job_policies()
+configured: JobPolicies = JobPolicies(fire_once, forbid, none)
+nox.test.assert_eq_int(defaults.misfire.dispatch_limit(5, Duration(1)), 1, "default misfire contract")
+nox.test.assert_true(not configured.retry.should_retry_after(1), "job policy bundle contract")
+
+observation: Observation = Observation()
+handler: (JobContext) -> None = observing_handler(observation)
+metadata: list[JobMetadata] = [JobMetadata("role", "contract")]
+jobs: list[Job] = [make_utc_job("api.utc", "UTC", OnceTrigger(UtcInstant(1000)), handler, True, UtcInstant(1000), metadata), make_utc_job_with_policies("api.utc.policy", "UTC policy", OnceTrigger(UtcInstant(2000)), handler, True, UtcInstant(1000), metadata, configured), make_monotonic_job("api.monotonic", "Monotonic", DelayTrigger(MonotonicInstant(500), Duration(100)), handler, True, UtcInstant(1000), metadata), make_monotonic_job_with_policies("api.monotonic.policy", "Monotonic policy", FixedRateTrigger(MonotonicInstant(500), Duration(100)), handler, True, UtcInstant(1000), metadata, configured), make_fixed_delay_job("api.fixed-delay", "Fixed delay", FixedDelay(Duration(25)), MonotonicInstant(500), handler, True, UtcInstant(1000), metadata), make_fixed_delay_job_with_policies("api.fixed-delay.policy", "Fixed delay policy", FixedDelay(Duration(25)), MonotonicInstant(500), handler, True, UtcInstant(1000), metadata, configured)]
+nox.test.assert_eq_int(len(jobs), 6, "all public job factories compile")
+nox.test.assert_eq_str(jobs[0].job_id, "api.utc", "job identity contract")
+nox.test.assert_eq_str(jobs[0].metadata[0].value, "contract", "job metadata contract")
+
+event_kinds: list[str] = [EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_STARTED, EVENT_SUCCEEDED, EVENT_FAILED, EVENT_MISFIRED, EVENT_SKIPPED, EVENT_COALESCED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED, EVENT_RETRIED, EVENT_CANCELLED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED]
+nox.test.assert_eq_int(len(event_kinds), 14, "public event constant count")
+nox.test.assert_eq_str(event_kinds[0], "registered", "registered event value")
+nox.test.assert_eq_str(event_kinds[13], "scheduler-stopped", "scheduler stopped event value")
+
+engine: Scheduler = Scheduler(source_clock, 8, 1)
+engine.add_listener(observing_listener(observation))
+engine.add(jobs[0])
+engine.add(jobs[1])
+engine.add(jobs[2])
+nox.test.assert_eq_str(engine.state(), "created", "scheduler created contract")
+nox.test.assert_eq_int(len(engine.list_jobs()), 3, "scheduler listing contract")
+nox.test.assert_true(engine.next_run_utc("api.utc.policy") is not None, "scheduler UTC inspection contract")
+nox.test.assert_true(engine.next_run_monotonic("api.monotonic") is not None, "scheduler monotonic inspection contract")
+nox.test.assert_true(engine.next_retry_monotonic("api.utc") is None, "scheduler retry inspection contract")
+engine.disable("api.utc.policy")
+nox.test.assert_true(not jobs[1].enabled, "scheduler disable contract")
+engine.enable("api.utc.policy")
+nox.test.assert_true(jobs[1].enabled, "scheduler enable contract")
+removed_monotonic: Job = engine.remove("api.monotonic")
+nox.test.assert_eq_str(removed_monotonic.job_id, "api.monotonic", "scheduler remove contract")
+engine.start()
+nox.test.assert_eq_str(engine.state(), "running", "scheduler start contract")
+result: TickResult = engine.tick()
+nox.test.assert_eq_int(result.succeeded, 1, "scheduler tick success contract")
+nox.test.assert_eq_int(result.dispatched(), 1, "tick dispatched contract")
+nox.test.assert_eq_int(observation.calls, 1, "handler invocation contract")
+nox.test.assert_eq_str(observation.last_job_id, "api.utc", "handler job context contract")
+nox.test.assert_eq_str(observation.last_time_domain, "utc", "handler time-domain contract")
+nox.test.assert_eq_int(observation.last_scheduled_time_ms, 1000, "handler scheduled-time contract")
+nox.test.assert_eq_int(observation.last_attempt, 1, "handler attempt contract")
+nox.test.assert_true(engine.is_completed("api.utc"), "scheduler completion contract")
+nox.test.assert_eq_int(engine.listener_count(), 1, "listener count contract")
+nox.test.assert_eq_int(engine.listener_failure_count(), 0, "listener failure contract")
+nox.test.assert_true(EVENT_REGISTERED in observation.event_kinds, "registered event delivery contract")
+nox.test.assert_true(EVENT_CANCELLED in observation.event_kinds, "cancelled event delivery contract")
+nox.test.assert_true(EVENT_STARTED in observation.event_kinds, "started event delivery contract")
+nox.test.assert_true(EVENT_SUCCEEDED in observation.event_kinds, "succeeded event delivery contract")
+engine.stop()
+nox.test.assert_eq_str(engine.state(), "stopped", "scheduler stop contract")
+nox.test.assert_true(EVENT_SCHEDULER_STOPPED in observation.event_kinds, "stopped event delivery contract")

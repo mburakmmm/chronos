@@ -21,7 +21,8 @@ This table records a reproducible development baseline, not a promise that every
 
 | Verification | LLVM | QBE |
 |---|---:|---:|
-| Deterministic test programs | 19 passed | 19 passed |
+| Deterministic test programs | 20 passed | 20 passed |
+| Public API contract | passed | passed |
 | Executable examples | 16 passed | 16 passed |
 | Shutdown regression | passed | passed |
 | Task-local sleep probe | `fast sleeper` | `fast sleeper` |

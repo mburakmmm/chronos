@@ -78,6 +78,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - NXL-007 records the Nox 2.1.111 package self-import resolution gap; external `noxc add` consumption is not advertised until source-root and consumer imports share one safe form.
 - A curated `0.4.0` API allowlist with explicit Stable, Experimental, Deprecated, and Internal semantics; registry, executor, dispatcher, concrete job types, scheduler records, raw constants, and helper functions are no longer presented as supported extension points.
 - NXL-008 records Nox's documented lack of module access control, backed by a cross-module leading-underscore import proof in the LLVM/QBE verification matrix.
+- A deterministic public API contract test imports the complete Experimental allowlist and fixes time, clock, trigger, cron, policy, job-factory, event, handler-context, scheduler, and tick-result behavior on LLVM and QBE.
 
 ### Limitations
 
