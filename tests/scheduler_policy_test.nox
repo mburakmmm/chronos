@@ -6,7 +6,7 @@ from errors import InvalidPolicyError
 from events import ChronosEvent, EVENT_COALESCED, EVENT_MISFIRED, EVENT_SKIPPED
 from job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
 from policy import JobPolicies, catch_up_misfires, fire_once_misfires, forbid_overlap, no_retry, skip_misfires
-from scheduler import STATE_RUNNING, Scheduler, TickResult
+from scheduler import MAX_TICK_CATCH_UP_DISPATCHES, STATE_RUNNING, Scheduler, TickResult
 from time import Duration, MonotonicInstant, UtcInstant
 from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
 
@@ -199,6 +199,19 @@ for occurrence in truncated_recorder.events:
     if occurrence.kind == EVENT_COALESCED:
         nox.test.assert_eq_int(occurrence.coalesced_count, 2, "truncated event carries known coalesced lower bound")
         nox.test.assert_true(occurrence.coalesced_truncated, "truncated event marks unknown remainder")
+
+global_clock: FakeClock = FakeClock(11000, 3000)
+global_engine: Scheduler = Scheduler(global_clock, 2)
+global_recorder: Recorder = Recorder()
+global_config: JobPolicies = JobPolicies(catch_up_misfires(Duration(10000), 1024, 2000), forbid_overlap(), no_retry())
+global_engine.add(make_monotonic_job_with_policies("a-global", "A global", FixedRateTrigger(MonotonicInstant(3000), Duration(1)), record_handler(global_recorder, "a-global"), True, UtcInstant(11000), [], global_config))
+global_engine.add(make_monotonic_job_with_policies("b-global", "B global", FixedRateTrigger(MonotonicInstant(3000), Duration(1)), record_handler(global_recorder, "b-global"), True, UtcInstant(11000), [], global_config))
+global_clock.advance(Duration(2000))
+nox.test.assert_eq_int(len(global_engine._collect_due(global_clock.now_utc(), global_clock.now_monotonic())), MAX_TICK_CATCH_UP_DISPATCHES, "catch-up candidate allocation obeys global tick cap")
+global_engine.start()
+nox.test.assert_eq_int(global_engine.tick().catch_up_dispatched, MAX_TICK_CATCH_UP_DISPATCHES, "first tick dispatch obeys global catch-up cap")
+nox.test.assert_eq_int(global_engine.tick().catch_up_dispatched, MAX_TICK_CATCH_UP_DISPATCHES, "deferred catch-up remains due for later tick")
+nox.test.assert_eq_int(len(global_recorder.calls), MAX_TICK_CATCH_UP_DISPATCHES * 2, "global cap defers work without losing bounded dispatches")
 
 cron_base_ms: int = nox.time.DateTime(2024, 1, 1, 0, 0, 0).to_epoch_ms()
 cron_clock: FakeClock = FakeClock(cron_base_ms, 3000)

@@ -30,6 +30,20 @@ def rejects_long_expression() -> bool:
     expression: str = nox.strings.repeat("0", 257)
     return rejects(expression)
 
+def rejects_control_character_without_reflection() -> bool:
+    try:
+        parse("0 0 * * *\nsecret")
+    except CronParseError as error:
+        return error.field_name == "expression" and error.token == ""
+    return False
+
+def parse_error_message_redacts_token() -> bool:
+    try:
+        parse("secret * * * *")
+    except CronParseError as error:
+        return error.field_name == "minute" and error.token == "secret" and not nox.strings.contains(error.message, "secret")
+    return False
+
 def reports_unsatisfiable() -> bool:
     schedule: CronSchedule = parse("0 0 31 2 *")
     try:
@@ -92,6 +106,8 @@ nox.test.assert_true(rejects("0 0 L * *"), "Quartz L rejected")
 nox.test.assert_true(rejects("0 0 * * 7"), "Sunday seven rejected")
 nox.test.assert_true(rejects("0 0 * JAN *"), "month names rejected")
 nox.test.assert_true(rejects_long_expression(), "expression length bounded")
+nox.test.assert_true(rejects_control_character_without_reflection(), "control characters rejected without retaining unsafe token")
+nox.test.assert_true(parse_error_message_redacts_token(), "parse error message omits user-controlled token")
 nox.test.assert_true(precise_minute_error(), "parse error records field and token")
 nox.test.assert_eq_int(len(parse("  0\t9 * * 1-5  ").hour.values), 1, "space and tab separators")
 

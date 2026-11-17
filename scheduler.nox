@@ -14,6 +14,8 @@ STATE_STOPPING: str = "stopping"
 STATE_STOPPED: str = "stopped"
 STATE_FAILED: str = "failed"
 SORT_TIMESTAMP_WIDTH: int = 19
+MAX_TICK_CATCH_UP_DISPATCHES: int = 1024
+MAX_TICK_CATCH_UP_EVALUATIONS: int = 10000
 
 class ScheduledEntry:
     job_id: str
@@ -517,6 +519,8 @@ class Scheduler:
     def _collect_due(self, now_utc: UtcInstant, now_monotonic: MonotonicInstant) -> list[DueItem]:
 
         candidates: list[DueItem] = []
+        catch_up_dispatches_remaining: int = MAX_TICK_CATCH_UP_DISPATCHES
+        catch_up_evaluations_remaining: int = MAX_TICK_CATCH_UP_EVALUATIONS
         for scheduled in self.schedules:
             if scheduled.has_retry:
                 retry_target: Job | None = self.registry.find(scheduled.job_id)
@@ -535,14 +539,24 @@ class Scheduler:
                         collection_lateness: Duration = Duration(now_ms - scheduled.next_time_ms)
                         catch_up_active = policy_config.misfire.action_for_lateness(collection_lateness) == MISFIRE_CATCH_UP
                     if catch_up_active:
+                        if catch_up_dispatches_remaining == 0 or catch_up_evaluations_remaining == 0:
+                            continue
+                        dispatch_limit: int = policy_config.misfire.max_catch_up_count
+                        if dispatch_limit > catch_up_dispatches_remaining:
+                            dispatch_limit = catch_up_dispatches_remaining
+                        evaluation_limit: int = policy_config.misfire.max_evaluation_steps
+                        if evaluation_limit > catch_up_evaluations_remaining:
+                            evaluation_limit = catch_up_evaluations_remaining
+                        if dispatch_limit > evaluation_limit:
+                            dispatch_limit = evaluation_limit
                         dispatch_times: list[int] = []
                         cursor_ms: int = scheduled.next_time_ms
                         has_cursor: bool = True
                         evaluation_count: int = 0
                         coalesced_count: int = 0
-                        while has_cursor and cursor_ms <= now_ms and evaluation_count < policy_config.misfire.max_evaluation_steps:
+                        while has_cursor and cursor_ms <= now_ms and evaluation_count < evaluation_limit:
                             evaluation_count += 1
-                            if len(dispatch_times) < policy_config.misfire.max_catch_up_count:
+                            if len(dispatch_times) < dispatch_limit:
                                 dispatch_times.append(cursor_ms)
                             else:
                                 coalesced_count += 1
@@ -556,6 +570,8 @@ class Scheduler:
                                 has_cursor = next_monotonic is not None
                                 if next_monotonic is not None:
                                     cursor_ms = next_monotonic.value_ms
+                        catch_up_dispatches_remaining -= len(dispatch_times)
+                        catch_up_evaluations_remaining -= evaluation_count
                         coalesced_truncated: bool = has_cursor and cursor_ms <= now_ms
                         final_has_next: bool = False
                         final_next_time_ms: int = 0

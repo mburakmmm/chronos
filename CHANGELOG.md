@@ -82,6 +82,12 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Locked optional integration examples for Nyx `v0.29.0` and Aether `v0.12.0`, verified with Nox 2.1.186 on LLVM/QBE without adding either framework to the core manifest.
 - A separate Linux x64 framework-integration CI job plus explicit request-driven polling, worker-local ownership, idle-progress, latency, and source-overlay limitations.
 
+### Security
+
+- Completed the Phase 4 review of parser/search complexity, secret leakage, callback authority, resource bounds, and arbitrary execution; residual application obligations are recorded in `docs/security.md`.
+- Cron syntax now rejects ASCII control characters before tokenization, and `CronParseError.message` no longer interpolates the user-controlled token. Precise bounded tokens remain available through explicit field access.
+- Catch-up now has global per-tick ceilings of 1,024 candidates and 10,000 next-occurrence evaluations in addition to per-job policy limits, preventing multiplicative snapshot growth across the 10,000-job registry.
+
 ### Breaking changes for pinned development snapshots
 
 No Chronos version has been tagged or published yet. The following changes affect applications pinned to earlier `0.1.0-dev` or `0.2.0-dev` commits:
@@ -90,6 +96,7 @@ No Chronos version has been tagged or published yet. The following changes affec
 - Direct construction of `UtcJob`, `MonotonicJob`, `FixedDelayJob`, and base `Job` is no longer supported. Use the source-compatible `make_*` factories or the explicit `make_*_with_policies` variants.
 - `JobRegistry`, `RegisteredJob`, `InlineExecutor`, `ExecutionOutcome`, `EventDispatcher`, `ScheduledEntry`, `DueItem`, `CronField`, raw constants, and helper functions are Internal. Use `Scheduler`, job factories, policy factories, cron schedule operations, documented event constants, and scheduler forwarding methods.
 - Missed-run behavior is now explicit and bounded. Default factories use maximum-grace fire-once, forbidden overlap, and no retry; applications needing multiple missed executions must select bounded catch-up.
+- Aggregate catch-up work is now capped across one tick rather than only per job. Later backlogged jobs remain due and require another application-driven tick after the global budget is exhausted.
 - `stop()` is terminal. It drains only the active inline callback and does not provide restart, force-cancel, background join, or execution-timeout semantics.
 - `ChronosEvent` and `TickResult` evolved with policy fields and counters and must be treated as scheduler-produced values rather than directly constructed records.
 - The supported surface is the curated Experimental allowlist in `docs/api.md`; Nox importability does not make an unlisted symbol public. See the [migration guide](docs/migration-guide.md) for replacements and exact development boundaries.

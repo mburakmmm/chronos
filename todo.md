@@ -364,7 +364,7 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 - [x] Contract testleriyle public API davranışını sabitle; allowlist importları ve gözlemlenebilir davranışlar LLVM/QBE üzerinde doğrulansın.
 - [x] Core bağımlılığı yaratmadan Nyx v0.29.0 ve Aether v0.12.0 request-polling integration örneklerini Nox 2.1.186 LLVM/QBE ile ayrı lock ve CI işinde doğrula.
 - [x] Breaking 0.x değişikliklerini gerçek development snapshot sınırları, public replacement tablosu ve sürüm/tag dürüstlüğüyle migration guide ve changelog'a yaz.
-- [ ] Security review: parser complexity, secret leakage, callback authority, resource bounds, arbitrary execution.
+- [x] Security review: parser/search complexity, secret leakage, callback authority, resource bounds ve arbitrary execution yollarını incele; SEC-001 token reflection ve SEC-002 global catch-up bütçesi bulgularını regression testleriyle kapat.
 - [x] Tüm 16 executable örneği CI içinde LLVM ve QBE ile derle ve çalıştır.
 
 ### `0.4.0` çıkış kapısı

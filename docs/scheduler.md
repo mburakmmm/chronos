@@ -44,6 +44,8 @@ If a fixed-delay job's first deadline is already past when it is added or re-ena
 
 Each tick reads both injected clock domains and builds a finite due snapshot. UTC items are dispatched before monotonic items so unlike numeric domains are never compared. Within each domain, items are ordered by planned timestamp then lexical job ID. Jobs sharing a domain and timestamp therefore have stable total ordering. The implementation scans the bounded schedule list once, resolves identities through bounded dictionaries, and applies one composite-key sort to due candidates; it does not insertion-sort candidates or poll autonomously.
 
+Ordinary and retry work contributes at most one candidate per bounded job. Catch-up has additional global ceilings of 1,024 candidate dispatches and 10,000 next-occurrence evaluations per tick across all jobs. Catch-up jobs consume that budget in deterministic registration order before the complete snapshot is sorted. Jobs reached after budget exhaustion remain due for a later tick. The resulting loose snapshot ceiling is the 10,000-job registry capacity plus 1,024 catch-up candidates; there is no multiplicative per-job catch-up allocation.
+
 The inline executor invokes one trusted handler at a time. It catches handler exceptions and returns the fixed safe category `handler-error`; raw exception text is not retained. The scheduler records the outcome and continues with unrelated due jobs.
 
 Bounded synchronous listeners observe registration, scheduling, execution, cancellation, and scheduler start/stop transitions. Listener failures are counted and isolated from scheduler state and handler outcomes. See `docs/events.md` for payload, ordering, retention, and reentrancy rules.

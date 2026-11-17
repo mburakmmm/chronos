@@ -48,7 +48,7 @@ Callers should branch on the exception class, not message text.
 
 ### Cron errors
 
-- `CronParseError`: invalid cron syntax; `field_name` and bounded `token` identify the rejected input.
+- `CronParseError`: invalid cron syntax; `field_name` and bounded printable `token` identify the rejected input. The default exception message omits the user-controlled token; control-character and non-ASCII failures use an empty token. Explicitly accessed tokens remain untrusted data.
 - `CronSearchLimitError`: a valid expression produced no match within the bounded search horizon or transition limit.
 
 ### Job errors
@@ -257,7 +257,7 @@ This configuration/calculation surface remains pure. `JobPolicies(misfire, overl
 - `dispatch_limit(available_occurrences, lateness) -> int`
 - `evaluation_limit(available_occurrences) -> int`
 
-Grace uses milliseconds and an inclusive boundary. Catch-up dispatch is capped by `MAX_CATCH_UP_COUNT` (1,024) and evaluation by `MAX_CATCH_UP_EVALUATION_STEPS` (10,000).
+Grace uses milliseconds and an inclusive boundary. Per-job catch-up dispatch is capped by `MAX_CATCH_UP_COUNT` (1,024) and evaluation by `MAX_CATCH_UP_EVALUATION_STEPS` (10,000). The scheduler additionally applies the same numeric ceilings globally across all catch-up jobs in one tick; later jobs remain due when the global budget is exhausted.
 
 `default_job_policies()` returns fire-once with maximum grace, forbid, and no-retry. Chronos makes defensive policy copies internally; `copy_job_policies` is not public. Fixed and exponential retry are accepted except with catch-up or queue-one. Catch-up is accepted except for completion-anchored fixed-delay jobs.
 

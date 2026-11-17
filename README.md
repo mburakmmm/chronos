@@ -171,7 +171,7 @@ python3 scripts/verify.py
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Bug reports and feature requests use structured GitHub issue forms; design questions belong in GitHub Discussions.
 
-Jobs execute with the host process's authority. Only trusted application code should register handlers. Never place secrets in job names, metadata, event payloads, or serialized configuration. Report vulnerabilities through the process in [SECURITY.md](SECURITY.md).
+Jobs execute with the host process's authority. Only trusted application code should register handlers, listeners, clocks, or custom triggers. Never place secrets in cron expressions, job IDs, job names, metadata, event payloads, or serialized configuration. Report vulnerabilities through the process in [SECURITY.md](SECURITY.md).
 
 ## License
 

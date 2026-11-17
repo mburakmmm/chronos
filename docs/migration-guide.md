@@ -79,6 +79,8 @@ The early scheduler had provisional missed-run behavior. `0.4.0-dev` evaluates l
 
 The default factories use maximum-grace fire-once, so an overdue recurring schedule produces one execution rather than an unbounded drain. Applications that intentionally need more than one missed occurrence must opt into bounded catch-up. Fixed-delay jobs cannot use catch-up because their next occurrence depends on an actual completion.
 
+Phase 4 security hardening also caps the aggregate catch-up work of one tick at 1,024 dispatch candidates and 10,000 next-occurrence evaluations across all jobs. Earlier snapshots applied those bounds independently per job. Applications with several large backlogs must continue application-driven polling; jobs reached after the global budget is exhausted remain due for a later tick.
+
 Overlap defaults to `forbid_overlap()` and retry defaults to `no_retry()`. `queue_one_overlap()` retains at most one same-thread reentrant occurrence. Fixed and exponential retry use monotonic deadlines and bounded total attempts. Catch-up/retry and queue-one/retry combinations remain rejected.
 
 ### Shutdown is terminal

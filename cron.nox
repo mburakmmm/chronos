@@ -168,8 +168,11 @@ def parse(expression: str) -> CronSchedule:
 def _require_ascii(expression: str) -> None:
     count: int = nox.strings.byte_len(expression)
     for i in range(count):
-        if nox.strings.byte_at(expression, i) > 127:
+        byte: int = nox.strings.byte_at(expression, i)
+        if byte > 127:
             raise CronParseError("expression", "", "only ASCII syntax is supported")
+        if byte < 32 and byte != 9 or byte == 127:
+            raise CronParseError("expression", "", "control characters are not allowed")
 
 def _is_separator(byte: int) -> bool:
     return byte == 32 or byte == 9

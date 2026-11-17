@@ -19,7 +19,7 @@ class CronParseError(ChronosError):
     token: str
 
     def __init__(self, field_name: str, token: str, message: str) -> None:
-        super().__init__("cron " + field_name + " token '" + token + "': " + message)
+        super().__init__("cron " + field_name + ": " + message)
         self.field_name = field_name
         self.token = token
 

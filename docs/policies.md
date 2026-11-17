@@ -18,6 +18,8 @@ An occurrence exactly equal to the observed clock is not a misfire and runs even
 
 Catch-up enumerates at most `max_evaluation_steps` planned occurrences from the existing trigger anchor and dispatches at most `max_catch_up_count`. Known excess occurrences are reported in one `coalesced` event. If the evaluation bound is reached while more occurrences remain due, `coalesced_truncated` is true and the count is a bounded known lower bound. The next schedule is calculated directly strictly after the tick's observed time, so uncounted backlog cannot create a storm.
 
+Those per-job bounds also sit under global one-tick ceilings: at most 1,024 catch-up candidates and 10,000 catch-up next-occurrence evaluations across all jobs. A later catch-up job that cannot obtain both budgets remains due for a later application-driven tick. This prevents the 10,000-job registry bound from multiplying per-job catch-up limits into an excessive one-tick snapshot. The global constants are Internal safety limits, not configurable public API.
+
 Catch-up works for UTC one-shot/cron and monotonic delay/fixed-rate jobs. Completion-anchored fixed-delay rejects catch-up at registration because it has no sequence of missed planned occurrences without prior completions. Each catch-up execution still passes generation/enabled/schedule validation; removal or shutdown prevents later snapshot callbacks from starting.
 
 ## Overlap

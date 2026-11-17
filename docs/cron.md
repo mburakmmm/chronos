@@ -34,7 +34,7 @@ Steps must be positive. A step attached to a single literal is rejected because 
 
 Whitespace separates fields. Empty fields, leading/trailing commas, duplicate separators, signed numbers, non-ASCII digits, reversed ranges, out-of-range values, and trailing text are errors.
 
-Repeated values are normalized into sorted unique allowed-value sets. Leading/trailing spaces and tabs are accepted; spaces and tabs separate fields. Newlines are not field separators. The parser never calls a shell, operating-system cron, evaluator, or callback.
+Repeated values are normalized into sorted unique allowed-value sets. Leading/trailing spaces and tabs are accepted; spaces and tabs separate fields. Newline, carriage-return, DEL, and every other ASCII control character except tab are rejected before tokenization. The parser never calls a shell, operating-system cron, evaluator, or callback.
 
 ## Day-of-month and day-of-week
 
@@ -53,7 +53,7 @@ Only a field written exactly as `*` is treated as wildcard for this rule. `*/1` 
 
 The implementation advances calendar fields rather than performing an unbounded minute-by-minute scan. It checks leap years, month lengths, February 29, and year rollover.
 
-Malformed input raises `CronParseError`. A valid expression that has no match inside the search bounds raises `CronSearchLimitError`; timestamp overflow raises `TimeRangeError`.
+Malformed input raises `CronParseError`. Its bounded `field_name` and `token` fields support precise programmatic diagnostics, but the base exception message deliberately omits the user-controlled token. Control-character and non-ASCII failures use an empty token. Callers must treat an explicitly accessed token as untrusted data and must not place secrets in cron expressions. A valid expression that has no match inside the search bounds raises `CronSearchLimitError`; timestamp overflow raises `TimeRangeError`.
 
 The supported reference range begins at Unix epoch `0`. Pre-1970 references are rejected by `UtcInstant` before calendar conversion.
 
