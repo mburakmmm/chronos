@@ -375,15 +375,15 @@ Amaç: Destek iddialarını gerçek backend/platform kanıtlarıyla eşleştirme
 
 ---
 
-# Phase 5 — Chronos `0.5.x`: opsiyonel persistence — ayrı kullanıcı onayı gerekir
+# Phase 5 — Chronos `0.5.x`: opsiyonel persistence — 2026-11-17 kullanıcı onayı alındı
 
 Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementation başlatılmaz.
 
-- [ ] Store interface'i core scheduler'dan bağımsız tasarla.
-- [ ] İlk adapter olarak single-process SQLite kullanımını değerlendir.
-- [ ] Nox SQLite API, transactions ve parameterized query davranışını POC ile doğrula.
+- [x] Store interface'i core scheduler'dan bağımsız, data-only definition ve compare-and-swap revision sözleşmesiyle tasarla.
+- [x] İlk adapter olarak single-process/single-owner SQLite kullanımını değerlendir; scheduler entegrasyonundan ayrı tut.
+- [x] Nox 2.1.111 SQLite open/reopen, explicit transaction, rollback ve parameterized query davranışını LLVM/QBE POC ile doğrula.
 - [ ] Closure/function pointer yerine handler key ve serializable config persist et.
-- [ ] Schema version, migration ve trigger format version alanlarını tasarla.
+- [x] Schema version ile job/handler/trigger/policy format version alanlarını ayır; yeni sürümleri fail-closed reddeden migration sınırını tasarla.
 - [ ] Atomic write, crash aralığı ve restart recovery semantiğini belirle.
 - [ ] At-most-once/at-least-once sınırlarını açıkça belge; exactly-once vaat etme.
 - [ ] Unknown handler key ve corrupted state senaryolarını test et.

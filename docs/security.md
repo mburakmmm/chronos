@@ -1,6 +1,6 @@
 # Security model
 
-Status: Phase 4 security review completed on 2026-11-17; latest matrix uses Nox 2.1.111.
+Status: Phase 4 review completed and Phase 5 persistence boundary started on 2026-11-17; latest matrix uses Nox 2.1.111.
 
 ## Phase 4 review result
 
@@ -24,6 +24,8 @@ Chronos runs inside the host process and has the same authority as that process.
 
 Cron expressions and serialized job configuration are data, never executable Nox or shell text.
 
+The Phase 5 store contract contains a handler key, never an executable callback. A future hydration layer must resolve that key only through an application-owned trusted registry. Missing keys fail closed; configuration text cannot select a program path, module, symbol, shell, or dynamic evaluator.
+
 Job IDs and `CronParseError.token` are application-visible diagnostic data. They must not contain secrets. Printable cron tokens remain available only through explicit field access; the default exception message does not interpolate them. Job IDs remain present in lifecycle events and duplicate/missing-job errors because they are scheduling identities.
 
 ## Required controls
@@ -36,6 +38,8 @@ Job IDs and `CronParseError.token` are application-visible diagnostic data. They
 - Bound cron search, catch-up, retry, overlap queues, event buffers, history, and concurrent work.
 - Do not include handler arguments, secrets, or arbitrary exception payloads in events/logs by default.
 - Treat persisted job definitions as untrusted input if persistence is added later.
+- Keep database paths in trusted application configuration and bind every stored value through prepared statements.
+- Reject unknown schema/definition/handler/trigger/policy versions instead of guessing a decoder.
 - Do not serialize closures, function pointers, live handles, or connections.
 - Do not expose a network listener, remote administration endpoint, or process executor from the core MVP.
 
@@ -65,13 +69,13 @@ Retries cannot make side effects exactly once. Applications must make side-effec
 - Inline execution means handler and synchronous listener latency delays the owning poll/request path. Nox cooperative cancellation cannot enforce a timeout for non-awaiting work.
 - A caller can repeatedly invoke `tick()` and therefore repeatedly spend the documented finite work budget. Rate limiting the external polling boundary belongs to the application.
 - Public `0.x` values are ordinary mutable Nox objects. Applications must not mutate internal fields or share a scheduler across workers/threads as if it were synchronized.
-- Job IDs, printable cron diagnostic tokens, and event timing are observable to application code. Do not put credentials or private payloads in identifiers, expressions, names, or metadata.
+- Job IDs, handler keys, serialized configuration, printable cron diagnostic tokens, and event timing are observable to application code. Do not put credentials or private payloads in identifiers, expressions, names, metadata, or store records.
 - In-memory operation provides no crash durability, delivery guarantee, cross-process coordination, or exactly-once side effects. Side-effecting handlers require application-level idempotency.
 
 ## Verification evidence
 
 `tests/cron_test.nox` verifies input length, malformed syntax, control-character rejection, exact structured tokens, and omission of user-controlled tokens from the base exception message. `tests/scheduler_policy_test.nox` constructs multiple maximum-count catch-up jobs, verifies that one candidate snapshot stops at the global dispatch ceiling, and proves deferred work remains due on the next tick. Existing executor, event, job, retention, retry, overlap, shutdown, and API-contract tests cover safe handler categories, listener isolation, bounded metadata/history, finite policy state, terminal lifecycle, and supported surface behavior on LLVM and QBE.
 
-## Deferred persistence and distributed work
+## Persistence and distributed work
 
-Persistence, remote execution, and distributed coordination are outside the MVP. If added, they require validation, parameterized database operations, explicit crash/delivery semantics, least-privilege credentials, and a separate security review. Exactly-once execution is not promised.
+The current Phase 5 contract is data-only and the retained SQLite proof uses parameterized values, but no production adapter exists. Migration, corrupted-row, crash/restart, file-permission, path-confinement, backup, and secret-handling reviews remain mandatory before a durability claim. Remote execution and distributed coordination are still outside the MVP. Exactly-once execution is not promised.

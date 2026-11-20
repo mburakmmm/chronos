@@ -107,3 +107,31 @@ jobs:
         env:
           NOX_HOME: ${{ runner.temp }}/chronos-integration-nox-home
         run: python scripts/verify_integrations.py
+
+  persistence-primitives:
+    name: SQLite persistence primitives
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Nox 2.1.111
+        uses: ./.github/actions/setup-nox
+        with:
+          version: "2.1.111"
+          platform: linux-x64
+          sha256: 6ccbe9f9c20813e14bab767c07622a92f680d6d9701b4d941f698a260d4e4b13
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Verify SQLite transaction primitives
+        env:
+          NOX_HOME: ${{ runner.temp }}/chronos-persistence-nox-home
+        run: python scripts/verify_persistence.py

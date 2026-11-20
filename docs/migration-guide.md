@@ -1,6 +1,6 @@
 # Chronos migration guide
 
-Status: `0.4.0-dev`; no Chronos release has been tagged.
+Status: `0.5.0-dev`; no Chronos release has been tagged.
 
 Chronos follows Semantic Versioning, but the repository is still on an unreleased `0.x` development line. This guide is for applications pinned to an earlier Chronos commit. It does not imply that `0.1.0`, `0.2.0`, or `0.3.0` was published.
 
@@ -14,8 +14,15 @@ External package installation is not supported yet. Nox's open `NXL-007` self-im
 | Manual scheduler and lifecycle events | `38bd443` | `0.2.0-dev` | Phase 2 development snapshot |
 | Bounded policy and shutdown work | `0568233` | `0.2.0-dev` | Phase 3 roadmap work; the manifest was not advanced to `0.3.0-dev` |
 | Portability and curated API | `818c985` and `0f3380e` | `0.4.0-dev` | Public allowlist plus LLVM/QBE contract test |
+| Optional persistence contract | current Phase 5 work | `0.5.0-dev` | Data-only store boundary and SQLite primitive proof; no durable adapter |
 
 These commits are audit boundaries, not release tags. The authoritative current surface is always [the public API allowlist](api.md).
+
+## Entering `0.5.0-dev`
+
+The new `store` module is opt-in and is not connected to `Scheduler`. Applications may compile against the data-only `StoredJobDefinition` and `JobStore` contract, but must not interpret that as durable scheduling. There is no SQLite adapter, hydration registry, migration runner, restart recovery, or delivery guarantee yet.
+
+Persisted definitions use handler keys rather than closures/function pointers and require compare-and-swap revisions. Format versions are explicit and unknown versions fail closed. See [optional persistence](persistence.md) before implementing an application adapter against this experimental contract.
 
 ## Upgrade checklist for `0.4.0-dev`
 
@@ -108,5 +115,13 @@ python3 scripts/verify.py
 ```
 
 This executes the aggregate suite, every test and example on LLVM/QBE, runtime proofs, freestanding checks, and benchmark type-checks. Optional Nyx/Aether examples have their separate Nox 2.1.186 verifier documented in [framework integrations](integrations.md).
+
+The SQLite primitive check is also isolated from the dependency-free core matrix:
+
+```sh
+python3 scripts/verify_persistence.py
+```
+
+Passing this proof does not make an application durable; it only validates the database primitives described in [optional persistence](persistence.md).
 
 Because package consumption remains blocked, a successful source-checkout matrix does not prove that `noxc add chronos` works. Do not publish that installation claim until [`NXL-007`](../NOX_LIMITATIONS.md#nxl-007--a-package-cannot-use-one-internal-import-form-in-both-its-own-project-and-a-consumer) is resolved and the dedicated consumer gate passes.

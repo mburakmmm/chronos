@@ -66,3 +66,47 @@ class EventListenerLimitError(ChronosError):
 class InvalidPolicyError(ChronosError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+class StoreError(ChronosError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class InvalidStoredJobError(StoreError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+class StoreConflictError(StoreError):
+    job_id: str
+    expected_revision: int
+    actual_revision: int
+
+    def __init__(self, job_id: str, expected_revision: int, actual_revision: int) -> None:
+        super().__init__("stored job revision conflict")
+        self.job_id = job_id
+        self.expected_revision = expected_revision
+        self.actual_revision = actual_revision
+
+class StoreCorruptionError(StoreError):
+    category: str
+
+    def __init__(self, category: str) -> None:
+        super().__init__("stored data is corrupted")
+        self.category = category
+
+class UnsupportedStoreVersionError(StoreError):
+    component: str
+    found_version: int
+    supported_version: int
+
+    def __init__(self, component: str, found_version: int, supported_version: int) -> None:
+        super().__init__("unsupported stored format version")
+        self.component = component
+        self.found_version = found_version
+        self.supported_version = supported_version
+
+class UnknownHandlerError(StoreError):
+    handler_key: str
+
+    def __init__(self, handler_key: str) -> None:
+        super().__init__("stored handler key is not registered")
+        self.handler_key = handler_key

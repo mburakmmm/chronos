@@ -1,0 +1,51 @@
+import nox.fs
+import nox.os
+import nox.path
+import nox.sqlite
+from nox.db import Row, Statement
+from nox.sqlite import Connection, SqliteError
+
+path: str = nox.path.join(nox.os.current_dir(), ".chronos-sqlite-transaction-probe.db")
+if nox.fs.exists(path):
+    nox.fs.remove_file(path)
+
+db: Connection = nox.sqlite.open(path)
+db.execute("CREATE TABLE jobs (job_id TEXT PRIMARY KEY, handler_key TEXT NOT NULL, revision INTEGER NOT NULL)")
+
+payload: str = "handler'); DROP TABLE jobs; --"
+db.execute("BEGIN IMMEDIATE")
+insert: Statement = db.prepare("INSERT INTO jobs (job_id, handler_key, revision) VALUES (?, ?, ?)")
+insert.bind_str(0, "job-one")
+insert.bind_str(1, payload)
+insert.bind_int(2, 1)
+insert.execute()
+db.execute("COMMIT")
+
+rolled_back: bool = False
+db.execute("BEGIN IMMEDIATE")
+try:
+    transient: Statement = db.prepare("INSERT INTO jobs (job_id, handler_key, revision) VALUES (?, ?, ?)")
+    transient.bind_str(0, "job-two")
+    transient.bind_str(1, "transient")
+    transient.bind_int(2, 1)
+    transient.execute()
+    duplicate: Statement = db.prepare("INSERT INTO jobs (job_id, handler_key, revision) VALUES (?, ?, ?)")
+    duplicate.bind_str(0, "job-one")
+    duplicate.bind_str(1, "duplicate")
+    duplicate.bind_int(2, 2)
+    duplicate.execute()
+    db.execute("COMMIT")
+except SqliteError:
+    db.execute("ROLLBACK")
+    rolled_back = True
+db.close()
+
+reopened: Connection = nox.sqlite.open(path)
+rows: list[Row] = reopened.query("SELECT job_id, handler_key, revision FROM jobs ORDER BY job_id")
+print(len(rows))
+print(rows[0].get_str(0))
+print(rows[0].get_str(1) == payload)
+print(rows[0].get_int(2))
+print(rolled_back)
+reopened.close()
+nox.fs.remove_file(path)

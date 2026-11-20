@@ -1,11 +1,12 @@
 import nox.test
 from clock import Clock, FakeClock
 from cron import CronSchedule, CronTrigger, parse
-from errors import ChronosError, CronParseError, CronSearchLimitError, DuplicateJobError, EventListenerLimitError, InvalidDurationError, InvalidEventError, InvalidJobError, InvalidPolicyError, JobNotFoundError, SchedulerStateError, TimeRangeError
+from errors import ChronosError, CronParseError, CronSearchLimitError, DuplicateJobError, EventListenerLimitError, InvalidDurationError, InvalidEventError, InvalidJobError, InvalidPolicyError, InvalidStoredJobError, JobNotFoundError, SchedulerStateError, StoreConflictError, StoreCorruptionError, StoreError, TimeRangeError, UnsupportedStoreVersionError
 from events import ChronosEvent, EVENT_CANCELLED, EVENT_COALESCED, EVENT_FAILED, EVENT_MISFIRED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED, EVENT_REGISTERED, EVENT_RETRIED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_SKIPPED, EVENT_STARTED, EVENT_SUCCEEDED
 from job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_fixed_delay_job_with_policies, make_monotonic_job, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
 from policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, default_job_policies, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
 from scheduler import Scheduler, TickResult
+from store import JobStore, StoredJobDefinition, make_stored_job_definition
 from system_clock import SystemClock
 from time import MAX_MS, MIN_MS, Duration, MonotonicInstant, UtcInstant, add_duration, add_monotonic_duration, elapsed_between, multiply_duration, require_positive_interval, subtract_duration
 from trigger import DelayTrigger, FixedDelay, FixedRateTrigger, MonotonicTrigger, OnceTrigger, UtcTrigger
@@ -49,9 +50,17 @@ def duration_error_is_chronos_error() -> bool:
         return True
     return False
 
+def corruption_error_is_store_error() -> bool:
+    try:
+        raise StoreCorruptionError("invalid-row")
+    except StoreError as error:
+        return error.message == "stored data is corrupted"
+    return False
+
 nox.test.assert_eq_int(MIN_MS, 0, "minimum millisecond bound")
 nox.test.assert_true(MAX_MS > MIN_MS, "maximum millisecond bound")
 nox.test.assert_true(duration_error_is_chronos_error(), "public errors derive from ChronosError")
+nox.test.assert_true(corruption_error_is_store_error(), "store errors use a safe fixed message")
 nox.test.assert_eq_int(add_duration(UtcInstant(100), Duration(25)).as_epoch_ms(), 125, "UTC addition contract")
 nox.test.assert_eq_int(subtract_duration(UtcInstant(100), Duration(25)).as_epoch_ms(), 75, "UTC subtraction contract")
 nox.test.assert_eq_int(add_monotonic_duration(MonotonicInstant(10), Duration(5)).as_ms(), 15, "monotonic addition contract")
@@ -126,6 +135,10 @@ defaults: JobPolicies = default_job_policies()
 configured: JobPolicies = JobPolicies(fire_once, forbid, none)
 nox.test.assert_eq_int(defaults.misfire.dispatch_limit(5, Duration(1)), 1, "default misfire contract")
 nox.test.assert_true(not configured.retry.should_retry_after(1), "job policy bundle contract")
+
+stored: StoredJobDefinition = make_stored_job_definition("api.stored", "Stored", "api-handler", "", "once-utc", "target=2000", "default", True, UtcInstant(1000), UtcInstant(1000), 1)
+nox.test.assert_eq_str(stored.handler_key, "api-handler", "stored definition uses a handler key")
+nox.test.assert_eq_int(stored.revision, 1, "stored definition revision contract")
 
 observation: Observation = Observation()
 handler: (JobContext) -> None = observing_handler(observation)

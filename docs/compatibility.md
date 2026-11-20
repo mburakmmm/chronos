@@ -1,8 +1,8 @@
 # Compatibility
 
-Status: Phase 4 cross-platform compatibility baseline.
+Status: Phase 5 core/store-contract compatibility baseline.
 
-Last verified: 2026-11-16
+Last verified locally: 2026-11-20
 
 ## Verified development target
 
@@ -13,7 +13,7 @@ Last verified: 2026-11-16
 | LLVM backend | Apple clang 21.0.0, arm64 target | full test/example matrix passed |
 | QBE backend | Nox-installed QBE toolchain | full test/example matrix passed |
 | Default profile | hosted | core, scheduler, examples, and `SystemClock` verified |
-| Freestanding profile | no clock capability | 11 clock-independent modules type-checked on LLVM and QBE |
+| Freestanding profile | no clock capability | 12 clock-independent modules type-checked on LLVM and QBE |
 
 This table records a reproducible development baseline, not a promise that every earlier or later Nox release behaves identically. A minimum supported Nox version has not been selected. The complete cross-platform run is recorded in [GitHub Actions run 43460710827](https://github.com/mburakmmm/chronos/actions/runs/43460710827) for commit `a8211b0`.
 
@@ -21,7 +21,7 @@ This table records a reproducible development baseline, not a promise that every
 
 | Verification | LLVM | QBE |
 |---|---:|---:|
-| Deterministic test programs | 20 passed | 20 passed |
+| Deterministic test programs | 21 passed | 21 passed |
 | Public API contract | passed | passed |
 | Executable examples | 16 passed | 16 passed |
 | Shutdown regression | passed | passed |
@@ -29,7 +29,7 @@ This table records a reproducible development baseline, not a promise that every
 | Class-valued command channel and bounded worker stop | output `7` | output `7` |
 | Cooperative cancellation proof | output ends with `49995000` | output ends with `49995000` |
 | Cross-module Internal-name import proof | output `7`, `9` | output `7`, `9` |
-| Clock-independent freestanding modules | 11 passed | 11 passed |
+| Clock-independent freestanding modules | 12 passed | 12 passed |
 
 The QBE backend is single-threaded and cooperative, while LLVM uses the documented multi-core scheduler. With Nox 2.1.111, `sleep_ms()` inside an async task suspends only the calling fiber on both tested backends. `Channel.wait(ms)` also provides a cooperative bounded wake primitive.
 
@@ -50,6 +50,7 @@ The following modules type-check with `--profile freestanding` on LLVM and QBE:
 - `policy.nox`
 - `registry.nox`
 - `scheduler.nox`
+- `store.nox`
 - `time.nox`
 - `trigger.nox`
 
@@ -65,6 +66,16 @@ Framework packages currently require a newer compiler than the core baseline, so
 | Aether request polling | `v0.12.0` / `eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001` | Nox 2.1.186 | LLVM/QBE passed | LLVM/QBE passed |
 
 The job verifies locked framework APIs through the source-overlay mechanism documented in `docs/integrations.md`. It is not external Chronos package-consumption evidence and makes no live-server, multi-worker, background-progress, or exactly-once claim.
+
+## Optional SQLite primitive matrix
+
+The data-only `store.nox` module is part of the pure cross-platform matrix and does not import a database driver. SQLite itself is checked separately so absence of a system SQLite library cannot turn persistence into a mandatory core dependency.
+
+| Verification | Compiler | macOS arm64 | CI Linux x64 |
+|---|---|---|---|
+| File reopen, explicit commit/rollback, constraint recovery, prepared values | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
+
+This proof does not verify a Chronos SQLite adapter, migrations, crash recovery, concurrent writers, or scheduler delivery semantics. Windows and Linux arm64 SQLite adapter support remain unverified.
 
 ## Platform claims
 
@@ -98,6 +109,12 @@ done
 ```
 
 Freestanding checks must exclude `system_clock.nox` or expect its documented `CapabilityNotGranted` result.
+
+Run the optional SQLite primitive proof separately:
+
+```sh
+NOX_HOME=/tmp/chronos-persistence-nox-home python3 scripts/verify_persistence.py
+```
 
 ## Compatibility policy
 

@@ -76,13 +76,15 @@ time/clock, errors, events
                          +--> scheduler --> executor
                                   |
                                   +--> events
+
+time/errors --> store <-- optional filesystem/database adapter
 ```
 
 Constraints:
 
 - Cron and trigger calculation do not import scheduler or executor.
 - Scheduler orchestrates triggers, policies, jobs, and an explicit executor.
-- Persistence and timezone adapters remain optional and outside the MVP core.
+- The pure store contract is scheduler-independent; filesystem/database adapters remain optional and never become scheduler prerequisites.
 - No cyclic imports, mutable global registry, or hidden scheduler lifecycle.
 
 ## ADR-002: handlers are typed values and reentrant mutations are deferred
@@ -237,3 +239,17 @@ Request-driven polling has deliberately limited semantics: it makes progress onl
 Nyx `v0.29.0` and Aether `v0.12.0` require Nox 2.1.186, while the core matrix remains pinned to 2.1.111. A separate integration verifier and CI job preserve that version boundary. Until NXL-007 is fixed, the verifier uses a temporary `chronos.*` source namespace with mechanically qualified internal imports. This tests the intended package namespace without presenting source-overlay success as `noxc add chronos` support.
 
 Nox 2.1.111 verifies cooperative task-local sleep, `Channel.wait(ms)`, and class-valued channel command transport on LLVM and QBE. These primitives make a future owned worker feasible, but they do not prove correct ownership of Chronos jobs, bounded command responses, deadline recomputation, or handler shutdown. Background mode remains a separate future executor/lifecycle design rather than being hidden inside the manual scheduler.
+
+## ADR-010: persistence begins with a scheduler-independent data contract
+
+Decision date: 2026-11-17
+
+Status: accepted for the first Phase 5 slice
+
+The scheduler does not gain an implicit database or serialize live `Job` objects. A pure `JobStore` protocol accepts bounded `StoredJobDefinition` values containing data only. Handler callbacks are represented by an application-owned handler key and opaque bounded configuration; restoration will require an explicit trusted handler registry.
+
+Writes use compare-and-swap revisions. Revision zero means create, every update advances exactly once, and delete requires the observed revision. This protects single-process callers from silent stale updates without pretending to provide leases, fencing, distributed ownership, or exactly-once delivery.
+
+Schema version and definition/handler/trigger/policy format versions are separate. A newer version is rejected explicitly so future migrations cannot reinterpret records silently. UTC timestamps are persisted as epoch milliseconds; monotonic instants are deliberately absent because they have no stable meaning across process restart.
+
+The initial Nox 2.1.111 proof confirms file-backed SQLite reopen, explicit transactions, rollback on a constraint failure, and parameterized binding on LLVM/QBE. It does not establish production durability. The first SQLite adapter remains separate from the core manifest and must pass migration, corruption, crash-window, and restart integration tests before `Scheduler` can advertise persistence.

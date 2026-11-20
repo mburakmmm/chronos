@@ -20,7 +20,7 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 - **Deterministic scheduling** — pure trigger calculations and fake-clock tests avoid timing-dependent unit tests.
 - **Bounded policies** — catch-up, overlap, retries, listeners, retained state, and parser work all have explicit limits.
 - **Portable execution** — the supported baseline is an application-owned manual scheduler with an inline executor.
-- **Honest guarantees** — no exactly-once, local-time cron, persistence, force-cancellation, or distributed coordination claims.
+- **Honest guarantees** — no exactly-once, local-time cron, durable scheduling, force-cancellation, or distributed coordination claims.
 
 ## Feature status
 
@@ -41,7 +41,8 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 | Nox package dependency consumption | Blocked | Self-import limitation remains through Nox 2.1.186; see NXL-007 |
 | Background scheduler | Deferred | Runtime primitives are proven; full worker ownership is not |
 | IANA time zones and DST | Deferred | Current cron and calendar behavior is UTC-only |
-| Persistence and distributed coordination | Deferred | No durable or exactly-once claim |
+| Store data contract | Experimental | Scheduler-independent definitions and compare-and-swap revisions; no production adapter |
+| Durable scheduling and distributed coordination | Deferred | SQLite primitives are proven, but no restart/delivery guarantee exists |
 
 ## Quick start
 
@@ -137,9 +138,11 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 | macOS | arm64 | LLVM and QBE |
 | Windows | x64 | LLVM and QBE |
 
-The matrix runs all 20 deterministic tests, all 16 executable examples, five runtime/capability proofs, 11 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
+The matrix runs all 21 deterministic tests, all 16 executable examples, five core runtime/capability proofs, 12 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
 
 A separate Linux x64 CI job uses checksum-pinned Nox 2.1.186 to fetch the exact Nyx `v0.29.0` and Aether `v0.12.0` locks and execute both optional integration examples on LLVM and QBE. These dependencies never enter the core manifest. See [framework integrations](docs/integrations.md) for the request-driven semantics and `NXL-007` source-overlay boundary.
+
+Another isolated Linux x64 job runs the retained Nox 2.1.111 SQLite proof on LLVM and QBE. It verifies file reopen, explicit transaction rollback, and prepared binding only; it is not a production persistence or crash-recovery claim.
 
 Run the complete local matrix with:
 
@@ -162,6 +165,7 @@ python3 scripts/verify.py
 | Execution policies | [docs/policies.md](docs/policies.md) |
 | Framework integrations | [docs/integrations.md](docs/integrations.md) |
 | Concurrency boundary | [docs/concurrency.md](docs/concurrency.md) |
+| Optional persistence | [docs/persistence.md](docs/persistence.md) |
 | Security model | [docs/security.md](docs/security.md) |
 | Platform compatibility | [docs/compatibility.md](docs/compatibility.md) |
 | Nox limitations | [NOX_LIMITATIONS.md](NOX_LIMITATIONS.md) |

@@ -1,7 +1,7 @@
 # Nox capability matrix
 
-Last updated: 2026-11-16
-Chronos phase: 4 (`0.4.0` API hardening, unreleased)
+Last updated: 2026-11-20
+Chronos phase: 5 (`0.5.0` optional persistence, unreleased)
 
 This document separates documentation findings from executable verification. A documented API is not marked fully verified until an appropriate Chronos proof of concept compiles and runs.
 
@@ -79,10 +79,11 @@ The documented suspend behavior of `Instant` differs by platform, while `boot_ms
 
 | Capability | Documentation finding | Executable status |
 |---|---|---|
-| `noxc test` | Finds and runs `*_test.nox` programs | verified; 1 test program passed |
+| `noxc test` | Finds and runs `*_test.nox` programs | verified; 21 test programs passed |
 | `nox.test` assertions | Typed assertion helpers and `TestSuite` | typed assertion helpers verified; `TestSuite` pending |
-| `nox.fs` | Hosted filesystem API; synchronous operations | deferred until persistence work |
+| `nox.fs` | Hosted filesystem API; synchronous operations | `exists`/`remove_file` verified by the SQLite proof on LLVM/QBE |
 | `nox.json` | JSON tree and writer APIs; numeric values are floats | deferred until serialization need |
+| `nox.sqlite` | File-backed open/reopen, prepared statements, rows, explicit SQL transactions | verified with Nox 2.1.111 on LLVM/QBE; adapter and crash semantics pending |
 
 ## Evidence log
 
@@ -390,7 +391,7 @@ Manual mode therefore has a complete drain-current shutdown contract without cla
 
 ## Phase 4 compatibility baseline
 
-The current Nox 2.1.111 local matrix runs all 20 deterministic test programs and all 16 executable examples on both LLVM and QBE. The API contract test imports every allowlisted public name and verifies the observable checkout-local API surface on both backends. Eleven clock-independent library modules type-check in the freestanding profile. `system_clock.nox` passes hosted checking and produces the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
+The Phase 4 Nox 2.1.111 matrix ran all 20 deterministic test programs and all 16 executable examples on both LLVM and QBE. The API contract test imported every allowlisted public name and verified the observable checkout-local API surface on both backends. Eleven clock-independent library modules type-checked in the freestanding profile. `system_clock.nox` passed hosted checking and produced the expected `CapabilityNotGranted` errors for `now_ms()` and `boot_ms()` under freestanding.
 
 The retention regression executes one fixed-rate job 1,000 times with alternating handler failure/success. LLVM and QBE both preserve one registry entry, one schedule entry, one listener, 16 defensively copied metadata entries, a scalar execution count, and only the latest safe outcome/error summary. Its listener observes 3,004 synchronous events without storing them; Chronos owns no event or execution-history collection.
 
@@ -409,3 +410,19 @@ Sources: `integrations/nyx/main.nox`, `integrations/aether/main.nox`, `scripts/v
 Nyx `v0.29.0` resolved to `8acc737cadf58e5f7529e91e3838c095bce3c8ad`; Aether `v0.12.0` resolved to `eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001`. Both locked integrations completed LLVM and QBE code generation and execution locally. The separate Linux x64 CI job repeats the same matrix with the checksum-pinned Nox 2.1.186 release archive.
 
 A flat source overlay failed because the open NXL-003 alias-shadowing behavior confused framework locals named `errors` and `registry` with Chronos root module aliases. Placing the unchanged module bodies under the intended `chronos.*` namespace and mechanically qualifying only Chronos internal import statements eliminated the collisions. Because NXL-007 still blocks those imports in the Chronos root project itself, this is composition evidence rather than external package-install evidence.
+
+### P5-SQLITE-001 — optional persistence primitives
+
+Date: 2026-11-17
+
+Compiler: checksum-pinned Nox 2.1.111
+
+Host: macOS arm64
+
+Sources: `proofs/persistence/sqlite_transaction_probe.nox`, `scripts/verify_persistence.py`
+
+The retained file-backed SQLite probe passed on LLVM and QBE. It created a schema, committed a prepared insert, started a second transaction, triggered a primary-key violation after another insert, explicitly rolled the transaction back, closed/reopened the file, and observed only the committed row. A SQL-shaped handler-key payload remained exact bound data and did not alter the schema.
+
+The proof establishes `nox.sqlite.open`, `Connection.execute` transaction statements, `Connection.prepare`, zero-based `Statement.bind_*`, `Statement.execute`, `Connection.query`, `Row` getters, close/reopen persistence, and constraint error handling. Nox exposes no high-level transaction object in this baseline, so future adapter code must own explicit rollback paths. This is primitive evidence only: no Chronos SQLite adapter, migration, restart recovery, crash-window, or durable-delivery claim exists yet.
+
+The pure `store.nox` contract and its deterministic test also pass on LLVM/QBE and type-check freestanding. It contains no filesystem or database import, so persistence remains optional and the existing scheduler path remains dependency-free.

@@ -4,6 +4,7 @@
 *.ssa
 *.dSYM/
 test-results.xml
+.chronos-sqlite-transaction-probe.db
 
 # Known local example/test binaries.
 /examples/calendar_probe

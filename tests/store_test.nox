@@ -1,0 +1,118 @@
+import nox.strings
+import nox.test
+from errors import InvalidStoredJobError, StoreConflictError, UnsupportedStoreVersionError
+from store import JOB_DEFINITION_FORMAT_VERSION, HANDLER_CONFIG_FORMAT_VERSION, POLICY_FORMAT_VERSION, TRIGGER_FORMAT_VERSION, JobStore, StoredJobDefinition, copy_stored_job_definition, make_stored_job_definition
+from time import UtcInstant
+
+class MemoryBackend:
+    definitions: list[StoredJobDefinition]
+
+    def __init__(self) -> None:
+        self.definitions = []
+        self.closed = False
+
+    def load(self, job_id: str) -> StoredJobDefinition | None:
+        for definition in self.definitions:
+            if definition.job_id == job_id:
+                return copy_stored_job_definition(definition)
+        return None
+
+    def load_all(self) -> list[StoredJobDefinition]:
+        result: list[StoredJobDefinition] = []
+        for definition in self.definitions:
+            result.append(copy_stored_job_definition(definition))
+        return result
+
+    def put(self, definition: StoredJobDefinition, expected_revision: int) -> None:
+        found_index: int = -1
+        for i in range(len(self.definitions)):
+            if self.definitions[i].job_id == definition.job_id:
+                found_index = i
+        if expected_revision == 0:
+            if found_index >= 0 or definition.revision != 1:
+                actual: int = 0
+                if found_index >= 0:
+                    actual = self.definitions[found_index].revision
+                raise StoreConflictError(definition.job_id, expected_revision, actual)
+            self.definitions.append(copy_stored_job_definition(definition))
+            return
+        if found_index < 0:
+            raise StoreConflictError(definition.job_id, expected_revision, 0)
+        actual_revision: int = self.definitions[found_index].revision
+        if actual_revision != expected_revision or definition.revision != expected_revision + 1:
+            raise StoreConflictError(definition.job_id, expected_revision, actual_revision)
+        self.definitions[found_index] = copy_stored_job_definition(definition)
+
+    def delete(self, job_id: str, expected_revision: int) -> None:
+        for i in range(len(self.definitions)):
+            if self.definitions[i].job_id == job_id:
+                if self.definitions[i].revision != expected_revision:
+                    raise StoreConflictError(job_id, expected_revision, self.definitions[i].revision)
+                self.definitions.pop(i)
+                return
+        raise StoreConflictError(job_id, expected_revision, 0)
+
+    def close(self) -> None:
+        self.closed = True
+
+def definition(revision: int, updated_at_ms: int) -> StoredJobDefinition:
+    return make_stored_job_definition("billing.daily", "Daily billing", "billing-handler", "{\"account\":\"public\"}", "once-utc", "{\"target_utc_ms\":2000}", "{\"misfire\":\"fire-once\"}", True, UtcInstant(1000), UtcInstant(updated_at_ms), revision)
+
+def rejects_invalid_handler_key() -> bool:
+    try:
+        make_stored_job_definition("billing.daily", "Daily billing", "bad handler", "", "once-utc", "target=2000", "default", True, UtcInstant(1000), UtcInstant(1000), 1)
+    except InvalidStoredJobError:
+        return True
+    return False
+
+def rejects_oversized_config() -> bool:
+    try:
+        make_stored_job_definition("billing.daily", "Daily billing", "billing-handler", "", "once-utc", nox.strings.repeat("x", 16385), "default", True, UtcInstant(1000), UtcInstant(1000), 1)
+    except InvalidStoredJobError:
+        return True
+    return False
+
+def rejects_nul_config() -> bool:
+    try:
+        make_stored_job_definition("billing.daily", "Daily billing", "billing-handler", "bad\x00config", "once-utc", "target=2000", "default", True, UtcInstant(1000), UtcInstant(1000), 1)
+    except InvalidStoredJobError:
+        return True
+    return False
+
+def rejects_unknown_trigger_version() -> bool:
+    try:
+        StoredJobDefinition("billing.daily", "Daily billing", "billing-handler", "", "once-utc", "target=2000", "default", True, 1000, 1000, 1, JOB_DEFINITION_FORMAT_VERSION, HANDLER_CONFIG_FORMAT_VERSION, TRIGGER_FORMAT_VERSION + 1, POLICY_FORMAT_VERSION)
+    except UnsupportedStoreVersionError as error:
+        return error.component == "trigger" and error.found_version == 2 and error.supported_version == 1
+    return False
+
+def detects_revision_conflict(backend: MemoryBackend) -> bool:
+    try:
+        backend.put(definition(3, 1200), 1)
+    except StoreConflictError as error:
+        return error.job_id == "billing.daily" and error.expected_revision == 1 and error.actual_revision == 2
+    return False
+
+concrete: MemoryBackend = MemoryBackend()
+view: JobStore = concrete
+view.put(definition(1, 1000), 0)
+loaded: StoredJobDefinition | None = view.load("billing.daily")
+nox.test.assert_true(loaded is not None, "store protocol loads created definition")
+if loaded is not None:
+    nox.test.assert_eq_str(loaded.handler_key, "billing-handler", "store definition retains handler key rather than callback")
+    nox.test.assert_eq_str(loaded.trigger_kind, "once-utc", "store definition retains trigger kind")
+    loaded.name = "mutated"
+nox.test.assert_eq_str(view.load_all()[0].name, "Daily billing", "store boundary returns defensive definitions")
+
+view.put(definition(2, 1100), 1)
+nox.test.assert_eq_int(view.load_all()[0].revision, 2, "compare-and-swap update advances revision")
+nox.test.assert_true(detects_revision_conflict(concrete), "stale revision is rejected")
+nox.test.assert_true(rejects_invalid_handler_key(), "handler key uses bounded identifier syntax")
+nox.test.assert_true(rejects_oversized_config(), "serialized configuration is bounded")
+nox.test.assert_true(rejects_nul_config(), "serialized configuration rejects embedded NUL")
+nox.test.assert_true(rejects_unknown_trigger_version(), "unknown trigger format version is explicit")
+
+view.delete("billing.daily", 2)
+nox.test.assert_eq_int(len(view.load_all()), 0, "revision-checked delete removes definition")
+view.close()
+nox.test.assert_true(concrete.closed, "store protocol has explicit lifecycle")

@@ -1,6 +1,6 @@
 # Chronos public API
 
-Status: curated experimental surface (`0.4.0` development).
+Status: curated experimental surface (`0.5.0` development).
 
 This document is the only authoritative Chronos API allowlist. Nox 2.1.111 has no module export allowlist or `public`/`private` keywords: every top-level name is technically importable, including names beginning with `_`. Importability therefore does not imply support. See `NXL-008` in `NOX_LIMITATIONS.md`. Applications pinned to an earlier development commit should follow the [migration guide](migration-guide.md).
 
@@ -17,7 +17,7 @@ Methods and fields are supported only when their contract is explicitly describe
 
 | Module | Experimental names |
 |---|---|
-| `errors` | `ChronosError`, `InvalidDurationError`, `TimeRangeError`, `CronParseError`, `CronSearchLimitError`, `InvalidJobError`, `DuplicateJobError`, `JobNotFoundError`, `SchedulerStateError`, `InvalidEventError`, `EventListenerLimitError`, `InvalidPolicyError` |
+| `errors` | `ChronosError`, `InvalidDurationError`, `TimeRangeError`, `CronParseError`, `CronSearchLimitError`, `InvalidJobError`, `DuplicateJobError`, `JobNotFoundError`, `SchedulerStateError`, `InvalidEventError`, `EventListenerLimitError`, `InvalidPolicyError`, `StoreError`, `InvalidStoredJobError`, `StoreConflictError`, `StoreCorruptionError`, `UnsupportedStoreVersionError` |
 | `time` | `MIN_MS`, `MAX_MS`, `UtcInstant`, `MonotonicInstant`, `Duration`, `add_duration`, `subtract_duration`, `add_monotonic_duration`, `elapsed_between`, `multiply_duration`, `require_positive_interval` |
 | `clock` | `Clock`, `FakeClock` |
 | `system_clock` | `SystemClock` |
@@ -27,8 +27,11 @@ Methods and fields are supported only when their contract is explicitly describe
 | `policy` | `JobPolicies`, `MisfirePolicy`, `OverlapPolicy`, `RetryPolicy`, `skip_misfires`, `fire_once_misfires`, `catch_up_misfires`, `forbid_overlap`, `queue_one_overlap`, `no_retry`, `fixed_retry`, `exponential_retry`, `default_job_policies` |
 | `events` | `ChronosEvent` and the documented `EVENT_*` constants |
 | `scheduler` | `Scheduler`, `TickResult` |
+| `store` | `JobStore`, `StoredJobDefinition`, `make_stored_job_definition` |
 
 The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
+
+Persistence schema/format constants, `copy_stored_job_definition`, the direct `StoredJobDefinition` constructor, and `UnknownHandlerError` remain Internal until the SQLite adapter and hydration contract are complete.
 
 ## `chronos.errors` — Experimental
 
@@ -60,6 +63,14 @@ Callers should branch on the exception class, not message text.
 - `InvalidEventError`: an event or listener-capacity configuration violates the event contract.
 - `EventListenerLimitError`: listener registration exceeded the scheduler's configured capacity; `limit` contains that capacity.
 - `InvalidPolicyError`: a policy kind, bound, attempt, delay, or occurrence count violates the finite policy contract.
+
+### Store errors
+
+- `StoreError`: base class for optional persistence boundary failures.
+- `InvalidStoredJobError`: a stored definition violates identity, size, timestamp, or revision bounds.
+- `StoreConflictError`: a compare-and-swap create/update/delete observed a missing, duplicate, stale, or skipped revision. Its `job_id`, `expected_revision`, and `actual_revision` fields describe the conflict without exposing stored configuration.
+- `StoreCorruptionError`: an adapter found invalid persisted state. Its message is fixed and safe; `category` identifies an adapter-defined safe reason without reflecting raw rows.
+- `UnsupportedStoreVersionError`: persisted `component` has `found_version` rather than `supported_version`.
 
 ## `chronos.time` — Experimental
 
@@ -202,6 +213,16 @@ Chronos retains only the latest fixed status, bounded safe error category, compl
 Calling the wrong-domain method raises `InvalidJobError`.
 
 `make_fixed_delay_job` stores a `FixedDelay` configuration and calculates its first monotonic deadline from `registered_at`. Only fixed-delay jobs support `next_monotonic_after_completion`; the manual scheduler calls it after both successful and failed handlers.
+
+## `chronos.store` — Experimental contract only
+
+`StoredJobDefinition` is a bounded serializable definition containing a job ID/name, handler key and opaque handler configuration, trigger kind/configuration, policy configuration, enabled state, UTC creation/update times, compare-and-swap revision, and explicit format versions. It never contains a callback, closure, function pointer, live connection, or running scheduler state.
+
+`make_stored_job_definition(...)` fills the currently supported format versions and validates all bounds. Handler configuration may be empty; trigger and policy configuration may not. Each configuration string is limited to 16,384 bytes and rejects embedded NUL. The values are untrusted data and are not interpreted by this contract.
+
+`JobStore` is a structural protocol with `load`, `load_all`, `put`, `delete`, and `close`. `put(definition, 0)` means create revision `1`; updates require the stored revision to equal `expected_revision` and the replacement revision to be exactly one greater. Delete also requires an exact revision. Implementations return defensive definitions.
+
+No production adapter implements this contract yet, and `Scheduler` does not accept a store. Importing these names therefore does not provide persistence or restart recovery. See [optional persistence](persistence.md).
 
 ## `chronos.registry` — Internal
 

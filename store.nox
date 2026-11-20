@@ -1,0 +1,113 @@
+import nox.strings
+from errors import InvalidStoredJobError, UnsupportedStoreVersionError
+from time import MAX_MS, UtcInstant
+
+STORE_SCHEMA_VERSION: int = 1
+JOB_DEFINITION_FORMAT_VERSION: int = 1
+HANDLER_CONFIG_FORMAT_VERSION: int = 1
+TRIGGER_FORMAT_VERSION: int = 1
+POLICY_FORMAT_VERSION: int = 1
+MAX_HANDLER_KEY_BYTES: int = 128
+MAX_TRIGGER_KIND_BYTES: int = 64
+MAX_STORED_CONFIG_BYTES: int = 16384
+
+class StoredJobDefinition:
+    job_id: str
+    name: str
+    handler_key: str
+    handler_config: str
+    trigger_kind: str
+    trigger_config: str
+    policy_config: str
+    enabled: bool
+    created_at_utc_ms: int
+    updated_at_utc_ms: int
+    revision: int
+    definition_format_version: int
+    handler_config_format_version: int
+    trigger_format_version: int
+    policy_format_version: int
+
+    def __init__(self, job_id: str, name: str, handler_key: str, handler_config: str, trigger_kind: str, trigger_config: str, policy_config: str, enabled: bool, created_at_utc_ms: int, updated_at_utc_ms: int, revision: int, definition_format_version: int, handler_config_format_version: int, trigger_format_version: int, policy_format_version: int) -> None:
+        _validate_identifier("stored job ID", job_id, 128)
+        _validate_text("stored job name", name, 256, False)
+        _validate_identifier("handler key", handler_key, MAX_HANDLER_KEY_BYTES)
+        _validate_text("handler config", handler_config, MAX_STORED_CONFIG_BYTES, True)
+        _validate_identifier("trigger kind", trigger_kind, MAX_TRIGGER_KIND_BYTES)
+        _validate_text("trigger config", trigger_config, MAX_STORED_CONFIG_BYTES, False)
+        _validate_text("policy config", policy_config, MAX_STORED_CONFIG_BYTES, False)
+        if created_at_utc_ms < 0 or created_at_utc_ms > MAX_MS:
+            raise InvalidStoredJobError("stored creation time is outside the supported UTC range")
+        if updated_at_utc_ms < 0 or updated_at_utc_ms > MAX_MS:
+            raise InvalidStoredJobError("stored update time is outside the supported UTC range")
+        if updated_at_utc_ms < created_at_utc_ms:
+            raise InvalidStoredJobError("stored update time precedes creation time")
+        if revision < 1 or revision > MAX_MS:
+            raise InvalidStoredJobError("stored revision must be between one and the maximum integer")
+        _require_version("job-definition", definition_format_version, JOB_DEFINITION_FORMAT_VERSION)
+        _require_version("handler-config", handler_config_format_version, HANDLER_CONFIG_FORMAT_VERSION)
+        _require_version("trigger", trigger_format_version, TRIGGER_FORMAT_VERSION)
+        _require_version("policy", policy_format_version, POLICY_FORMAT_VERSION)
+        self.job_id = job_id
+        self.name = name
+        self.handler_key = handler_key
+        self.handler_config = handler_config
+        self.trigger_kind = trigger_kind
+        self.trigger_config = trigger_config
+        self.policy_config = policy_config
+        self.enabled = enabled
+        self.created_at_utc_ms = created_at_utc_ms
+        self.updated_at_utc_ms = updated_at_utc_ms
+        self.revision = revision
+        self.definition_format_version = definition_format_version
+        self.handler_config_format_version = handler_config_format_version
+        self.trigger_format_version = trigger_format_version
+        self.policy_format_version = policy_format_version
+
+protocol JobStore:
+    def load(self: JobStore, job_id: str) -> StoredJobDefinition | None:
+        pass
+
+    def load_all(self: JobStore) -> list[StoredJobDefinition]:
+        pass
+
+    def put(self: JobStore, definition: StoredJobDefinition, expected_revision: int) -> None:
+        pass
+
+    def delete(self: JobStore, job_id: str, expected_revision: int) -> None:
+        pass
+
+    def close(self: JobStore) -> None:
+        pass
+
+def make_stored_job_definition(job_id: str, name: str, handler_key: str, handler_config: str, trigger_kind: str, trigger_config: str, policy_config: str, enabled: bool, created_at: UtcInstant, updated_at: UtcInstant, revision: int) -> StoredJobDefinition:
+    return StoredJobDefinition(job_id, name, handler_key, handler_config, trigger_kind, trigger_config, policy_config, enabled, created_at.epoch_ms, updated_at.epoch_ms, revision, JOB_DEFINITION_FORMAT_VERSION, HANDLER_CONFIG_FORMAT_VERSION, TRIGGER_FORMAT_VERSION, POLICY_FORMAT_VERSION)
+
+def copy_stored_job_definition(source: StoredJobDefinition) -> StoredJobDefinition:
+    return StoredJobDefinition(source.job_id, source.name, source.handler_key, source.handler_config, source.trigger_kind, source.trigger_config, source.policy_config, source.enabled, source.created_at_utc_ms, source.updated_at_utc_ms, source.revision, source.definition_format_version, source.handler_config_format_version, source.trigger_format_version, source.policy_format_version)
+
+def _require_version(component: str, found: int, supported: int) -> None:
+    if found != supported:
+        raise UnsupportedStoreVersionError(component, found, supported)
+
+def _validate_text(label: str, value: str, maximum_bytes: int, allow_empty: bool) -> None:
+    size: int = nox.strings.byte_len(value)
+    if size == 0 and not allow_empty:
+        raise InvalidStoredJobError(label + " must not be empty")
+    if size > maximum_bytes:
+        raise InvalidStoredJobError(label + " exceeds byte limit")
+    for i in range(size):
+        if nox.strings.byte_at(value, i) == 0:
+            raise InvalidStoredJobError(label + " contains a NUL byte")
+
+def _validate_identifier(label: str, value: str, maximum_bytes: int) -> None:
+    _validate_text(label, value, maximum_bytes, False)
+    size: int = nox.strings.byte_len(value)
+    for i in range(size):
+        byte: int = nox.strings.byte_at(value, i)
+        lowercase: bool = byte >= 97 and byte <= 122
+        uppercase: bool = byte >= 65 and byte <= 90
+        digit: bool = byte >= 48 and byte <= 57
+        punctuation: bool = byte == 45 or byte == 46 or byte == 58 or byte == 95
+        if not lowercase and not uppercase and not digit and not punctuation:
+            raise InvalidStoredJobError(label + " contains an unsupported character")
