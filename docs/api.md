@@ -28,6 +28,7 @@ Methods and fields are supported only when their contract is explicitly describe
 | `events` | `ChronosEvent` and the documented `EVENT_*` constants |
 | `scheduler` | `Scheduler`, `TickResult` |
 | `store` | `JobStore`, `StoredJobDefinition`, `make_stored_job_definition` |
+| `sqlite_store` | `SQLiteJobStore`, `open_sqlite_store` |
 
 The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
 
@@ -222,7 +223,9 @@ Calling the wrong-domain method raises `InvalidJobError`.
 
 `JobStore` is a structural protocol with `load`, `load_all`, `put`, `delete`, and `close`. `put(definition, 0)` means create revision `1`; updates require the stored revision to equal `expected_revision` and the replacement revision to be exactly one greater. Delete also requires an exact revision. Implementations return defensive definitions.
 
-No production adapter implements this contract yet, and `Scheduler` does not accept a store. Importing these names therefore does not provide persistence or restart recovery. See [optional persistence](persistence.md).
+The optional `sqlite_store` module implements this contract for one application-owned SQLite connection. `open_sqlite_store(path)` creates or validates schema version `1`; `SQLiteJobStore` provides the protocol operations and idempotent `close()`. The adapter is single-process/single-owner, uses prepared bindings and atomic revision-checked SQL statements, validates rows on load, and redacts raw database diagnostics. It stores definitions only.
+
+`Scheduler` does not accept a store, hydrate a handler, or restore execution state. Importing or opening the adapter therefore does not provide durable scheduling, restart delivery, migration support, worker coordination, or exactly-once behavior. See [optional persistence](persistence.md).
 
 ## `chronos.registry` — Internal
 

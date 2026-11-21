@@ -1,13 +1,12 @@
 import nox.fs
 import nox.os
-import nox.path
 import nox.sqlite
 from nox.db import Row, Statement
 from nox.sqlite import Connection, SqliteError
 
-path: str = nox.path.join(nox.os.current_dir(), ".chronos-sqlite-transaction-probe.db")
+path: str = nox.os.getenv("CHRONOS_SQLITE_TEST_DB")
 if nox.fs.exists(path):
-    nox.fs.remove_file(path)
+    raise ValueError("SQLite fixture path must be fresh")
 
 db: Connection = nox.sqlite.open(path)
 db.execute("CREATE TABLE jobs (job_id TEXT PRIMARY KEY, handler_key TEXT NOT NULL, revision INTEGER NOT NULL)")
@@ -47,5 +46,7 @@ print(rows[0].get_str(0))
 print(rows[0].get_str(1) == payload)
 print(rows[0].get_int(2))
 print(rolled_back)
+text_rows: list[Row] = reopened.query("SELECT CAST(X'610062' AS TEXT), length(X'610062')")
+print(text_rows[0].get_str(0) + ":" + str(text_rows[0].get_int(1)))
 reopened.close()
 nox.fs.remove_file(path)

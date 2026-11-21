@@ -1,6 +1,6 @@
 # Security model
 
-Status: Phase 4 review completed and Phase 5 persistence boundary started on 2026-11-17; latest matrix uses Nox 2.1.111.
+Status: Phase 4 review completed and Phase 5 SQLite definition adapter reviewed on 2026-11-20; latest matrix uses Nox 2.1.111.
 
 ## Phase 4 review result
 
@@ -24,7 +24,7 @@ Chronos runs inside the host process and has the same authority as that process.
 
 Cron expressions and serialized job configuration are data, never executable Nox or shell text.
 
-The Phase 5 store contract contains a handler key, never an executable callback. A future hydration layer must resolve that key only through an application-owned trusted registry. Missing keys fail closed; configuration text cannot select a program path, module, symbol, shell, or dynamic evaluator.
+The Phase 5 store contract and SQLite adapter contain a handler key, never an executable callback. A future hydration layer must resolve that key only through an application-owned trusted registry. Missing keys must fail closed; configuration text cannot select a program path, module, symbol, shell, or dynamic evaluator.
 
 Job IDs and `CronParseError.token` are application-visible diagnostic data. They must not contain secrets. Printable cron tokens remain available only through explicit field access; the default exception message does not interpolate them. Job IDs remain present in lifecycle events and duplicate/missing-job errors because they are scheduling identities.
 
@@ -78,4 +78,6 @@ Retries cannot make side effects exactly once. Applications must make side-effec
 
 ## Persistence and distributed work
 
-The current Phase 5 contract is data-only and the retained SQLite proof uses parameterized values, but no production adapter exists. Migration, corrupted-row, crash/restart, file-permission, path-confinement, backup, and secret-handling reviews remain mandatory before a durability claim. Remote execution and distributed coordination are still outside the MVP. Exactly-once execution is not promised.
+The experimental SQLite adapter is data-only. It uses fixed SQL plus parameterized values, validates loaded rows, rejects unsupported versions, and replaces raw backend diagnostics with a fixed message. Its database path is trusted configuration, its connection is single-owner, and it provides no encryption; configurations must not contain secrets.
+
+Forced crash/power-loss, migration failure, file-permission, path-confinement, backup/restore, unknown-handler hydration, and secret-management reviews remain mandatory before a scheduler durability claim. Remote execution and distributed coordination are still outside the MVP. Exactly-once execution is not promised.

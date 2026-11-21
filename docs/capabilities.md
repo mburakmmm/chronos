@@ -419,10 +419,14 @@ Compiler: checksum-pinned Nox 2.1.111
 
 Host: macOS arm64
 
-Sources: `proofs/persistence/sqlite_transaction_probe.nox`, `scripts/verify_persistence.py`
+Sources: `proofs/persistence/sqlite_transaction_probe.nox`, `proofs/persistence/sqlite_store_integration.nox`, `sqlite_store.nox`, `scripts/verify_persistence.py`
 
 The retained file-backed SQLite probe passed on LLVM and QBE. It created a schema, committed a prepared insert, started a second transaction, triggered a primary-key violation after another insert, explicitly rolled the transaction back, closed/reopened the file, and observed only the committed row. A SQL-shaped handler-key payload remained exact bound data and did not alter the schema.
 
-The proof establishes `nox.sqlite.open`, `Connection.execute` transaction statements, `Connection.prepare`, zero-based `Statement.bind_*`, `Statement.execute`, `Connection.query`, `Row` getters, close/reopen persistence, and constraint error handling. Nox exposes no high-level transaction object in this baseline, so future adapter code must own explicit rollback paths. This is primitive evidence only: no Chronos SQLite adapter, migration, restart recovery, crash-window, or durable-delivery claim exists yet.
+The primitive proof establishes `nox.sqlite.open`, `Connection.execute` transaction statements, `Connection.prepare`, zero-based `Statement.bind_*`, `Statement.execute`, `Connection.query`, `Row` getters, close/reopen persistence, and constraint error handling. Nox exposes no high-level transaction object in this baseline, so adapter initialization owns an explicit rollback path.
+
+The adapter integration passed on LLVM and QBE. It covers transactional schema initialization, persisted handler key/configuration, close/reopen load, atomic create/update/delete revision guards, stale conflicts, deterministic listing, malformed-row rejection, unsupported trigger/schema versions, closed-store behavior, and fixed backend-error redaction. A SQL-shaped configuration remains data.
+
+This is definition-store evidence only: no migration, process-kill/power-loss simulation, handler hydration, scheduler restart recovery, concurrent scheduler, or durable-delivery claim exists yet.
 
 The pure `store.nox` contract and its deterministic test also pass on LLVM/QBE and type-check freestanding. It contains no filesystem or database import, so persistence remains optional and the existing scheduler path remains dependency-free.

@@ -211,6 +211,16 @@ Fix/capability verification:
 3. Apply the mechanism to Chronos modules and verify the supported imports on LLVM and QBE.
 4. Keep reflection, diagnostics, and package consumers consistent with the same visibility rule.
 
+## NXL-009 — SQLite text reads truncate at embedded NUL
+
+Status: open in Nox 2.1.111 on macOS arm64, reproduced on LLVM and QBE.
+
+The retained `proofs/persistence/sqlite_transaction_probe.nox` queries `CAST(X'610062' AS TEXT)` and the length of the same three-byte blob. `Row.get_str(0)` returns only `a`, producing `a:3`. The tagged runtime shim in `runtime/stdlib_shims/sqlite.zig` copies the NUL-terminated span of `sqlite3_column_text`. It does not use the SQLite column byte count. A row containing an embedded NUL therefore cannot be distinguished from its valid prefix by the caller.
+
+Chronos rejects NUL on writes and checks text type, byte length and embedded NUL in the SQLite projection before transferring rows to Nox. The workaround adds SQL checks for each text field.
+
+To verify a runtime fix, check that the driver returns all three bytes on both backends, or reports a documented explicit error for unsupported text. Keep Chronos's corruption regression, since embedded NUL remains outside its store format.
+
 ## New entry template
 
 Every new limitation should record:

@@ -14,13 +14,13 @@ External package installation is not supported yet. Nox's open `NXL-007` self-im
 | Manual scheduler and lifecycle events | `38bd443` | `0.2.0-dev` | Phase 2 development snapshot |
 | Bounded policy and shutdown work | `0568233` | `0.2.0-dev` | Phase 3 roadmap work; the manifest was not advanced to `0.3.0-dev` |
 | Portability and curated API | `818c985` and `0f3380e` | `0.4.0-dev` | Public allowlist plus LLVM/QBE contract test |
-| Optional persistence contract | current Phase 5 work | `0.5.0-dev` | Data-only store boundary and SQLite primitive proof; no durable adapter |
+| Optional persistence contract | current Phase 5 work | `0.5.0-dev` | Data-only store boundary and single-owner SQLite definition adapter; no durable scheduler |
 
 These commits are audit boundaries, not release tags. The authoritative current surface is always [the public API allowlist](api.md).
 
 ## Entering `0.5.0-dev`
 
-The new `store` module is opt-in and is not connected to `Scheduler`. Applications may compile against the data-only `StoredJobDefinition` and `JobStore` contract, but must not interpret that as durable scheduling. There is no SQLite adapter, hydration registry, migration runner, restart recovery, or delivery guarantee yet.
+The new `store` module is opt-in and is not connected to `Scheduler`. Applications may compile against the data-only `StoredJobDefinition` and `JobStore` contract. The optional `sqlite_store` module now supplies a single-owner definition adapter through `open_sqlite_store(path)`, but this must not be interpreted as durable scheduling. There is no hydration registry, migration runner, scheduler restart recovery, or delivery guarantee yet.
 
 Persisted definitions use handler keys rather than closures/function pointers and require compare-and-swap revisions. Format versions are explicit and unknown versions fail closed. See [optional persistence](persistence.md) before implementing an application adapter against this experimental contract.
 
@@ -122,6 +122,6 @@ The SQLite primitive check is also isolated from the dependency-free core matrix
 python3 scripts/verify_persistence.py
 ```
 
-Passing this proof does not make an application durable; it only validates the database primitives described in [optional persistence](persistence.md).
+The verification covers SQLite primitives and definition storage. Scheduler restart behavior requires separate verification. See [optional persistence](persistence.md).
 
 Because package consumption remains blocked, a successful source-checkout matrix does not prove that `noxc add chronos` works. Do not publish that installation claim until [`NXL-007`](../NOX_LIMITATIONS.md#nxl-007--a-package-cannot-use-one-internal-import-form-in-both-its-own-project-and-a-consumer) is resolved and the dedicated consumer gate passes.

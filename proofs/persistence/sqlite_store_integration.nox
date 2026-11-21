@@ -1,0 +1,160 @@
+import nox.fs
+import nox.os
+import nox.sqlite
+import nox.test
+from errors import InvalidStoredJobError, StoreConflictError, StoreCorruptionError, StoreError, UnsupportedStoreVersionError
+from nox.sqlite import Connection
+from sqlite_store import SQLiteJobStore, open_sqlite_store
+from store import JobStore, StoredJobDefinition, make_stored_job_definition
+from time import UtcInstant
+
+path: str = nox.os.getenv("CHRONOS_SQLITE_TEST_DB")
+nox.test.assert_true(not nox.fs.exists(path), "SQLite fixture path must be fresh")
+
+def definition(revision: int, updated_at_ms: int, enabled: bool) -> StoredJobDefinition:
+    return make_stored_job_definition("billing.daily", "Daily billing", "billing-handler", "{\"account\":\"public\",\"sql\":\"'); DROP TABLE chronos_jobs; --\"}", "once-utc", "{\"target_utc_ms\":2000}", "{\"misfire\":\"fire-once\"}", enabled, UtcInstant(1000), UtcInstant(updated_at_ms), revision)
+
+def duplicate_create_conflicts(backend: SQLiteJobStore) -> bool:
+    try:
+        backend.put(definition(1, 1000, True), 0)
+    except StoreConflictError as error:
+        return error.expected_revision == 0 and error.actual_revision == 1
+    return False
+
+def stale_update_conflicts(backend: SQLiteJobStore) -> bool:
+    try:
+        backend.put(definition(2, 1200, True), 1)
+    except StoreConflictError as error:
+        return error.expected_revision == 1 and error.actual_revision == 2
+    return False
+
+def mutated_definition_is_rejected(backend: SQLiteJobStore) -> bool:
+    mutated: StoredJobDefinition = definition(2, 1100, False)
+    mutated.handler_key = "bad key"
+    try:
+        backend.put(mutated, 1)
+    except InvalidStoredJobError:
+        return True
+    return False
+
+def revision_overflow_is_rejected(backend: SQLiteJobStore) -> bool:
+    try:
+        backend.put(definition(2, 1100, False), 9223372036854775807)
+    except InvalidStoredJobError:
+        return True
+    return False
+
+def corrupted_definition_is_rejected(backend: SQLiteJobStore, category: str) -> bool:
+    try:
+        backend.load("billing.daily")
+    except StoreCorruptionError as error:
+        return error.message == "stored data is corrupted" and error.category == category
+    return False
+
+def unsupported_trigger_version_is_rejected(backend: SQLiteJobStore) -> bool:
+    try:
+        backend.load("billing.daily")
+    except UnsupportedStoreVersionError as error:
+        return error.component == "trigger" and error.found_version == 2 and error.supported_version == 1
+    return False
+
+def unsupported_schema_is_rejected(database_path: str) -> bool:
+    try:
+        open_sqlite_store(database_path)
+    except UnsupportedStoreVersionError as error:
+        return error.component == "schema" and error.found_version == 2 and error.supported_version == 1
+    return False
+
+def closed_store_is_rejected(backend: SQLiteJobStore) -> bool:
+    try:
+        backend.load_all()
+    except StoreError as error:
+        return error.message == "store is closed"
+    return False
+
+def backend_error_is_redacted(backend: SQLiteJobStore) -> bool:
+    try:
+        backend.load("billing.daily")
+    except StoreError as error:
+        return error.message == "store backend operation failed"
+    return False
+
+def missing_table_is_rejected(database_path: str) -> bool:
+    try:
+        open_sqlite_store(database_path).close()
+    except StoreCorruptionError as error:
+        return error.category == "schema-objects"
+    return False
+
+def capacity_is_enforced(backend: SQLiteJobStore) -> bool:
+    try:
+        backend.put(definition(1, 1000, True), 0)
+    except StoreError as error:
+        return error.message == "store job capacity reached"
+    return False
+
+concrete: SQLiteJobStore = open_sqlite_store(path)
+view: JobStore = concrete
+view.put(definition(1, 1000, True), 0)
+nox.test.assert_true(duplicate_create_conflicts(concrete), "duplicate create reports the actual revision")
+loaded: StoredJobDefinition | None = view.load("billing.daily")
+nox.test.assert_true(loaded is not None, "SQLite store loads a created definition")
+if loaded is not None:
+    nox.test.assert_eq_str(loaded.handler_key, "billing-handler", "SQLite stores a handler key rather than a callback")
+    nox.test.assert_true(loaded.handler_config.find("DROP TABLE") >= 0, "parameter binding stores SQL-shaped configuration as data")
+nox.test.assert_true(mutated_definition_is_rejected(concrete), "SQLite revalidates mutable definitions before writing")
+nox.test.assert_true(revision_overflow_is_rejected(concrete), "SQLite rejects revision increment overflow")
+nox.test.assert_eq_int(concrete.load_all()[0].revision, 1, "rejected definitions do not mutate committed state")
+view.close()
+nox.test.assert_true(closed_store_is_rejected(concrete), "closed SQLite store rejects operations")
+
+reopened: SQLiteJobStore = open_sqlite_store(path)
+nox.test.assert_eq_int(len(reopened.load_all()), 1, "reopen recovers the committed definition")
+reopened.put(definition(2, 1100, False), 1)
+nox.test.assert_true(stale_update_conflicts(reopened), "conditional update rejects a stale revision")
+nox.test.assert_true(not reopened.load_all()[0].enabled, "conditional update persists replacement fields")
+reopened.close()
+
+raw: Connection = nox.sqlite.open(path)
+raw.execute("UPDATE chronos_jobs SET trigger_format_version = 2 WHERE job_id = 'billing.daily'")
+raw.close()
+versioned: SQLiteJobStore = open_sqlite_store(path)
+nox.test.assert_true(unsupported_trigger_version_is_rejected(versioned), "unknown persisted trigger format fails closed")
+versioned.close()
+
+raw = nox.sqlite.open(path)
+raw.execute("UPDATE chronos_jobs SET trigger_format_version = 1, handler_key = 'bad key' WHERE job_id = 'billing.daily'")
+raw.close()
+corrupted: SQLiteJobStore = open_sqlite_store(path)
+nox.test.assert_true(corrupted_definition_is_rejected(corrupted, "definition-invalid-value"), "invalid persisted definitions are reported as corruption")
+corrupted.close()
+
+raw = nox.sqlite.open(path)
+raw.execute("UPDATE chronos_jobs SET handler_key = 'billing-handler' WHERE job_id = 'billing.daily'")
+raw.execute("UPDATE chronos_jobs SET handler_config = CAST(X'610062' AS TEXT)")
+raw.close()
+nul_store: SQLiteJobStore = open_sqlite_store(path)
+nox.test.assert_true(corrupted_definition_is_rejected(nul_store, "definition-null-column"), "embedded NUL is rejected before driver text conversion")
+nul_store.close()
+
+raw = nox.sqlite.open(path)
+raw.execute("UPDATE chronos_jobs SET handler_config = ''")
+raw.execute("UPDATE chronos_metadata SET schema_version = 2 WHERE singleton = 1")
+raw.close()
+nox.test.assert_true(unsupported_schema_is_rejected(path), "newer SQLite schema versions fail closed")
+
+raw = nox.sqlite.open(path)
+raw.execute("UPDATE chronos_metadata SET schema_version = 1 WHERE singleton = 1")
+raw.close()
+final_store: SQLiteJobStore = open_sqlite_store(path)
+final_store.delete("billing.daily", 2)
+nox.test.assert_eq_int(len(final_store.load_all()), 0, "conditional delete removes the expected revision")
+final_store.connection.execute("WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 10000) INSERT INTO chronos_jobs SELECT printf('fixture-%05d', n), 'Fixture', 'handler', '', 'once-utc', 'target', 'default', 1, 0, 0, 1, 1, 1, 1, 1 FROM seq")
+nox.test.assert_true(capacity_is_enforced(final_store), "new definitions are rejected at the store capacity")
+nox.test.assert_true(final_store.load("billing.daily") is None, "capacity rejection does not create the definition")
+final_store.connection.execute("DROP TABLE chronos_jobs")
+nox.test.assert_true(backend_error_is_redacted(final_store), "raw SQLite diagnostics are not exposed")
+final_store.close()
+nox.test.assert_true(missing_table_is_rejected(path), "incomplete schema is rejected without recreating the missing table")
+nox.fs.remove_file(path)
+print("sqlite-store-ok")

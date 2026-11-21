@@ -109,7 +109,7 @@ jobs:
         run: python scripts/verify_integrations.py
 
   persistence-primitives:
-    name: SQLite persistence primitives
+    name: SQLite persistence adapter
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -131,7 +131,7 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Verify SQLite transaction primitives
+      - name: Verify SQLite primitives and definition adapter
         env:
           NOX_HOME: ${{ runner.temp }}/chronos-persistence-nox-home
         run: python scripts/verify_persistence.py

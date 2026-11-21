@@ -244,7 +244,7 @@ Nox 2.1.111 verifies cooperative task-local sleep, `Channel.wait(ms)`, and class
 
 Decision date: 2026-11-17
 
-Status: accepted for the first Phase 5 slice
+Status: accepted and implemented through the single-owner SQLite definition adapter
 
 The scheduler does not gain an implicit database or serialize live `Job` objects. A pure `JobStore` protocol accepts bounded `StoredJobDefinition` values containing data only. Handler callbacks are represented by an application-owned handler key and opaque bounded configuration; restoration will require an explicit trusted handler registry.
 
@@ -252,4 +252,6 @@ Writes use compare-and-swap revisions. Revision zero means create, every update 
 
 Schema version and definition/handler/trigger/policy format versions are separate. A newer version is rejected explicitly so future migrations cannot reinterpret records silently. UTC timestamps are persisted as epoch milliseconds; monotonic instants are deliberately absent because they have no stable meaning across process restart.
 
-The initial Nox 2.1.111 proof confirms file-backed SQLite reopen, explicit transactions, rollback on a constraint failure, and parameterized binding on LLVM/QBE. It does not establish production durability. The first SQLite adapter remains separate from the core manifest and must pass migration, corruption, crash-window, and restart integration tests before `Scheduler` can advertise persistence.
+The Nox 2.1.111 proofs confirm file-backed SQLite reopen, explicit transactions, rollback on a constraint failure, parameterized binding, and the concrete `SQLiteJobStore` on LLVM/QBE. The adapter initializes schema version `1` transactionally and applies each definition mutation through one revision-guarded SQL statement. It validates persisted rows and redacts raw backend diagnostics.
+
+`sqlite_store.nox` remains separate from the pure `store.nox` contract and the core manifest still has no dependencies. The adapter stores definitions only: it has no handler hydration, scheduler state, execution history, migration, delivery, lease, or exactly-once semantics. Crash/restart scheduler integration remains a separate release gate.

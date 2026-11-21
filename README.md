@@ -41,8 +41,8 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 | Nox package dependency consumption | Blocked | Self-import limitation remains through Nox 2.1.186; see NXL-007 |
 | Background scheduler | Deferred | Runtime primitives are proven; full worker ownership is not |
 | IANA time zones and DST | Deferred | Current cron and calendar behavior is UTC-only |
-| Store data contract | Experimental | Scheduler-independent definitions and compare-and-swap revisions; no production adapter |
-| Durable scheduling and distributed coordination | Deferred | SQLite primitives are proven, but no restart/delivery guarantee exists |
+| SQLite definition store | Experimental | Single-owner, revision-checked adapter; scheduler is not connected |
+| Durable scheduling and distributed coordination | Deferred | Definition reopen is proven, but no restart/delivery guarantee exists |
 
 ## Quick start
 
@@ -142,7 +142,7 @@ The matrix runs all 21 deterministic tests, all 16 executable examples, five cor
 
 A separate Linux x64 CI job uses checksum-pinned Nox 2.1.186 to fetch the exact Nyx `v0.29.0` and Aether `v0.12.0` locks and execute both optional integration examples on LLVM and QBE. These dependencies never enter the core manifest. See [framework integrations](docs/integrations.md) for the request-driven semantics and `NXL-007` source-overlay boundary.
 
-Another isolated Linux x64 job runs the retained Nox 2.1.111 SQLite proof on LLVM and QBE. It verifies file reopen, explicit transaction rollback, and prepared binding only; it is not a production persistence or crash-recovery claim.
+Another isolated Linux x64 job runs the retained Nox 2.1.111 SQLite primitive and `SQLiteJobStore` integration matrix on LLVM and QBE. It verifies transactional schema setup, prepared binding, definition reopen, revision conflicts, conditional deletion, corrupted rows, version rejection, and error redaction. It is not a scheduler persistence or crash-recovery claim.
 
 Run the complete local matrix with:
 

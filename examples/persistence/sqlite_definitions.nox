@@ -1,0 +1,11 @@
+from sqlite_store import open_sqlite_store
+from store import JobStore, make_stored_job_definition
+from time import UtcInstant
+
+definitions: JobStore = open_sqlite_store(":memory:")
+try:
+    created: UtcInstant = UtcInstant(1000)
+    definitions.put(make_stored_job_definition("reports.daily", "Daily report", "daily-report", "", "once-utc", "target=2000", "default", True, created, created, 1), 0)
+    print(definitions.load_all()[0].handler_key)
+finally:
+    definitions.close()

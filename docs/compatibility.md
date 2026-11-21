@@ -1,6 +1,6 @@
 # Compatibility
 
-Status: Phase 5 core/store-contract compatibility baseline.
+Status: Phase 5 core/store-contract and experimental SQLite adapter compatibility baseline.
 
 Last verified locally: 2026-11-20
 
@@ -67,15 +67,16 @@ Framework packages currently require a newer compiler than the core baseline, so
 
 The job verifies locked framework APIs through the source-overlay mechanism documented in `docs/integrations.md`. It is not external Chronos package-consumption evidence and makes no live-server, multi-worker, background-progress, or exactly-once claim.
 
-## Optional SQLite primitive matrix
+## Optional SQLite adapter matrix
 
 The data-only `store.nox` module is part of the pure cross-platform matrix and does not import a database driver. SQLite itself is checked separately so absence of a system SQLite library cannot turn persistence into a mandatory core dependency.
 
 | Verification | Compiler | macOS arm64 | CI Linux x64 |
 |---|---|---|---|
 | File reopen, explicit commit/rollback, constraint recovery, prepared values | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
+| `SQLiteJobStore` schema/create/load/update/delete/corruption/version integration | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 
-This proof does not verify a Chronos SQLite adapter, migrations, crash recovery, concurrent writers, or scheduler delivery semantics. Windows and Linux arm64 SQLite adapter support remain unverified.
+This matrix verifies the definition adapter, not migrations, forced process termination, power-loss recovery, concurrent schedulers, handler hydration, or scheduler delivery semantics. Windows and Linux arm64 SQLite adapter support remain unverified.
 
 ## Platform claims
 
@@ -110,7 +111,7 @@ done
 
 Freestanding checks must exclude `system_clock.nox` or expect its documented `CapabilityNotGranted` result.
 
-Run the optional SQLite primitive proof separately:
+Run the optional SQLite primitive and adapter integration matrix separately:
 
 ```sh
 NOX_HOME=/tmp/chronos-persistence-nox-home python3 scripts/verify_persistence.py

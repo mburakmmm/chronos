@@ -10,7 +10,9 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 - Phase 5 `0.5.0-dev` persistence boundary with bounded data-only `StoredJobDefinition` values, a scheduler-independent `JobStore` protocol, explicit format versions, and optimistic compare-and-swap revisions.
 - Retained Nox 2.1.111 SQLite capability proof for file reopen, explicit commit/rollback, constraint recovery, and prepared parameter binding on LLVM/QBE, plus an isolated Linux x64 CI job.
-- Optional persistence architecture, API, security, and durability-boundary documentation without claiming a production adapter or restart delivery guarantee.
+- Experimental single-owner `SQLiteJobStore` with transactional schema initialization, prepared values, atomic create/update/delete revision guards, deterministic load, explicit close, fail-closed decoding, and redacted backend errors.
+- LLVM/QBE SQLite adapter integration coverage for reopen recovery, stored handler key/configuration, stale writes, conditional delete, malformed rows, unsupported record/schema versions, and SQL-shaped data.
+- Optional persistence architecture, API, security, crash-window, and delivery-boundary documentation without claiming scheduler integration or restart delivery.
 - Phase 0 development and release tracking plan.
 - Minimal Nox 2.1 project manifest with no third-party dependencies.
 - Fixed-input calendar capability probe.

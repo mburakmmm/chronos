@@ -1,0 +1,295 @@
+import nox.sqlite
+import nox.strings
+from errors import InvalidStoredJobError, StoreConflictError, StoreCorruptionError, StoreError, UnsupportedStoreVersionError
+from nox.db import Row, Statement
+from nox.sqlite import Connection, SqliteError
+from store import MAX_HANDLER_KEY_BYTES, MAX_STORED_CONFIG_BYTES, MAX_TRIGGER_KIND_BYTES, STORE_SCHEMA_VERSION, StoredJobDefinition, copy_stored_job_definition
+from time import MAX_MS
+
+CREATE_METADATA_SQL: str = "CREATE TABLE IF NOT EXISTS chronos_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), schema_version INTEGER NOT NULL)"
+CREATE_JOBS_SQL: str = "CREATE TABLE IF NOT EXISTS chronos_jobs (job_id TEXT PRIMARY KEY, name TEXT NOT NULL, handler_key TEXT NOT NULL, handler_config TEXT NOT NULL, trigger_kind TEXT NOT NULL, trigger_config TEXT NOT NULL, policy_config TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled = 0 OR enabled = 1), created_at_utc_ms INTEGER NOT NULL CHECK (created_at_utc_ms >= 0), updated_at_utc_ms INTEGER NOT NULL CHECK (updated_at_utc_ms >= created_at_utc_ms), revision INTEGER NOT NULL CHECK (revision >= 1), definition_format_version INTEGER NOT NULL, handler_config_format_version INTEGER NOT NULL, trigger_format_version INTEGER NOT NULL, policy_format_version INTEGER NOT NULL)"
+SELECT_COLUMNS: str = "job_id, name, handler_key, handler_config, trigger_kind, trigger_config, policy_config, enabled, created_at_utc_ms, updated_at_utc_ms, revision, definition_format_version, handler_config_format_version, trigger_format_version, policy_format_version"
+BACKEND_ERROR_MESSAGE: str = "store backend operation failed"
+MAX_STORED_JOBS: int = 10000
+
+class SQLiteJobStore:
+    connection: Connection
+    closed: bool
+
+    def __init__(self, connection: Connection) -> None:
+        self.connection = connection
+        self.closed = False
+
+    def load(self, job_id: str) -> StoredJobDefinition | None:
+
+        self._require_open()
+        _validate_job_id(job_id)
+        try:
+            query: Statement = self.connection.prepare("SELECT " + _validated_select_columns() + " FROM chronos_jobs WHERE job_id = ?")
+            query.bind_str(0, job_id)
+            rows: list[Row] = query.query()
+            if len(rows) == 0:
+                return None
+            if len(rows) != 1:
+                raise StoreCorruptionError("duplicate-job-id")
+            return _decode_definition(rows[0])
+        except SqliteError:
+            raise StoreError(BACKEND_ERROR_MESSAGE)
+
+    def load_all(self) -> list[StoredJobDefinition]:
+
+        self._require_open()
+        try:
+            query: Statement = self.connection.prepare("SELECT " + _validated_select_columns() + " FROM chronos_jobs ORDER BY job_id LIMIT ?")
+            query.bind_int(0, MAX_STORED_JOBS + 1)
+            rows: list[Row] = query.query()
+            if len(rows) > MAX_STORED_JOBS:
+                raise StoreCorruptionError("definition-count")
+            definitions: list[StoredJobDefinition] = []
+            for row in rows:
+                definitions.append(_decode_definition(row))
+            return definitions
+        except SqliteError:
+            raise StoreError(BACKEND_ERROR_MESSAGE)
+
+    def put(self, definition: StoredJobDefinition, expected_revision: int) -> None:
+
+        self._require_open()
+        validated: StoredJobDefinition = copy_stored_job_definition(definition)
+        if expected_revision < 0 or expected_revision > MAX_MS:
+            raise InvalidStoredJobError("expected revision is outside the supported range")
+        if expected_revision == 0:
+            if validated.revision != 1:
+                raise StoreConflictError(validated.job_id, expected_revision, self._actual_revision(validated.job_id))
+            self._insert(validated)
+            return
+        if expected_revision == MAX_MS:
+            raise InvalidStoredJobError("stored revision cannot advance beyond the maximum integer")
+        if validated.revision != expected_revision + 1:
+            raise StoreConflictError(validated.job_id, expected_revision, self._actual_revision(validated.job_id))
+        try:
+            update: Statement = self.connection.prepare("UPDATE chronos_jobs SET name = ?, handler_key = ?, handler_config = ?, trigger_kind = ?, trigger_config = ?, policy_config = ?, enabled = ?, created_at_utc_ms = ?, updated_at_utc_ms = ?, revision = ?, definition_format_version = ?, handler_config_format_version = ?, trigger_format_version = ?, policy_format_version = ? WHERE job_id = ? AND revision = ?")
+            _bind_definition_without_id(update, validated)
+            update.bind_str(14, validated.job_id)
+            update.bind_int(15, expected_revision)
+            changed: int = update.execute()
+            if changed != 1:
+                raise StoreConflictError(validated.job_id, expected_revision, self._actual_revision(validated.job_id))
+        except SqliteError:
+            raise StoreError(BACKEND_ERROR_MESSAGE)
+
+    def delete(self, job_id: str, expected_revision: int) -> None:
+
+        self._require_open()
+        _validate_job_id(job_id)
+        if expected_revision < 1 or expected_revision > MAX_MS:
+            raise InvalidStoredJobError("delete revision is outside the supported range")
+        try:
+            delete_statement: Statement = self.connection.prepare("DELETE FROM chronos_jobs WHERE job_id = ? AND revision = ?")
+            delete_statement.bind_str(0, job_id)
+            delete_statement.bind_int(1, expected_revision)
+            changed: int = delete_statement.execute()
+            if changed != 1:
+                raise StoreConflictError(job_id, expected_revision, self._actual_revision(job_id))
+        except SqliteError:
+            raise StoreError(BACKEND_ERROR_MESSAGE)
+
+    def close(self) -> None:
+
+        if not self.closed:
+            self.connection.close()
+            self.closed = True
+
+    def _insert(self, definition: StoredJobDefinition) -> None:
+
+        try:
+            insert: Statement = self.connection.prepare("INSERT INTO chronos_jobs (" + SELECT_COLUMNS + ") SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE (SELECT count(*) FROM chronos_jobs) < ? ON CONFLICT(job_id) DO NOTHING")
+            insert.bind_str(0, definition.job_id)
+            insert.bind_str(1, definition.name)
+            insert.bind_str(2, definition.handler_key)
+            insert.bind_str(3, definition.handler_config)
+            insert.bind_str(4, definition.trigger_kind)
+            insert.bind_str(5, definition.trigger_config)
+            insert.bind_str(6, definition.policy_config)
+            insert.bind_int(7, _bool_to_int(definition.enabled))
+            insert.bind_int(8, definition.created_at_utc_ms)
+            insert.bind_int(9, definition.updated_at_utc_ms)
+            insert.bind_int(10, definition.revision)
+            insert.bind_int(11, definition.definition_format_version)
+            insert.bind_int(12, definition.handler_config_format_version)
+            insert.bind_int(13, definition.trigger_format_version)
+            insert.bind_int(14, definition.policy_format_version)
+            insert.bind_int(15, MAX_STORED_JOBS)
+            changed: int = insert.execute()
+            if changed != 1:
+                actual: int = self._actual_revision(definition.job_id)
+                if actual == 0:
+                    raise StoreError("store job capacity reached")
+                raise StoreConflictError(definition.job_id, 0, actual)
+        except SqliteError:
+            raise StoreError(BACKEND_ERROR_MESSAGE)
+
+    def _actual_revision(self, job_id: str) -> int:
+
+        _validate_job_id(job_id)
+        try:
+            query: Statement = self.connection.prepare("SELECT " + _checked_integer("revision") + " FROM chronos_jobs WHERE job_id = ?")
+            query.bind_str(0, job_id)
+            rows: list[Row] = query.query()
+            if len(rows) == 0:
+                return 0
+            if len(rows) != 1 or rows[0].column_count() != 1 or rows[0].is_null(0):
+                raise StoreCorruptionError("invalid-revision-row")
+            try:
+                revision: int = rows[0].get_int(0)
+            except ValueError:
+                raise StoreCorruptionError("invalid-revision")
+            if revision < 1 or revision > MAX_MS:
+                raise StoreCorruptionError("invalid-revision")
+            return revision
+        except SqliteError:
+            raise StoreError(BACKEND_ERROR_MESSAGE)
+
+    def _require_open(self) -> None:
+
+        if self.closed:
+            raise StoreError("store is closed")
+
+def open_sqlite_store(path: str) -> SQLiteJobStore:
+    connection: Connection = _open_connection(path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        objects: list[Row] = connection.query("SELECT type FROM sqlite_master WHERE name IN ('chronos_metadata', 'chronos_jobs')")
+        if len(objects) == 0:
+            connection.execute(CREATE_METADATA_SQL)
+            connection.execute(CREATE_JOBS_SQL)
+            insert_version: Statement = connection.prepare("INSERT INTO chronos_metadata (singleton, schema_version) VALUES (1, ?)")
+            insert_version.bind_int(0, STORE_SCHEMA_VERSION)
+            insert_version.execute()
+        else:
+            if len(objects) != 2 or objects[0].get_str(0) != "table" or objects[1].get_str(0) != "table":
+                raise StoreCorruptionError("schema-objects")
+            metadata: list[Row] = connection.query("SELECT schema_version, typeof(singleton), singleton, typeof(schema_version) FROM chronos_metadata LIMIT 2")
+            if len(metadata) != 1:
+                raise StoreCorruptionError("metadata-cardinality")
+            found_version: int = _decode_schema_version(metadata[0])
+            if found_version != STORE_SCHEMA_VERSION:
+                raise UnsupportedStoreVersionError("schema", found_version, STORE_SCHEMA_VERSION)
+            connection.query("SELECT " + SELECT_COLUMNS + " FROM chronos_jobs LIMIT 0")
+        connection.execute("COMMIT")
+    except SqliteError:
+        _rollback_and_close(connection)
+        raise StoreError(BACKEND_ERROR_MESSAGE)
+    except StoreError as error:
+        _rollback_and_close(connection)
+        raise error
+    return SQLiteJobStore(connection)
+
+def _open_connection(path: str) -> Connection:
+    try:
+        return nox.sqlite.open(path)
+    except SqliteError:
+        raise StoreError(BACKEND_ERROR_MESSAGE)
+
+def _checked_text(column: str, maximum: int) -> str:
+    # Reject malformed text before the Nox driver can truncate it at NUL.
+    blob: str = "CAST(" + column + " AS BLOB)"
+    return "CASE WHEN typeof(" + column + ") = 'text' AND length(" + blob + ") <= " + str(maximum) + " AND instr(" + blob + ", X'00') = 0 THEN " + column + " END"
+
+def _checked_integer(column: str) -> str:
+    return "CASE WHEN typeof(" + column + ") = 'integer' THEN " + column + " END"
+
+def _validated_select_columns() -> str:
+    projection: str = _checked_text("job_id", 128) + ", " + _checked_text("name", 256) + ", " + _checked_text("handler_key", MAX_HANDLER_KEY_BYTES)
+    projection += ", " + _checked_text("handler_config", MAX_STORED_CONFIG_BYTES) + ", " + _checked_text("trigger_kind", MAX_TRIGGER_KIND_BYTES)
+    projection += ", " + _checked_text("trigger_config", MAX_STORED_CONFIG_BYTES) + ", " + _checked_text("policy_config", MAX_STORED_CONFIG_BYTES)
+    integers: list[str] = ["enabled", "created_at_utc_ms", "updated_at_utc_ms", "revision", "definition_format_version", "handler_config_format_version", "trigger_format_version", "policy_format_version"]
+    for column in integers:
+        projection += ", " + _checked_integer(column)
+    return projection
+
+def _bind_definition_without_id(statement: Statement, definition: StoredJobDefinition) -> None:
+    statement.bind_str(0, definition.name)
+    statement.bind_str(1, definition.handler_key)
+    statement.bind_str(2, definition.handler_config)
+    statement.bind_str(3, definition.trigger_kind)
+    statement.bind_str(4, definition.trigger_config)
+    statement.bind_str(5, definition.policy_config)
+    statement.bind_int(6, _bool_to_int(definition.enabled))
+    statement.bind_int(7, definition.created_at_utc_ms)
+    statement.bind_int(8, definition.updated_at_utc_ms)
+    statement.bind_int(9, definition.revision)
+    statement.bind_int(10, definition.definition_format_version)
+    statement.bind_int(11, definition.handler_config_format_version)
+    statement.bind_int(12, definition.trigger_format_version)
+    statement.bind_int(13, definition.policy_format_version)
+
+def _decode_definition(row: Row) -> StoredJobDefinition:
+    if row.column_count() != 15:
+        raise StoreCorruptionError("definition-column-count")
+    for i in range(15):
+        if row.is_null(i):
+            raise StoreCorruptionError("definition-null-column")
+    enabled_value: int = 0
+    created_at: int = 0
+    updated_at: int = 0
+    revision: int = 0
+    definition_version: int = 0
+    handler_version: int = 0
+    trigger_version: int = 0
+    policy_version: int = 0
+    try:
+        enabled_value = row.get_int(7)
+        created_at = row.get_int(8)
+        updated_at = row.get_int(9)
+        revision = row.get_int(10)
+        definition_version = row.get_int(11)
+        handler_version = row.get_int(12)
+        trigger_version = row.get_int(13)
+        policy_version = row.get_int(14)
+    except ValueError:
+        raise StoreCorruptionError("definition-invalid-integer")
+    if enabled_value != 0 and enabled_value != 1:
+        raise StoreCorruptionError("definition-invalid-boolean")
+    try:
+        return StoredJobDefinition(row.get_str(0), row.get_str(1), row.get_str(2), row.get_str(3), row.get_str(4), row.get_str(5), row.get_str(6), enabled_value == 1, created_at, updated_at, revision, definition_version, handler_version, trigger_version, policy_version)
+    except UnsupportedStoreVersionError as error:
+        raise error
+    except InvalidStoredJobError:
+        raise StoreCorruptionError("definition-invalid-value")
+
+def _decode_schema_version(row: Row) -> int:
+    if row.column_count() != 4 or row.get_str(1) != "integer" or row.get_str(2) != "1" or row.get_str(3) != "integer":
+        raise StoreCorruptionError("metadata-row")
+    try:
+        version: int = row.get_int(0)
+    except ValueError:
+        raise StoreCorruptionError("metadata-version")
+    if version < 1:
+        raise StoreCorruptionError("metadata-version")
+    return version
+
+def _validate_job_id(job_id: str) -> None:
+    size: int = nox.strings.byte_len(job_id)
+    if size == 0 or size > 128:
+        raise InvalidStoredJobError("stored job ID violates byte limit")
+    for i in range(size):
+        byte: int = nox.strings.byte_at(job_id, i)
+        lowercase: bool = byte >= 97 and byte <= 122
+        uppercase: bool = byte >= 65 and byte <= 90
+        digit: bool = byte >= 48 and byte <= 57
+        punctuation: bool = byte == 45 or byte == 46 or byte == 58 or byte == 95
+        if not lowercase and not uppercase and not digit and not punctuation:
+            raise InvalidStoredJobError("stored job ID contains an unsupported character")
+
+def _bool_to_int(value: bool) -> int:
+    if value:
+        return 1
+    return 0
+
+def _rollback_and_close(connection: Connection) -> None:
+    try:
+        connection.execute("ROLLBACK")
+    except SqliteError:
+        pass
+    connection.close()
