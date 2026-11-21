@@ -16,9 +16,15 @@ Chronos remains dependency-free and in-memory unless an application explicitly i
 - positive compare-and-swap revision;
 - explicit job-definition, handler-config, trigger, and policy format versions.
 
-There is deliberately no handler closure, function pointer, connection, clock, live trigger object, retry deadline, running count, or pending callback in the record. A future hydration layer must resolve `handler_key` through an application-owned registry of trusted handlers. Stored text is data and must never be evaluated as Nox or shell code.
+Persisted records contain no executable values or live scheduler state. Stored text is data and must never be evaluated as Nox or shell code.
 
 The three configuration strings are capped at 16,384 bytes each and reject embedded NUL so SQLite text binding cannot silently shorten a record. They are opaque at the store boundary so the persistence adapter does not invent serialization semantics. Chronos-owned codecs will be added alongside the trigger/policy types they support; applications must not assume arbitrary text is already a restorable Chronos schedule.
+
+## Handler binding
+
+The application registers trusted callbacks in its own `HandlerRegistry`. Binding a loaded record validates it and returns a scheduler-compatible callback capturing the stored handler configuration. An absent key raises `UnknownHandlerError`. The registered function runs only when the returned callback is invoked.
+
+The runnable SQLite example binds a stored handler and supplies a one-shot trigger explicitly before calling the in-memory scheduler. Trigger and policy decoding and restart decisions remain application responsibilities at this stage.
 
 ## Revision contract
 
@@ -94,7 +100,7 @@ No current API promises at-most-once or at-least-once execution after restart. T
 - the crash window before dispatch, after dispatch, and after handler side effects;
 - restoration of UTC one-shot and UTC cron triggers;
 - explicit restart semantics for monotonic delay, fixed-rate, and fixed-delay schedules;
-- unknown handler keys and trusted hydration;
+- trigger and policy decoding and integration with trusted handler binding;
 - execution-state updates and migration recovery;
 - bounded execution/error history, if any;
 - application-level idempotency guidance.

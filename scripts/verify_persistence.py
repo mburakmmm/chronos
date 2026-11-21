@@ -22,7 +22,7 @@ CASES = (
         "proofs/persistence/sqlite_store_integration.nox",
         "sqlite-store-ok",
     ),
-    ("examples/persistence/sqlite_definitions.nox", "daily-report"),
+    ("examples/persistence/sqlite_definitions.nox", "reports.daily daily-summary"),
 )
 
 

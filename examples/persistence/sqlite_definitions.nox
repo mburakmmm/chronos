@@ -1,11 +1,29 @@
+from clock import FakeClock
+from handler_registry import HandlerRegistry
+from job import JobContext, make_utc_job
+from scheduler import Scheduler
 from sqlite_store import open_sqlite_store
-from store import JobStore, make_stored_job_definition
+from store import JobStore, StoredJobDefinition, make_stored_job_definition
 from time import UtcInstant
+from trigger import OnceTrigger
+
+def report(context: JobContext, report_name: str) -> None:
+    print(context.job_id, report_name)
+
+handlers: HandlerRegistry = HandlerRegistry()
+handlers.register("daily-report", report)
 
 definitions: JobStore = open_sqlite_store(":memory:")
 try:
     created: UtcInstant = UtcInstant(1000)
-    definitions.put(make_stored_job_definition("reports.daily", "Daily report", "daily-report", "", "once-utc", "target=2000", "default", True, created, created, 1), 0)
-    print(definitions.load_all()[0].handler_key)
+    definitions.put(make_stored_job_definition("reports.daily", "Daily report", "daily-report", "daily-summary", "once-utc", "target=2000", "default", True, created, created, 1), 0)
+    saved: StoredJobDefinition = definitions.load_all()[0]
+    callback: (JobContext) -> None = handlers.bind(saved)
+    # The application supplies the schedule explicitly in this example.
+    engine: Scheduler = Scheduler(FakeClock(2000, 0), 1)
+    engine.add(make_utc_job(saved.job_id, saved.name, OnceTrigger(UtcInstant(2000)), callback, saved.enabled, UtcInstant(saved.created_at_utc_ms), []))
+    engine.start()
+    engine.tick()
+    engine.stop()
 finally:
     definitions.close()

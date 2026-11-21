@@ -221,6 +221,14 @@ Chronos rejects NUL on writes and checks text type, byte length and embedded NUL
 
 To verify a runtime fix, check that the driver returns all three bytes on both backends, or reports a documented explicit error for unsupported text. Keep Chronos's corruption regression, since embedded NUL remains outside its store format.
 
+## NXL-010 — closures capturing a list parameter fail during code generation
+
+Status: open in Nox 2.1.111 on macOS arm64, reproduced on LLVM and QBE.
+
+`proofs/limitations/list_parameter_closure.nox` returns a closure that captures and appends to a `list[str]` parameter. `noxc check` passes. Both `noxc run --backend llvm` and `noxc run --backend qbe` reject the program with the generic unsupported-construct codegen diagnostic.
+
+Chronos uses a class instance to hold captured test state. Verify a fix by running the retained reproducer on both backends and checking that it prints `recorded`.
+
 ## New entry template
 
 Every new limitation should record:

@@ -430,3 +430,9 @@ The adapter integration passed on LLVM and QBE. It covers transactional schema i
 This is definition-store evidence only: no migration, process-kill/power-loss simulation, handler hydration, scheduler restart recovery, concurrent scheduler, or durable-delivery claim exists yet.
 
 The pure `store.nox` contract and its deterministic test also pass on LLVM/QBE and type-check freestanding. It contains no filesystem or database import, so persistence remains optional and the existing scheduler path remains dependency-free.
+
+### P5-HANDLER-001 — binding stored configurations to trusted callbacks
+
+Compiler: checksum-pinned Nox 2.1.111. Host: macOS arm64.
+
+`tests/store_test.nox` and the optional SQLite verification exercise typed callback fields in dictionary-held objects, closures capturing a handler object and configuration string, and scheduler invocation on LLVM and QBE. The file-backed test confirms that a reopened definition raises `UnknownHandlerError` in a fresh empty registry. The minimal reproduction for direct list-parameter capture is tracked as `NXL-010`.

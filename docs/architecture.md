@@ -255,3 +255,5 @@ Schema version and definition/handler/trigger/policy format versions are separat
 The Nox 2.1.111 proofs confirm file-backed SQLite reopen, explicit transactions, rollback on a constraint failure, parameterized binding, and the concrete `SQLiteJobStore` on LLVM/QBE. The adapter initializes schema version `1` transactionally and applies each definition mutation through one revision-guarded SQL statement. It validates persisted rows and redacts raw backend diagnostics.
 
 `sqlite_store.nox` remains separate from the pure `store.nox` contract and the core manifest still has no dependencies. The adapter stores definitions only: it has no handler hydration, scheduler state, execution history, migration, delivery, lease, or exactly-once semantics. Crash/restart scheduler integration remains a separate release gate.
+
+The application-owned `HandlerRegistry` assembles the executable callback in memory from an explicitly registered function and a validated definition. The registry stores neither schedules nor execution state. Unknown keys stop binding before a callback can run.

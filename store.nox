@@ -31,7 +31,7 @@ class StoredJobDefinition:
     def __init__(self, job_id: str, name: str, handler_key: str, handler_config: str, trigger_kind: str, trigger_config: str, policy_config: str, enabled: bool, created_at_utc_ms: int, updated_at_utc_ms: int, revision: int, definition_format_version: int, handler_config_format_version: int, trigger_format_version: int, policy_format_version: int) -> None:
         _validate_identifier("stored job ID", job_id, 128)
         _validate_text("stored job name", name, 256, False)
-        _validate_identifier("handler key", handler_key, MAX_HANDLER_KEY_BYTES)
+        validate_handler_key(handler_key)
         _validate_text("handler config", handler_config, MAX_STORED_CONFIG_BYTES, True)
         _validate_identifier("trigger kind", trigger_kind, MAX_TRIGGER_KIND_BYTES)
         _validate_text("trigger config", trigger_config, MAX_STORED_CONFIG_BYTES, False)
@@ -85,6 +85,9 @@ def make_stored_job_definition(job_id: str, name: str, handler_key: str, handler
 
 def copy_stored_job_definition(source: StoredJobDefinition) -> StoredJobDefinition:
     return StoredJobDefinition(source.job_id, source.name, source.handler_key, source.handler_config, source.trigger_kind, source.trigger_config, source.policy_config, source.enabled, source.created_at_utc_ms, source.updated_at_utc_ms, source.revision, source.definition_format_version, source.handler_config_format_version, source.trigger_format_version, source.policy_format_version)
+
+def validate_handler_key(key: str) -> None:
+    _validate_identifier("handler key", key, MAX_HANDLER_KEY_BYTES)
 
 def _require_version(component: str, found: int, supported: int) -> None:
     if found != supported:

@@ -2,7 +2,8 @@ import nox.fs
 import nox.os
 import nox.sqlite
 import nox.test
-from errors import InvalidStoredJobError, StoreConflictError, StoreCorruptionError, StoreError, UnsupportedStoreVersionError
+from errors import InvalidStoredJobError, StoreConflictError, StoreCorruptionError, StoreError, UnknownHandlerError, UnsupportedStoreVersionError
+from handler_registry import HandlerRegistry
 from nox.sqlite import Connection
 from sqlite_store import SQLiteJobStore, open_sqlite_store
 from store import JobStore, StoredJobDefinition, make_stored_job_definition
@@ -86,6 +87,14 @@ def missing_table_is_rejected(database_path: str) -> bool:
         return error.category == "schema-objects"
     return False
 
+def missing_handler_is_rejected(saved: StoredJobDefinition) -> bool:
+    fresh: HandlerRegistry = HandlerRegistry()
+    try:
+        fresh.bind(saved)
+    except UnknownHandlerError as error:
+        return error.handler_key == "billing-handler" and error.message == "stored handler key is not registered"
+    return False
+
 def capacity_is_enforced(backend: SQLiteJobStore) -> bool:
     try:
         backend.put(definition(1, 1000, True), 0)
@@ -110,6 +119,7 @@ nox.test.assert_true(closed_store_is_rejected(concrete), "closed SQLite store re
 
 reopened: SQLiteJobStore = open_sqlite_store(path)
 nox.test.assert_eq_int(len(reopened.load_all()), 1, "reopen recovers the committed definition")
+nox.test.assert_true(missing_handler_is_rejected(reopened.load_all()[0]), "reopened records require a registered application callback")
 reopened.put(definition(2, 1100, False), 1)
 nox.test.assert_true(stale_update_conflicts(reopened), "conditional update rejects a stale revision")
 nox.test.assert_true(not reopened.load_all()[0].enabled, "conditional update persists replacement fields")

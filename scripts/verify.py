@@ -19,6 +19,7 @@ FREESTANDING_MODULES = (
     "errors.nox",
     "events.nox",
     "executor.nox",
+    "handler_registry.nox",
     "job.nox",
     "policy.nox",
     "registry.nox",
@@ -108,8 +109,8 @@ def main() -> int:
         for benchmark in BENCHMARK_SOURCES:
             run([NOXC, "check", "--backend", backend, benchmark])
 
-    for module in FREESTANDING_MODULES:
-        run([NOXC, "check", "--profile", "freestanding", module])
+        for module in FREESTANDING_MODULES:
+            run([NOXC, "check", "--backend", backend, "--profile", "freestanding", module])
     run([NOXC, "check", "system_clock.nox"])
 
     print(

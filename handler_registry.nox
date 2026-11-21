@@ -1,0 +1,41 @@
+from errors import StoreError, UnknownHandlerError
+from job import JobContext
+from store import StoredJobDefinition, copy_stored_job_definition, validate_handler_key
+
+MAX_HANDLER_REGISTRATIONS: int = 1024
+
+class RegisteredHandler:
+    callback: (JobContext, str) -> None
+
+    def __init__(self, callback: (JobContext, str) -> None) -> None:
+        self.callback = callback
+
+def _bind_handler(registered: RegisteredHandler, config: str) -> (JobContext) -> None:
+    def invoke(context: JobContext) -> None:
+        registered.callback(context, config)
+
+    return invoke
+
+class HandlerRegistry:
+    handlers: dict[str, RegisteredHandler]
+
+    def __init__(self) -> None:
+        self.handlers = {}
+
+    def register(self, key: str, callback: (JobContext, str) -> None) -> None:
+
+        validate_handler_key(key)
+        if key in self.handlers:
+            raise StoreError("handler key is already registered")
+        if len(self.handlers) >= MAX_HANDLER_REGISTRATIONS:
+            raise StoreError("handler registry capacity reached")
+        self.handlers[key] = RegisteredHandler(callback)
+
+    def bind(self, definition: StoredJobDefinition) -> (JobContext) -> None:
+
+        validated: StoredJobDefinition = copy_stored_job_definition(definition)
+        key: str = validated.handler_key
+        if key not in self.handlers:
+            raise UnknownHandlerError(key)
+        registered: RegisteredHandler = self.handlers[key]
+        return _bind_handler(registered, validated.handler_config)

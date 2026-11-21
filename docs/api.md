@@ -17,7 +17,7 @@ Methods and fields are supported only when their contract is explicitly describe
 
 | Module | Experimental names |
 |---|---|
-| `errors` | `ChronosError`, `InvalidDurationError`, `TimeRangeError`, `CronParseError`, `CronSearchLimitError`, `InvalidJobError`, `DuplicateJobError`, `JobNotFoundError`, `SchedulerStateError`, `InvalidEventError`, `EventListenerLimitError`, `InvalidPolicyError`, `StoreError`, `InvalidStoredJobError`, `StoreConflictError`, `StoreCorruptionError`, `UnsupportedStoreVersionError` |
+| `errors` | `ChronosError`, `InvalidDurationError`, `TimeRangeError`, `CronParseError`, `CronSearchLimitError`, `InvalidJobError`, `DuplicateJobError`, `JobNotFoundError`, `SchedulerStateError`, `InvalidEventError`, `EventListenerLimitError`, `InvalidPolicyError`, `StoreError`, `InvalidStoredJobError`, `StoreConflictError`, `StoreCorruptionError`, `UnsupportedStoreVersionError`, `UnknownHandlerError` |
 | `time` | `MIN_MS`, `MAX_MS`, `UtcInstant`, `MonotonicInstant`, `Duration`, `add_duration`, `subtract_duration`, `add_monotonic_duration`, `elapsed_between`, `multiply_duration`, `require_positive_interval` |
 | `clock` | `Clock`, `FakeClock` |
 | `system_clock` | `SystemClock` |
@@ -29,10 +29,11 @@ Methods and fields are supported only when their contract is explicitly describe
 | `scheduler` | `Scheduler`, `TickResult` |
 | `store` | `JobStore`, `StoredJobDefinition`, `make_stored_job_definition` |
 | `sqlite_store` | `SQLiteJobStore`, `open_sqlite_store` |
+| `handler_registry` | `HandlerRegistry` |
 
 The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
 
-Persistence schema/format constants, `copy_stored_job_definition`, the direct `StoredJobDefinition` constructor, and `UnknownHandlerError` remain Internal until the SQLite adapter and hydration contract are complete.
+Persistence schema/format constants, store validation/copy helpers and the direct `StoredJobDefinition` constructor are Internal.
 
 ## `chronos.errors` — Experimental
 
@@ -72,6 +73,7 @@ Callers should branch on the exception class, not message text.
 - `StoreConflictError`: a compare-and-swap create/update/delete observed a missing, duplicate, stale, or skipped revision. Its `job_id`, `expected_revision`, and `actual_revision` fields describe the conflict without exposing stored configuration.
 - `StoreCorruptionError`: an adapter found invalid persisted state. Its message is fixed and safe; `category` identifies an adapter-defined safe reason without reflecting raw rows.
 - `UnsupportedStoreVersionError`: persisted `component` has `found_version` rather than `supported_version`.
+- `UnknownHandlerError`: the application registry lacks the stored handler key. The message is fixed. The `handler_key` field is untrusted diagnostic data.
 
 ## `chronos.time` — Experimental
 
@@ -225,7 +227,13 @@ Calling the wrong-domain method raises `InvalidJobError`.
 
 The optional `sqlite_store` module implements this contract for one application-owned SQLite connection. `open_sqlite_store(path)` creates or validates schema version `1`; `SQLiteJobStore` provides the protocol operations and idempotent `close()`. The adapter is single-process/single-owner, uses prepared bindings and atomic revision-checked SQL statements, validates rows on load, and redacts raw database diagnostics. It stores definitions only.
 
-`Scheduler` does not accept a store, hydrate a handler, or restore execution state. Importing or opening the adapter therefore does not provide durable scheduling, restart delivery, migration support, worker coordination, or exactly-once behavior. See [optional persistence](persistence.md).
+`Scheduler` has an application-driven in-memory lifecycle. See [optional persistence](persistence.md) for the scope of records and reopening.
+
+## `chronos.handler_registry` — Experimental
+
+`HandlerRegistry()` creates an application-owned registry. `register(key, callback)` accepts a trusted `(JobContext, str) -> None` callback and the same bounded, case-sensitive key format as `StoredJobDefinition`. Duplicate keys and registrations beyond 1,024 distinct keys raise `StoreError`.
+
+`bind(definition) -> (JobContext) -> None` validates the stored definition, resolves its key and captures its handler configuration. Unknown keys raise `UnknownHandlerError`. Binding performs no application callback. The returned callback accepts the execution context and calls the registered function with the captured configuration as opaque text. The application is responsible for interpreting it and constructing the trigger and policies.
 
 ## `chronos.registry` — Internal
 

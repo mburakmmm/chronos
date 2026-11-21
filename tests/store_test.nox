@@ -1,6 +1,8 @@
 import nox.strings
 import nox.test
-from errors import InvalidStoredJobError, StoreConflictError, UnsupportedStoreVersionError
+from errors import InvalidStoredJobError, StoreConflictError, StoreError, UnknownHandlerError, UnsupportedStoreVersionError
+from handler_registry import HandlerRegistry
+from job import JobContext
 from store import JOB_DEFINITION_FORMAT_VERSION, HANDLER_CONFIG_FORMAT_VERSION, POLICY_FORMAT_VERSION, TRIGGER_FORMAT_VERSION, JobStore, StoredJobDefinition, copy_stored_job_definition, make_stored_job_definition
 from time import UtcInstant
 
@@ -116,3 +118,74 @@ view.delete("billing.daily", 2)
 nox.test.assert_eq_int(len(view.load_all()), 0, "revision-checked delete removes definition")
 view.close()
 nox.test.assert_true(concrete.closed, "store protocol has explicit lifecycle")
+
+class HandlerObservation:
+    calls: int
+    last: str
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.last = ""
+
+def record_handler(observed: HandlerObservation) -> (JobContext, str) -> None:
+    def record(context: JobContext, config: str) -> None:
+        observed.calls += 1
+        observed.last = context.job_id + ":" + config
+
+    return record
+
+def rejects_duplicate_handler(handlers: HandlerRegistry, callback: (JobContext, str) -> None) -> bool:
+    try:
+        handlers.register("billing-handler", callback)
+    except StoreError as error:
+        return error.message == "handler key is already registered"
+    return False
+
+def rejects_bad_registration(handlers: HandlerRegistry, callback: (JobContext, str) -> None) -> bool:
+    try:
+        handlers.register("bad key", callback)
+    except InvalidStoredJobError:
+        return True
+    return False
+
+def rejects_unknown_handler(handlers: HandlerRegistry, saved: StoredJobDefinition) -> bool:
+    try:
+        handlers.bind(saved)
+    except UnknownHandlerError as error:
+        return error.handler_key == "billing-handler" and error.message == "stored handler key is not registered"
+    return False
+
+def rejects_mutated_definition(handlers: HandlerRegistry, saved: StoredJobDefinition) -> bool:
+    try:
+        handlers.bind(saved)
+    except InvalidStoredJobError:
+        return True
+    return False
+
+def rejects_excess_handler(handlers: HandlerRegistry, callback: (JobContext, str) -> None) -> bool:
+    try:
+        handlers.register("excess", callback)
+    except StoreError as error:
+        return error.message == "handler registry capacity reached"
+    return False
+
+observed: HandlerObservation = HandlerObservation()
+other_observed: HandlerObservation = HandlerObservation()
+handlers: HandlerRegistry = HandlerRegistry()
+callback: (JobContext, str) -> None = record_handler(observed)
+saved: StoredJobDefinition = definition(1, 1000)
+handlers.register("billing-handler", callback)
+nox.test.assert_true(rejects_duplicate_handler(handlers, record_handler(other_observed)), "duplicate handler registration must preserve the original")
+nox.test.assert_true(rejects_bad_registration(handlers, callback), "registry shares the stored handler key rules")
+nox.test.assert_true(rejects_unknown_handler(HandlerRegistry(), saved), "registry ownership is isolated and unknown keys fail closed")
+bound: (JobContext) -> None = handlers.bind(saved)
+nox.test.assert_eq_int(observed.calls, 0, "binding never invokes the callback")
+saved.handler_config = "subsequent change"
+bound(JobContext("billing.daily", "utc", 2000, 1))
+nox.test.assert_eq_str(observed.last, "billing.daily:{\"account\":\"public\"}", "bound callback retains original config and receives the live context")
+nox.test.assert_eq_int(other_observed.calls, 0, "duplicate registration did not replace the callback")
+saved.handler_config = "bad\x00config"
+nox.test.assert_true(rejects_mutated_definition(handlers, saved), "binding revalidates mutable stored data")
+for index in range(1023):
+    handlers.register("extra:" + str(index), callback)
+nox.test.assert_true(rejects_excess_handler(handlers, callback), "registry caps distinct handler keys")

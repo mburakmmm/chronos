@@ -138,7 +138,7 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 | macOS | arm64 | LLVM and QBE |
 | Windows | x64 | LLVM and QBE |
 
-The matrix runs all 21 deterministic tests, all 16 executable examples, five core runtime/capability proofs, 12 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
+The matrix runs all 21 deterministic tests, all 16 core examples, five core runtime/capability proofs, 13 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
 
 A separate Linux x64 CI job uses checksum-pinned Nox 2.1.186 to fetch the exact Nyx `v0.29.0` and Aether `v0.12.0` locks and execute both optional integration examples on LLVM and QBE. These dependencies never enter the core manifest. See [framework integrations](docs/integrations.md) for the request-driven semantics and `NXL-007` source-overlay boundary.
 

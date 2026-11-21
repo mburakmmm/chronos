@@ -20,7 +20,7 @@ These commits are audit boundaries, not release tags. The authoritative current 
 
 ## Entering `0.5.0-dev`
 
-The new `store` module is opt-in and is not connected to `Scheduler`. Applications may compile against the data-only `StoredJobDefinition` and `JobStore` contract. The optional `sqlite_store` module now supplies a single-owner definition adapter through `open_sqlite_store(path)`, but this must not be interpreted as durable scheduling. There is no hydration registry, migration runner, scheduler restart recovery, or delivery guarantee yet.
+The opt-in `store` module provides `StoredJobDefinition` and `JobStore`. The optional SQLite adapter opens a single-owner definition store through `open_sqlite_store(path)`. Applications can use `HandlerRegistry` to bind a loaded definition to a trusted callback. Migration and scheduler restart recovery remain future work.
 
 Persisted definitions use handler keys rather than closures/function pointers and require compare-and-swap revisions. Format versions are explicit and unknown versions fail closed. See [optional persistence](persistence.md) before implementing an application adapter against this experimental contract.
 

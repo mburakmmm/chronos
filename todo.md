@@ -387,7 +387,7 @@ Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementa
 - [x] Definition create/update/delete için atomik CAS ve normal reopen davranışını test et. Commit sonucunun belirsiz kaldığı crash aralığını belgele.
 - [ ] Scheduler restart için at-most-once veya at-least-once sınırını crash/restart testleriyle belirle. Adaptörün tek başına delivery garantisi olmadığını belgeledik.
 - [x] Corrupted row, unsupported record version ve unsupported schema senaryolarını adapter integration testinde doğrula.
-- [ ] Unknown handler key senaryosunu trusted hydration registry eklendiğinde fail-closed test et.
+- [x] Handler anahtarlarını uygulamaya ait sınırlı bir registry ile bağla. Bilinmeyen anahtarı hem bellekte hem SQLite tekrar açıldığında reddet.
 - [ ] Execution history ve error retention sınırlarını uygula.
 - [ ] Secret'ları plaintext serialize etme.
 - [ ] Crash/restart integration testleri geçmeden durable scheduling iddiasında bulunma.

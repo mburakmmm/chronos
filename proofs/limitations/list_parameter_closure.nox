@@ -1,0 +1,10 @@
+def make_recorder(values: list[str]) -> (str) -> None:
+    def record(value: str) -> None:
+        values.append(value)
+
+    return record
+
+items: list[str] = []
+record_item: (str) -> None = make_recorder(items)
+record_item("recorded")
+print(items[0])
