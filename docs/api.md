@@ -30,6 +30,7 @@ Methods and fields are supported only when their contract is explicitly describe
 | `store` | `JobStore`, `StoredJobDefinition`, `make_stored_job_definition` |
 | `sqlite_store` | `SQLiteJobStore`, `open_sqlite_store` |
 | `handler_registry` | `HandlerRegistry` |
+| `job_codec` | `encode_once_utc`, `encode_cron_utc`, `encode_policies`, `restore_utc_job` |
 
 The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
 
@@ -234,6 +235,15 @@ The optional `sqlite_store` module implements this contract for one application-
 `HandlerRegistry()` creates an application-owned registry. `register(key, callback)` accepts a trusted `(JobContext, str) -> None` callback and the same bounded, case-sensitive key format as `StoredJobDefinition`. Duplicate keys and registrations beyond 1,024 distinct keys raise `StoreError`.
 
 `bind(definition) -> (JobContext) -> None` validates the stored definition, resolves its key and captures its handler configuration. Unknown keys raise `UnknownHandlerError`. Binding performs no application callback. The returned callback accepts the execution context and calls the registered function with the captured configuration as opaque text. The application is responsible for interpreting it and constructing the trigger and policies.
+
+## `chronos.job_codec` — Experimental
+
+- `encode_once_utc(target: UtcInstant) -> str` produces the trigger configuration for kind `once-utc`.
+- `encode_cron_utc(expression: str) -> str` validates the Chronos UTC cron grammar and preserves the expression for kind `cron-utc`. Invalid author input raises `CronParseError`.
+- `encode_policies(config: JobPolicies) -> str` encodes the supported policy fields and checks scheduler policy compatibility.
+- `restore_utc_job(definition, handlers) -> Job` validates format versions and fields, reconstructs the UTC trigger and policies, and binds the configured handler. The returned job preserves identity, enabled state and UTC record timestamps, with fresh execution counters and empty metadata. The application decides when to register it.
+
+Malformed stored trigger or policy data raises `InvalidStoredJobError` without echoing the payload. Unknown versions and unknown handler keys keep their respective errors. See the [format reference](persistence.md#utc-definition-codec).
 
 ## `chronos.registry` — Internal
 

@@ -388,6 +388,7 @@ Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementa
 - [ ] Scheduler restart için at-most-once veya at-least-once sınırını crash/restart testleriyle belirle. Adaptörün tek başına delivery garantisi olmadığını belgeledik.
 - [x] Corrupted row, unsupported record version ve unsupported schema senaryolarını adapter integration testinde doğrula.
 - [x] Handler anahtarlarını uygulamaya ait sınırlı bir registry ile bağla. Bilinmeyen anahtarı hem bellekte hem SQLite tekrar açıldığında reddet.
+- [x] UTC tek seferlik ve cron tetikleyicileri ile doğrulanmış politika yapılandırmasını v1 formatında kodla ve kayıtlı tanımdan iş oluştur.
 - [ ] Execution history ve error retention sınırlarını uygula.
 - [ ] Secret'ları plaintext serialize etme.
 - [ ] Crash/restart integration testleri geçmeden durable scheduling iddiasında bulunma.

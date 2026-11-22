@@ -24,6 +24,8 @@ The opt-in `store` module provides `StoredJobDefinition` and `JobStore`. The opt
 
 Persisted definitions use handler keys rather than closures/function pointers and require compare-and-swap revisions. Format versions are explicit and unknown versions fail closed. See [optional persistence](persistence.md) before implementing an application adapter against this experimental contract.
 
+Applications using the Chronos UTC codec must write the canonical trigger and policy values described in the [version 1 format reference](persistence.md#utc-definition-codec). Earlier development snapshots stored opaque application values. Those records still load from the store. Translate their configurations explicitly before passing them to `restore_utc_job`.
+
 ## Upgrade checklist for `0.4.0-dev`
 
 1. Replace direct imports of registry, executor, dispatcher, concrete job, and scheduler-record types with names from the [public API allowlist](api.md).

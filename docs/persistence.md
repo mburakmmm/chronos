@@ -18,13 +18,25 @@ Chronos remains dependency-free and in-memory unless an application explicitly i
 
 Persisted records contain no executable values or live scheduler state. Stored text is data and must never be evaluated as Nox or shell code.
 
-The three configuration strings are capped at 16,384 bytes each and reject embedded NUL so SQLite text binding cannot silently shorten a record. They are opaque at the store boundary so the persistence adapter does not invent serialization semantics. Chronos-owned codecs will be added alongside the trigger/policy types they support; applications must not assume arbitrary text is already a restorable Chronos schedule.
+The three configuration strings are capped at 16,384 bytes each and reject embedded NUL. They are opaque at the database boundary. The UTC job codec applies additional format and policy validation.
 
 ## Handler binding
 
 The application registers trusted callbacks in its own `HandlerRegistry`. Binding a loaded record validates it and returns a scheduler-compatible callback capturing the stored handler configuration. An absent key raises `UnknownHandlerError`. The registered function runs only when the returned callback is invoked.
 
-The runnable SQLite example binds a stored handler and supplies a one-shot trigger explicitly before calling the in-memory scheduler. Trigger and policy decoding and restart decisions remain application responsibilities at this stage.
+## UTC definition codec
+
+The version 1 Chronos codec supports two trigger kinds. `once-utc` stores one canonical unsigned decimal UTC epoch millisecond value. `cron-utc` stores the original five-field UTC expression, retaining its wildcard syntax and using the existing cron parser. Both are encoded using the functions in `job_codec`.
+
+The version 1 policy configuration has nine pipe-delimited fields in order. The format is bounded at 128 bytes. Numeric fields use canonical unsigned decimal within signed 64-bit range. Policy constructors enforce individual limits, and the codec checks combinations such as retry with catch-up.
+
+```text
+misfire-kind|grace-ms|catch-up-count|evaluation-steps|overlap-kind|retry-kind|max-attempts|base-delay-ms|max-delay-ms
+```
+
+`restore_utc_job` creates one in-memory job using the decoded schedule and policies and a trusted handler. It preserves enabled state and both UTC timestamps. Execution history, arguments beyond handler configuration, metadata and process-local monotonic schedules are outside this format. Existing opaque application records remain readable through `JobStore`. To restore older opaque values as jobs, explicitly translate them using the codec before updating their stored revision.
+
+The runnable SQLite example restores a one-shot job before registering it with the manual scheduler. At registration the scheduler calculates eligibility from its current clock. Restart reconciliation, past occurrences and prior execution state require a separately defined delivery contract.
 
 ## Revision contract
 
@@ -98,9 +110,8 @@ Monotonic instants, running counts, retry deadlines, pending overlap state, call
 No current API promises at-most-once or at-least-once execution after restart. The scheduler is still ephemeral and ignores `JobStore`; therefore the adapter currently has **no job-delivery semantics**. Before a durable claim is added, scheduler integration must define and test:
 
 - the crash window before dispatch, after dispatch, and after handler side effects;
-- restoration of UTC one-shot and UTC cron triggers;
+- restart reconciliation of restored UTC one-shot and UTC cron jobs with prior execution state;
 - explicit restart semantics for monotonic delay, fixed-rate, and fixed-delay schedules;
-- trigger and policy decoding and integration with trusted handler binding;
 - execution-state updates and migration recovery;
 - bounded execution/error history, if any;
 - application-level idempotency guidance.

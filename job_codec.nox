@@ -1,0 +1,75 @@
+import nox.strings
+from cron import CronTrigger, parse
+from errors import CronParseError, InvalidPolicyError, InvalidStoredJobError
+from handler_registry import HandlerRegistry
+from job import Job, JobContext, make_utc_job_with_policies
+from policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy, copy_job_policies, validate_policy_combination
+from store import StoredJobDefinition, copy_stored_job_definition
+from time import Duration, UtcInstant
+from trigger import OnceTrigger, UtcTrigger
+
+def encode_once_utc(target: UtcInstant) -> str:
+    checked: UtcInstant = UtcInstant(target.epoch_ms)
+    return str(checked.epoch_ms)
+
+def encode_cron_utc(expression: str) -> str:
+    parse(expression)
+    return expression
+
+def encode_policies(config: JobPolicies) -> str:
+    checked: JobPolicies = copy_job_policies(config)
+    validate_policy_combination(checked)
+    misfire: MisfirePolicy = checked.misfire
+    retry: RetryPolicy = checked.retry
+    return misfire.kind + "|" + str(misfire.grace_period_ms) + "|" + str(misfire.max_catch_up_count) + "|" + str(misfire.max_evaluation_steps) + "|" + checked.overlap.kind + "|" + retry.kind + "|" + str(retry.max_attempts) + "|" + str(retry.base_delay_ms) + "|" + str(retry.maximum_delay_ms)
+
+def restore_utc_job(definition: StoredJobDefinition, handlers: HandlerRegistry) -> Job:
+    saved: StoredJobDefinition = copy_stored_job_definition(definition)
+    schedule: UtcTrigger = _decode_utc_trigger(saved.trigger_kind, saved.trigger_config)
+    config: JobPolicies = _decode_policies(saved.policy_config)
+    callback: (JobContext) -> None = handlers.bind(saved)
+    restored: Job = make_utc_job_with_policies(saved.job_id, saved.name, schedule, callback, saved.enabled, UtcInstant(saved.created_at_utc_ms), [], config)
+    restored.set_enabled(saved.enabled, UtcInstant(saved.updated_at_utc_ms))
+    return restored
+
+def _decode_utc_trigger(kind: str, config: str) -> UtcTrigger:
+    if kind == "once-utc":
+        return OnceTrigger(UtcInstant(_read_nonnegative(config)))
+    if kind == "cron-utc":
+        try:
+            return CronTrigger(parse(config))
+        except CronParseError:
+            raise InvalidStoredJobError("invalid stored UTC cron expression")
+    raise InvalidStoredJobError("unsupported stored trigger kind")
+
+def _decode_policies(config: str) -> JobPolicies:
+    if nox.strings.byte_len(config) > 128:
+        raise InvalidStoredJobError("stored policy configuration exceeds byte limit")
+    fields: list[str] = config.split("|")
+    if len(fields) != 9:
+        raise InvalidStoredJobError("invalid stored policy field count")
+    try:
+        misfire: MisfirePolicy = MisfirePolicy(fields[0], Duration(_read_nonnegative(fields[1])), _read_nonnegative(fields[2]), _read_nonnegative(fields[3]))
+        overlap: OverlapPolicy = OverlapPolicy(fields[4])
+        retry: RetryPolicy = RetryPolicy(fields[5], _read_nonnegative(fields[6]), Duration(_read_nonnegative(fields[7])), Duration(_read_nonnegative(fields[8])))
+        result: JobPolicies = JobPolicies(misfire, overlap, retry)
+        validate_policy_combination(result)
+        return result
+    except InvalidPolicyError:
+        raise InvalidStoredJobError("invalid stored job policy")
+
+def _read_nonnegative(value: str) -> int:
+    size: int = nox.strings.byte_len(value)
+    if size == 0 or size > 19:
+        raise InvalidStoredJobError("invalid stored nonnegative integer")
+    for index in range(size):
+        digit: int = nox.strings.byte_at(value, index)
+        if digit < 48 or digit > 57:
+            raise InvalidStoredJobError("invalid stored nonnegative integer")
+    try:
+        parsed: int = int(value)
+        if parsed < 0 or str(parsed) != value:
+            raise InvalidStoredJobError("invalid stored nonnegative integer")
+        return parsed
+    except ValueError:
+        raise InvalidStoredJobError("invalid stored nonnegative integer")

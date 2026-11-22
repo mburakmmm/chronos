@@ -436,3 +436,7 @@ The pure `store.nox` contract and its deterministic test also pass on LLVM/QBE a
 Compiler: checksum-pinned Nox 2.1.111. Host: macOS arm64.
 
 `tests/store_test.nox` and the optional SQLite verification exercise typed callback fields in dictionary-held objects, closures capturing a handler object and configuration string, and scheduler invocation on LLVM and QBE. The file-backed test confirms that a reopened definition raises `UnknownHandlerError` in a fresh empty registry. The minimal reproduction for direct list-parameter capture is tracked as `NXL-010`.
+
+### P5-CODEC-001 — version 1 UTC definition restoration
+
+The Nox 2.1.111 LLVM/QBE store tests verify exact signed-64-bit maximum values for UTC timestamps and policy durations, rejection of integer overflow and malformed configurations, and validation through the existing cron and policy constructors. The file-backed SQLite test verifies reconstructing a job from a committed record after reopening the database. The SQLite example dispatches the restored job through an explicitly driven scheduler.

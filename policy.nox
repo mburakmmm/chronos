@@ -176,3 +176,9 @@ def default_job_policies() -> JobPolicies:
 
 def copy_job_policies(source: JobPolicies) -> JobPolicies:
     return JobPolicies(source.misfire, source.overlap, source.retry)
+
+def validate_policy_combination(config: JobPolicies) -> None:
+    if config.retry.kind != RETRY_NONE and config.misfire.kind == MISFIRE_CATCH_UP:
+        raise InvalidPolicyError("retry cannot be combined with catch-up")
+    if config.retry.kind != RETRY_NONE and config.overlap.kind == OVERLAP_QUEUE_ONE:
+        raise InvalidPolicyError("retry cannot be combined with queue-one overlap")

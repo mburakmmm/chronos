@@ -4,7 +4,10 @@ import nox.sqlite
 import nox.test
 from errors import InvalidStoredJobError, StoreConflictError, StoreCorruptionError, StoreError, UnknownHandlerError, UnsupportedStoreVersionError
 from handler_registry import HandlerRegistry
+from job import Job, JobContext
+from job_codec import encode_once_utc, encode_policies, restore_utc_job
 from nox.sqlite import Connection
+from policy import default_job_policies
 from sqlite_store import SQLiteJobStore, open_sqlite_store
 from store import JobStore, StoredJobDefinition, make_stored_job_definition
 from time import UtcInstant
@@ -13,7 +16,10 @@ path: str = nox.os.getenv("CHRONOS_SQLITE_TEST_DB")
 nox.test.assert_true(not nox.fs.exists(path), "SQLite fixture path must be fresh")
 
 def definition(revision: int, updated_at_ms: int, enabled: bool) -> StoredJobDefinition:
-    return make_stored_job_definition("billing.daily", "Daily billing", "billing-handler", "{\"account\":\"public\",\"sql\":\"'); DROP TABLE chronos_jobs; --\"}", "once-utc", "{\"target_utc_ms\":2000}", "{\"misfire\":\"fire-once\"}", enabled, UtcInstant(1000), UtcInstant(updated_at_ms), revision)
+    return make_stored_job_definition("billing.daily", "Daily billing", "billing-handler", "{\"account\":\"public\",\"sql\":\"'); DROP TABLE chronos_jobs; --\"}", "once-utc", encode_once_utc(UtcInstant(2000)), encode_policies(default_job_policies()), enabled, UtcInstant(1000), UtcInstant(updated_at_ms), revision)
+
+def should_not_run(context: JobContext, config: str) -> None:
+    nox.test.assert_true(False, "restoration must not invoke a handler")
 
 def duplicate_create_conflicts(backend: SQLiteJobStore) -> bool:
     try:
@@ -90,7 +96,7 @@ def missing_table_is_rejected(database_path: str) -> bool:
 def missing_handler_is_rejected(saved: StoredJobDefinition) -> bool:
     fresh: HandlerRegistry = HandlerRegistry()
     try:
-        fresh.bind(saved)
+        restore_utc_job(saved, fresh)
     except UnknownHandlerError as error:
         return error.handler_key == "billing-handler" and error.message == "stored handler key is not registered"
     return False
@@ -120,6 +126,13 @@ nox.test.assert_true(closed_store_is_rejected(concrete), "closed SQLite store re
 reopened: SQLiteJobStore = open_sqlite_store(path)
 nox.test.assert_eq_int(len(reopened.load_all()), 1, "reopen recovers the committed definition")
 nox.test.assert_true(missing_handler_is_rejected(reopened.load_all()[0]), "reopened records require a registered application callback")
+registered: HandlerRegistry = HandlerRegistry()
+registered.register("billing-handler", should_not_run)
+restored: Job = restore_utc_job(reopened.load_all()[0], registered)
+next_due: UtcInstant | None = restored.next_utc_after(UtcInstant(1000))
+nox.test.assert_true(next_due is not None, "reopened once trigger can be restored")
+if next_due is not None:
+    nox.test.assert_eq_int(next_due.epoch_ms, 2000, "reopened once trigger retains its target")
 reopened.put(definition(2, 1100, False), 1)
 nox.test.assert_true(stale_update_conflicts(reopened), "conditional update rejects a stale revision")
 nox.test.assert_true(not reopened.load_all()[0].enabled, "conditional update persists replacement fields")

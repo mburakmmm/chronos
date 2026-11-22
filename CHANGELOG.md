@@ -9,6 +9,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 ### Added
 
 - Application-owned handler registry for stored definitions, with bounded registrations, explicit unknown-key errors, and deferred execution of trusted typed callbacks.
+- Version 1 UTC one-shot, cron and policy codecs with explicit in-memory job restoration and fixed diagnostics for malformed stored configurations.
 
 - Phase 5 `0.5.0-dev` persistence boundary with bounded data-only `StoredJobDefinition` values, a scheduler-independent `JobStore` protocol, explicit format versions, and optimistic compare-and-swap revisions.
 - Retained Nox 2.1.111 SQLite capability proof for file reopen, explicit commit/rollback, constraint recovery, and prepared parameter binding on LLVM/QBE, plus an isolated Linux x64 CI job.

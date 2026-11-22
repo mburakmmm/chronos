@@ -21,6 +21,7 @@ FREESTANDING_MODULES = (
     "executor.nox",
     "handler_registry.nox",
     "job.nox",
+    "job_codec.nox",
     "policy.nox",
     "registry.nox",
     "scheduler.nox",

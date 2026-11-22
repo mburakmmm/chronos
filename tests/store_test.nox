@@ -2,9 +2,11 @@ import nox.strings
 import nox.test
 from errors import InvalidStoredJobError, StoreConflictError, StoreError, UnknownHandlerError, UnsupportedStoreVersionError
 from handler_registry import HandlerRegistry
-from job import JobContext
+from job import Job, JobContext
+from job_codec import encode_cron_utc, encode_once_utc, encode_policies, restore_utc_job
+from policy import JobPolicies, catch_up_misfires, default_job_policies, exponential_retry, fire_once_misfires, forbid_overlap, no_retry, queue_one_overlap
 from store import JOB_DEFINITION_FORMAT_VERSION, HANDLER_CONFIG_FORMAT_VERSION, POLICY_FORMAT_VERSION, TRIGGER_FORMAT_VERSION, JobStore, StoredJobDefinition, copy_stored_job_definition, make_stored_job_definition
-from time import UtcInstant
+from time import Duration, MAX_MS, UtcInstant
 
 class MemoryBackend:
     definitions: list[StoredJobDefinition]
@@ -14,18 +16,21 @@ class MemoryBackend:
         self.closed = False
 
     def load(self, job_id: str) -> StoredJobDefinition | None:
+
         for definition in self.definitions:
             if definition.job_id == job_id:
                 return copy_stored_job_definition(definition)
         return None
 
     def load_all(self) -> list[StoredJobDefinition]:
+
         result: list[StoredJobDefinition] = []
         for definition in self.definitions:
             result.append(copy_stored_job_definition(definition))
         return result
 
     def put(self, definition: StoredJobDefinition, expected_revision: int) -> None:
+
         found_index: int = -1
         for i in range(len(self.definitions)):
             if self.definitions[i].job_id == definition.job_id:
@@ -46,6 +51,7 @@ class MemoryBackend:
         self.definitions[found_index] = copy_stored_job_definition(definition)
 
     def delete(self, job_id: str, expected_revision: int) -> None:
+
         for i in range(len(self.definitions)):
             if self.definitions[i].job_id == job_id:
                 if self.definitions[i].revision != expected_revision:
@@ -55,6 +61,7 @@ class MemoryBackend:
         raise StoreConflictError(job_id, expected_revision, 0)
 
     def close(self) -> None:
+
         self.closed = True
 
 def definition(revision: int, updated_at_ms: int) -> StoredJobDefinition:
@@ -189,3 +196,45 @@ nox.test.assert_true(rejects_mutated_definition(handlers, saved), "binding reval
 for index in range(1023):
     handlers.register("extra:" + str(index), callback)
 nox.test.assert_true(rejects_excess_handler(handlers, callback), "registry caps distinct handler keys")
+
+def codec_definition(kind: str, trigger_config: str, policy_config: str) -> StoredJobDefinition:
+    return make_stored_job_definition("billing.daily", "Daily billing", "billing-handler", "public", kind, trigger_config, policy_config, False, UtcInstant(1000), UtcInstant(1100), 2)
+
+def rejects_codec_record(value: StoredJobDefinition, handlers: HandlerRegistry, message: str) -> bool:
+    try:
+        restore_utc_job(value, handlers)
+    except InvalidStoredJobError as error:
+        return error.message == message
+    return False
+
+defaults_encoded: str = encode_policies(default_job_policies())
+once_record: StoredJobDefinition = codec_definition("once-utc", encode_once_utc(UtcInstant(MAX_MS)), defaults_encoded)
+once_job: Job = restore_utc_job(once_record, handlers)
+once_next: UtcInstant | None = once_job.next_utc_at_or_after(UtcInstant(MAX_MS))
+nox.test.assert_true(once_next is not None, "int64 maximum survives the once codec")
+if once_next is not None:
+    nox.test.assert_eq_int(once_next.epoch_ms, MAX_MS, "once timestamp remains exact")
+nox.test.assert_eq_int(once_job.policy_config().misfire.grace_period_ms, MAX_MS, "maximum policy grace remains exact")
+nox.test.assert_true(not once_job.enabled, "restoration preserves the disabled state")
+nox.test.assert_eq_int(once_job.updated_at_utc_ms, 1100, "restoration preserves update time")
+nox.test.assert_eq_int(once_job.created_at_utc_ms, 1000, "restoration preserves creation time")
+
+catchup: JobPolicies = JobPolicies(catch_up_misfires(Duration(90000), 4, 8), queue_one_overlap(), no_retry())
+cron_record: StoredJobDefinition = codec_definition("cron-utc", encode_cron_utc("*/15 * * * *"), encode_policies(catchup))
+cron_job: Job = restore_utc_job(cron_record, handlers)
+cron_next: UtcInstant | None = cron_job.next_utc_after(UtcInstant(0))
+nox.test.assert_true(cron_next is not None, "restored cron has a next fire")
+if cron_next is not None:
+    nox.test.assert_eq_int(cron_next.epoch_ms, 900000, "restored cron evaluates in UTC")
+nox.test.assert_eq_str(encode_policies(cron_job.policy_config()), encode_policies(catchup), "catch-up and overlap policies round trip")
+
+retrying: JobPolicies = JobPolicies(fire_once_misfires(Duration(25)), forbid_overlap(), exponential_retry(Duration(10), Duration(100), 4))
+retry_job: Job = restore_utc_job(codec_definition("once-utc", "2000", encode_policies(retrying)), handlers)
+nox.test.assert_eq_str(encode_policies(retry_job.policy_config()), encode_policies(retrying), "retry policy round trips")
+nox.test.assert_eq_int(observed.calls, 1, "restoration never calls the bound handler")
+nox.test.assert_true(rejects_codec_record(codec_definition("delay", "1000", defaults_encoded), handlers, "unsupported stored trigger kind"), "process-local triggers fail closed")
+nox.test.assert_true(rejects_codec_record(codec_definition("once-utc", "9223372036854775808", defaults_encoded), handlers, "invalid stored nonnegative integer"), "integer overflow is rejected")
+nox.test.assert_true(rejects_codec_record(codec_definition("once-utc", "01", defaults_encoded), handlers, "invalid stored nonnegative integer"), "noncanonical integer is rejected")
+nox.test.assert_true(rejects_codec_record(codec_definition("cron-utc", "sensitive-token * * * *", defaults_encoded), handlers, "invalid stored UTC cron expression"), "malformed cron is rejected with a fixed message")
+nox.test.assert_true(rejects_codec_record(codec_definition("once-utc", "2000", "default"), handlers, "invalid stored policy field count"), "opaque legacy policy is not interpreted")
+nox.test.assert_true(rejects_codec_record(codec_definition("once-utc", "2000", "fire-once|25|0|0|queue-one|fixed|2|10|10"), handlers, "invalid stored job policy"), "unsupported policy combination is rejected")
