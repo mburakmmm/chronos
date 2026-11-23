@@ -1,6 +1,6 @@
 # Optional persistence
 
-Status: Phase 5 experimental single-owner SQLite store and at-most-once UTC one-shot dispatch.
+Status: Phase 5 experimental single-owner SQLite store and at-most-once UTC one-shot and cron dispatch.
 
 Chronos remains dependency-free and in-memory unless an application explicitly imports and constructs `SQLiteJobStore`. The current scheduler does not read or write a store. The adapter persists bounded definitions only; it does not restore, register, or execute a job.
 
@@ -117,9 +117,19 @@ The verified SQLite suite reopens the same database in a fresh process after ter
 
 Run the in-memory example with `noxc run examples/persistence/dispatch_once.nox`. Use a file-backed SQLite store for process-restart behavior.
 
+## At-most-once UTC cron dispatch
+
+Persistent cron uses trigger kind `cron-cursor-utc` in format version 1. The configuration is `next-epoch-ms|expression`. The first field uses the same canonical decimal format as `once-utc` and must be a match for the bounded five-field UTC expression. `encode_stored_cron(expression, start)` initializes it at the first match at or after the application's chosen start. Earlier `cron-utc` definitions remain available for in-memory restoration. To opt into persistent delivery, explicitly choose a start and update the stored kind and configuration through a revision-checked write.
+
+Each poll considers the first outstanding occurrence. If it is due, `fire-once` invokes that occurrence within its grace window. `skip` drops late occurrences. An occurrence exactly at its due time is eligible, and the grace window is measured from the persisted occurrence. For either decision, one committed write advances the cursor to the first matching time strictly after the observed clock. Intermediate due occurrences are coalesced and do not each invoke a callback, even if the poll lands exactly on a later match. Retry and catch-up policies are rejected. A backward wall-clock jump leaves the cursor intact, so consumed times stay consumed.
+
+The application polls using the same single-owner, autocommit SQLite constraints as for one-shot delivery. An exit before commit leaves the original cursor. An exit after commit preserves the advance and can lose the current invocation. Each later occurrence remains eligible by its own policy. Keep the same cursor as a schedule is disabled and re-enabled unless intentionally setting a new start. Search exhaustion or write failure propagates before callback invocation with the stored cursor unchanged by the poll's own write when the failure precedes commit.
+
+Process tests verify rollback before commit, restart after commit, exit after a handler effect, misfire skip, rejection of a malformed cursor and the first subsequent on-time occurrence. Run the companion example with `noxc run examples/persistence/dispatch_cron.nox`.
+
 ## Remaining delivery work
 
-- restart reconciliation of recurring UTC cron jobs with prior execution state;
+- lifecycle integration with the in-memory scheduler and an explicit plan for persisted execution outcomes;
 - explicit restart semantics for monotonic delay, fixed-rate, and fixed-delay schedules;
 - execution-state updates and migration recovery;
 - bounded execution/error history, if any;

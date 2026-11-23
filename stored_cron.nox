@@ -1,0 +1,73 @@
+import nox.strings
+from cron import MAX_EXPRESSION_BYTES, CronSchedule, parse
+from errors import CronParseError, InvalidStoredJobError, StoreError
+from handler_registry import HandlerRegistry
+from job import JobContext
+from job_codec import _decode_policies, _read_nonnegative
+from policy import JobPolicies, MISFIRE_CATCH_UP, MISFIRE_SKIP, RETRY_NONE
+from store import JobStore, StoredJobDefinition, copy_stored_job_definition
+from time import Duration, MAX_MS, UtcInstant
+
+STORED_CRON_KIND: str = "cron-cursor-utc"
+
+def encode_stored_cron(expression: str, start: UtcInstant) -> str:
+    schedule: CronSchedule = parse(expression)
+    first: UtcInstant = schedule.next_fire_at_or_after(UtcInstant(start.epoch_ms))
+    return _encode_cursor(first, expression)
+
+def dispatch_stored_cron(backend: JobStore, handlers: HandlerRegistry, job_id: str, now: UtcInstant) -> str:
+    observed: UtcInstant = UtcInstant(now.epoch_ms)
+    loaded: StoredJobDefinition | None = backend.load(job_id)
+    if loaded is None:
+        return "missing"
+    saved: StoredJobDefinition = copy_stored_job_definition(loaded)
+    if saved.job_id != job_id or saved.trigger_kind != STORED_CRON_KIND:
+        raise InvalidStoredJobError("stored cron cursor definition required")
+    if not saved.enabled:
+        return "disabled"
+
+    if nox.strings.byte_len(saved.trigger_config) > MAX_EXPRESSION_BYTES + 20:
+        raise InvalidStoredJobError("stored cron cursor exceeds byte limit")
+    fields: list[str] = saved.trigger_config.split("|")
+    if len(fields) != 2:
+        raise InvalidStoredJobError("invalid stored cron cursor")
+    planned: UtcInstant = UtcInstant(_read_nonnegative(fields[0]))
+    schedule: CronSchedule = _parse_stored_cron(fields[1])
+    if not schedule.matches(planned):
+        raise InvalidStoredJobError("stored cron cursor does not match its expression")
+    config: JobPolicies = _decode_policies(saved.policy_config)
+    if config.retry.kind != RETRY_NONE or config.misfire.kind == MISFIRE_CATCH_UP:
+        raise InvalidStoredJobError("stored cron requires no retry and a skip or fire-once misfire policy")
+    if observed.epoch_ms < planned.epoch_ms:
+        return "pending"
+
+    lateness: Duration = Duration(observed.epoch_ms - planned.epoch_ms)
+    skipped: bool = lateness.value_ms > 0 and config.misfire.action_for_lateness(lateness) == MISFIRE_SKIP
+    callback: (JobContext) -> None = handlers.bind(saved)
+    context: JobContext = JobContext(saved.job_id, "utc", planned.epoch_ms, 1)
+    if saved.revision == MAX_MS:
+        raise StoreError("stored cron revision cannot advance")
+    expected: int = saved.revision
+    # Advance past everything this poll observed, retaining at most one invocation.
+    saved.trigger_config = _encode_cursor(schedule.next_fire_after(observed), fields[1])
+    saved.revision = expected + 1
+    if observed.epoch_ms > saved.updated_at_utc_ms:
+        saved.updated_at_utc_ms = observed.epoch_ms
+
+    backend.put(saved, expected)
+    if skipped:
+        return "skipped"
+    try:
+        callback(context)
+    except Exception:
+        return "handler-failed"
+    return "succeeded"
+
+def _encode_cursor(planned: UtcInstant, expression: str) -> str:
+    return str(planned.epoch_ms) + "|" + expression
+
+def _parse_stored_cron(expression: str) -> CronSchedule:
+    try:
+        return parse(expression)
+    except CronParseError:
+        raise InvalidStoredJobError("invalid stored UTC cron expression")

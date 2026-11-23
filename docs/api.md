@@ -32,6 +32,7 @@ Methods and fields are supported only when their contract is explicitly describe
 | `handler_registry` | `HandlerRegistry` |
 | `job_codec` | `encode_once_utc`, `encode_cron_utc`, `encode_policies`, `restore_utc_job` |
 | `stored_once` | `dispatch_stored_once` |
+| `stored_cron` | `STORED_CRON_KIND`, `encode_stored_cron`, `dispatch_stored_cron` |
 
 The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
 
@@ -251,6 +252,12 @@ Malformed stored trigger or policy data raises `InvalidStoredJobError` without e
 `dispatch_stored_once(backend: JobStore, handlers: HandlerRegistry, job_id: str, now: UtcInstant) -> str` polls one stored UTC one-shot. The caller owns the store, clock and poll cadence. The function returns `missing`, `disabled` or `pending` for jobs that need no write. A due job is atomically disabled with a revision increment. The result is `skipped` for a misfire discarded by policy, `succeeded` if the callback returns or `handler-failed` if it raises. Callback exception text is discarded. A write error or revision conflict propagates before any callback runs.
 
 This path requires retry policy `none` and a store that commits the revision compare-and-swap before returning from `put`. A process exit between commit and invocation can leave the callback unstarted. Use a single owner with the verified SQLite adapter. See [one-shot delivery guarantees](persistence.md#at-most-once-utc-one-shot-dispatch).
+
+## `chronos.stored_cron` — Experimental
+
+`encode_stored_cron(expression, start)` initializes the persistent cursor at the first UTC match at or after `start`. Use the encoded value as `trigger_config` and `STORED_CRON_KIND` as `trigger_kind`.
+
+`dispatch_stored_cron(backend, handlers, job_id, now) -> str` uses the same result strings as `dispatch_stored_once`. It advances the revision and next occurrence before a callback runs, while keeping the job enabled. It supports `skip` and `fire-once` with retry disabled. The caller owns the polling loop. See [cron delivery semantics](persistence.md#at-most-once-utc-cron-dispatch).
 
 ## `chronos.registry` — Internal
 

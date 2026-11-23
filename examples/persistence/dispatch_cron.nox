@@ -1,0 +1,24 @@
+from handler_registry import HandlerRegistry
+from job import JobContext
+from job_codec import encode_policies
+from policy import default_job_policies
+from sqlite_store import open_sqlite_store
+from store import JobStore, make_stored_job_definition
+from stored_cron import STORED_CRON_KIND, dispatch_stored_cron, encode_stored_cron
+from time import UtcInstant
+
+def report(context: JobContext, report_name: str) -> None:
+    print(context.scheduled_time_ms, report_name)
+
+handlers: HandlerRegistry = HandlerRegistry()
+handlers.register("report", report)
+backend: JobStore = open_sqlite_store(":memory:")
+try:
+    start: UtcInstant = UtcInstant(60000)
+    trigger_config: str = encode_stored_cron("* * * * *", start)
+    backend.put(make_stored_job_definition("reports.cron", "Cron report", "report", "summary", STORED_CRON_KIND, trigger_config, encode_policies(default_job_policies()), True, start, start, 1), 0)
+    print(dispatch_stored_cron(backend, handlers, "reports.cron", UtcInstant(185000)))
+    print(dispatch_stored_cron(backend, handlers, "reports.cron", UtcInstant(185000)))
+    print(dispatch_stored_cron(backend, handlers, "reports.cron", UtcInstant(240000)))
+finally:
+    backend.close()

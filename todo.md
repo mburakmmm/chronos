@@ -386,7 +386,8 @@ Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementa
 - [x] Schema version ile job/handler/trigger/policy format version alanlarını ayır; yeni sürümleri fail-closed reddeden migration sınırını tasarla.
 - [x] Definition create/update/delete için atomik CAS ve normal reopen davranışını test et. Commit sonucunun belirsiz kaldığı crash aralığını belgele.
 - [x] Tek sahipli SQLite üzerinde UTC tek seferlik işler için at-most-once dispatch ve süreç sonlandırma testleri ekle.
-- [ ] Tekrarlanan UTC işler ve scheduler restart için teslim ve reconciliation davranışını tasarla, test et.
+- [x] UTC cron için kalıcı cursor, sınırlı misfire davranışı ve at-most-once process restart testlerini ekle.
+- [ ] Kalıcı teslim yollarının scheduler lifecycle ve execution outcome entegrasyonunu belirle.
 - [x] Corrupted row, unsupported record version ve unsupported schema senaryolarını adapter integration testinde doğrula.
 - [x] Handler anahtarlarını uygulamaya ait sınırlı bir registry ile bağla. Bilinmeyen anahtarı hem bellekte hem SQLite tekrar açıldığında reddet.
 - [x] UTC tek seferlik ve cron tetikleyicileri ile doğrulanmış politika yapılandırmasını v1 formatında kodla ve kayıtlı tanımdan iş oluştur.

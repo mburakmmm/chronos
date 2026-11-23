@@ -13,7 +13,7 @@ Last verified locally: 2026-11-20
 | LLVM backend | Apple clang 21.0.0, arm64 target | full test/example matrix passed |
 | QBE backend | Nox-installed QBE toolchain | full test/example matrix passed |
 | Default profile | hosted | core, scheduler, examples, and `SystemClock` verified |
-| Freestanding profile | no clock capability | 15 clock-independent modules type-checked on LLVM and QBE |
+| Freestanding profile | no clock capability | 16 clock-independent modules type-checked on LLVM and QBE |
 
 This table records a reproducible development baseline, not a promise that every earlier or later Nox release behaves identically. A minimum supported Nox version has not been selected. The complete cross-platform run is recorded in [GitHub Actions run 43460710827](https://github.com/mburakmmm/chronos/actions/runs/43460710827) for commit `a8211b0`.
 
@@ -29,7 +29,7 @@ This table records a reproducible development baseline, not a promise that every
 | Class-valued command channel and bounded worker stop | output `7` | output `7` |
 | Cooperative cancellation proof | output ends with `49995000` | output ends with `49995000` |
 | Cross-module Internal-name import proof | output `7`, `9` | output `7`, `9` |
-| Clock-independent freestanding modules | 15 checked | 15 checked |
+| Clock-independent freestanding modules | 16 checked | 16 checked |
 
 The QBE backend is single-threaded and cooperative, while LLVM uses the documented multi-core scheduler. With Nox 2.1.111, `sleep_ms()` inside an async task suspends only the calling fiber on both tested backends. `Channel.wait(ms)` also provides a cooperative bounded wake primitive.
 
@@ -53,6 +53,7 @@ The following modules type-check with `--profile freestanding` on LLVM and QBE:
 - `registry.nox`
 - `scheduler.nox`
 - `store.nox`
+- `stored_cron.nox`
 - `stored_once.nox`
 - `time.nox`
 - `trigger.nox`
@@ -79,6 +80,7 @@ The data-only `store.nox` module is part of the pure cross-platform matrix and d
 | File reopen, explicit commit/rollback, constraint recovery, prepared values | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 | `SQLiteJobStore` schema/create/load/update/delete/corruption/version integration | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 | Single-owner UTC one-shot process termination and reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
+| Single-owner UTC cron cursor process termination and reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 
 SQLite runtime evidence covers macOS arm64 and the isolated Linux x64 CI job. Power-loss recovery, concurrent schedulers, migration recovery and SQLite support on other targets require separate verification.
 

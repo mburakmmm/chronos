@@ -8,6 +8,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 ### Added
 
+- Experimental single-owner UTC cron delivery with an atomically advanced cursor, bounded missed-run handling and process restart verification on LLVM/QBE.
+
 - Experimental single-owner at-most-once UTC one-shot dispatch with a committed revision guard before callback invocation, verified across process termination and reopen on LLVM/QBE.
 
 - Application-owned handler registry for stored definitions, with bounded registrations, explicit unknown-key errors, and deferred execution of trusted typed callbacks.

@@ -444,3 +444,7 @@ The Nox 2.1.111 LLVM/QBE store tests verify exact signed-64-bit maximum values f
 ### P5-ONCE-001 — committed consumption before one-shot dispatch
 
 The Nox 2.1.111 LLVM/QBE subprocess suite verifies that `nox.os.exit` interrupts execution before the fixture's database close. A new process opens the same SQLite file after termination before the write, before commit, after commit and after a callback side effect. The verification script checks exit status, row revision, enabled state and an independent effect file. This covers single-owner process restart.
+
+### P5-CRON-001 — persistent UTC cron cursor
+
+The Nox 2.1.111 LLVM/QBE subprocess suite verifies rollback before commit, persistence after commit and no replay after a visible callback effect. Subsequent polls verify that a backward wall-clock reading leaves the committed cursor ahead of consumed times, and that the next on-time occurrence fires once. The suite also checks misfire skip and rejection of a nonmatching cursor.

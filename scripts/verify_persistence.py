@@ -24,6 +24,7 @@ CASES = (
     ),
     ("examples/persistence/sqlite_definitions.nox", "reports.daily daily-summary"),
     ("examples/persistence/dispatch_once.nox", "reports.daily daily-summary\nsucceeded\ndisabled"),
+    ("examples/persistence/dispatch_cron.nox", "60000 summary\nsucceeded\npending\n240000 summary\nsucceeded"),
 )
 
 
@@ -53,8 +54,8 @@ def run(arguments: list[str], env: dict[str, str] | None = None, expected_status
     return output
 
 
-def verify_once_restart(backend: str) -> None:
-    effect = "once:1000:1:public\n"
+def verify_once_restart(backend: str, executable: Path) -> None:
+    effect = "fixture:1000:1:public\n"
     scenarios = (
         ("before-write", 71, "", "", "succeeded 2 False 1100", effect),
         ("before-commit", 74, "", "", "succeeded 2 False 1100", effect),
@@ -65,8 +66,6 @@ def verify_once_restart(backend: str) -> None:
     )
     with tempfile.TemporaryDirectory(prefix="chronos-once-restart-") as directory:
         root = Path(directory)
-        executable = root / "worker"
-        run([NOXC, "build", "--backend", backend, "-o", str(executable), "proofs/persistence/once_restart_worker.nox"])
         for mode, status, output, initial_effect, restart, final_effect in scenarios:
             database = root / f"{mode}.db"
             effects = root / f"{mode}.effects"
@@ -89,6 +88,42 @@ def verify_once_restart(backend: str) -> None:
             print(f"  PASS restart {mode} ({backend})", flush=True)
 
 
+def verify_cron_restart(backend: str, executable: Path) -> None:
+    first = "fixture:60000:1:public\n"
+    next_effect = "fixture:240000:1:public\n"
+    scenarios = (
+        ("before-commit", 74, "", "", "succeeded 2 True 195000 240000|* * * * *", first),
+        ("after-commit", 72, "", "", "pending 2 True 190000 240000|* * * * *", ""),
+        ("after-effect", 73, "", first, "pending 2 True 190000 240000|* * * * *", first),
+        ("skip", 0, "skipped 2 True 190000 240000|* * * * *", "", "pending 2 True 190000 240000|* * * * *", ""),
+    )
+    with tempfile.TemporaryDirectory(prefix="chronos-cron-restart-") as directory:
+        root = Path(directory)
+        for mode, status, output, initial_effect, restart, final_effect in scenarios:
+            effects = root / f"{mode}.effects"
+            command = [str(executable), str(root / f"{mode}.db"), str(effects)]
+            run([*command, "init-skip" if mode == "skip" else "init", "0", "cron"])
+            initial = run([*command, mode, "190000", "cron"], expected_status=status)
+            if initial != output or (effects.read_text() if effects.exists() else "") != initial_effect:
+                raise RuntimeError(f"{backend}/{mode}: unexpected cron state at interruption")
+            recovered = run([*command, "poll", "195000", "cron"])
+            if recovered != restart or (effects.read_text() if effects.exists() else "") != final_effect:
+                raise RuntimeError(f"{backend}/{mode}: unexpected cron state after reopen")
+            backward = run([*command, "poll", "60000", "cron"])
+            if not backward.startswith("pending 2 True "):
+                raise RuntimeError(f"{backend}/{mode}: backward clock replayed cron")
+            following = run([*command, "poll", "240000", "cron"])
+            if following != "succeeded 3 True 240000 300000|* * * * *" or effects.read_text() != final_effect + next_effect:
+                raise RuntimeError(f"{backend}/{mode}: next cron occurrence did not dispatch exactly once")
+            print(f"  PASS cron restart {mode} ({backend})", flush=True)
+        effects = root / "invalid.effects"
+        command = [str(executable), str(root / "invalid.db"), str(effects)]
+        run([*command, "init-invalid", "0", "cron"])
+        invalid = run([*command, "invalid", "190000", "cron"])
+        if invalid != "stored cron cursor does not match its expression 1 True 200 60001|* * * * *" or effects.exists():
+            raise RuntimeError(f"{backend}: invalid cron cursor changed state")
+
+
 def main() -> int:
     version = run([NOXC, "version"])
     if "2.1.111" not in version:
@@ -108,8 +143,12 @@ def main() -> int:
                 )
             print(f"  PASS {source} ({backend})", flush=True)
     for backend in ("llvm", "qbe"):
-        verify_once_restart(backend)
-    print("Verified SQLite primitives, definition storage and one-shot restart on LLVM/QBE.")
+        with tempfile.TemporaryDirectory(prefix="chronos-restart-worker-") as directory:
+            executable = Path(directory) / "worker"
+            run([NOXC, "build", "--backend", backend, "-o", str(executable), "proofs/persistence/restart_worker.nox"])
+            verify_once_restart(backend, executable)
+            verify_cron_restart(backend, executable)
+    print("Verified SQLite definition storage and UTC one-shot and cron restart on LLVM/QBE.")
     return 0
 
 

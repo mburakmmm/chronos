@@ -1,12 +1,14 @@
 import nox.fs
 import nox.os
 import nox.test
+from errors import InvalidStoredJobError
 from handler_registry import HandlerRegistry
 from job import JobContext
 from job_codec import encode_once_utc, encode_policies
 from policy import JobPolicies, default_job_policies, forbid_overlap, no_retry, skip_misfires
 from sqlite_store import SQLiteJobStore, open_sqlite_store
 from store import JobStore, StoredJobDefinition, make_stored_job_definition
+from stored_cron import STORED_CRON_KIND, dispatch_stored_cron, encode_stored_cron
 from stored_once import dispatch_stored_once
 from time import Duration, UtcInstant
 
@@ -59,21 +61,42 @@ def make_handler(path: str, mode: str) -> (JobContext, str) -> None:
 database_path: str = nox.os.arg(1)
 effect_path: str = nox.os.arg(2)
 mode: str = nox.os.arg(3)
+recurring: bool = nox.os.arg_count() > 5 and nox.os.arg(5) == "cron"
 sqlite: SQLiteJobStore = open_sqlite_store(database_path)
 backend: JobStore = InterruptedStore(sqlite, mode)
 try:
-    if mode == "init" or mode == "init-skip":
+    if mode == "init" or mode == "init-skip" or mode == "init-invalid":
         policies: JobPolicies = default_job_policies()
         if mode == "init-skip":
             policies = JobPolicies(skip_misfires(Duration(500)), forbid_overlap(), no_retry())
-        backend.put(make_stored_job_definition("once", "One-shot", "example", "public", "once-utc", encode_once_utc(UtcInstant(1000)), encode_policies(policies), True, UtcInstant(100), UtcInstant(200), 1), 0)
+        kind: str = "once-utc"
+        trigger_config: str = encode_once_utc(UtcInstant(1000))
+        if recurring:
+            kind = STORED_CRON_KIND
+            trigger_config = encode_stored_cron("* * * * *", UtcInstant(1000))
+            if mode == "init-invalid":
+                trigger_config = "60001|* * * * *"
+        backend.put(make_stored_job_definition("fixture", "Restart fixture", "example", "public", kind, trigger_config, encode_policies(policies), True, UtcInstant(100), UtcInstant(200), 1), 0)
     else:
         handlers: HandlerRegistry = HandlerRegistry()
         handlers.register("example", make_handler(effect_path, mode))
-        result: str = dispatch_stored_once(backend, handlers, "once", UtcInstant(int(nox.os.arg(4))))
-        record: StoredJobDefinition | None = backend.load("once")
+        now: UtcInstant = UtcInstant(int(nox.os.arg(4)))
+        result: str = ""
+        if recurring:
+            try:
+                result = dispatch_stored_cron(backend, handlers, "fixture", now)
+            except InvalidStoredJobError as error:
+                if mode != "invalid":
+                    raise error
+                result = error.message
+        else:
+            result = dispatch_stored_once(backend, handlers, "fixture", now)
+        record: StoredJobDefinition | None = backend.load("fixture")
         nox.test.assert_true(record is not None, "consumption retains the definition")
         if record is not None:
-            print(result, record.revision, record.enabled, record.updated_at_utc_ms)
+            if recurring:
+                print(result, record.revision, record.enabled, record.updated_at_utc_ms, record.trigger_config)
+            else:
+                print(result, record.revision, record.enabled, record.updated_at_utc_ms)
 finally:
     backend.close()
