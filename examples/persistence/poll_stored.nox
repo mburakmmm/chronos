@@ -1,0 +1,31 @@
+from clock import FakeClock
+from handler_registry import HandlerRegistry
+from job import JobContext
+from job_codec import encode_once_utc, encode_policies
+from persistent_scheduler import PersistentScheduler
+from policy import default_job_policies
+from sqlite_store import open_sqlite_store
+from store import JobStore, make_stored_job_definition
+from time import UtcInstant
+
+def report(context: JobContext, name: str) -> None:
+    print(context.job_id, name)
+
+backend: JobStore = open_sqlite_store(":memory:")
+try:
+    handlers: HandlerRegistry = HandlerRegistry()
+    handlers.register("report", report)
+    source_clock: FakeClock = FakeClock(999, 0)
+    engine: PersistentScheduler = PersistentScheduler(backend, handlers, source_clock, 8)
+    created: UtcInstant = UtcInstant(0)
+    backend.put(make_stored_job_definition("report.once", "Report", "report", "summary", "once-utc", encode_once_utc(UtcInstant(1000)), encode_policies(default_job_policies()), True, created, created, 1), 0)
+    engine.watch("report.once")
+    engine.start()
+    print(engine.tick()[0].status)
+    source_clock.set_utc_ms(1000)
+    for result in engine.tick():
+        print(result.status)
+    engine.stop()
+    print(engine.state())
+finally:
+    backend.close()

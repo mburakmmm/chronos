@@ -1,0 +1,132 @@
+import nox.fs
+import nox.os
+import nox.test
+from clock import FakeClock
+from errors import DuplicateJobError, InvalidStoredJobError, SchedulerStateError
+from handler_registry import HandlerRegistry
+from job import JobContext
+from job_codec import encode_once_utc, encode_policies
+from persistent_scheduler import PersistentPollResult, PersistentScheduler
+from policy import default_job_policies
+from sqlite_store import SQLiteJobStore, open_sqlite_store
+from store import JobStore, make_stored_job_definition
+from stored_cron import STORED_CRON_KIND, encode_stored_cron
+from time import UtcInstant
+
+def add_definition(backend: JobStore, job_id: str, key: str, kind: str, value: str) -> None:
+    backend.put(make_stored_job_definition(job_id, job_id, key, "public", kind, value, encode_policies(default_job_policies()), True, UtcInstant(0), UtcInstant(0), 1), 0)
+
+def fail_handler(context: JobContext, config: str) -> None:
+    raise ValueError("private handler details")
+
+def verify_handler(context: JobContext, config: str) -> None:
+    nox.test.assert_eq_str(config, "public", "stored config reached handler")
+    nox.test.assert_eq_int(context.attempt, 1, "persistent dispatch uses one attempt")
+
+def rejects_tick(engine: PersistentScheduler) -> bool:
+    try:
+        engine.tick()
+    except SchedulerStateError:
+        return True
+    return False
+
+def rejects_start(engine: PersistentScheduler) -> bool:
+    try:
+        engine.start()
+    except SchedulerStateError:
+        return True
+    return False
+
+def rejects_watch_duplicate(engine: PersistentScheduler) -> bool:
+    try:
+        engine.watch("z-invalid")
+    except DuplicateJobError:
+        return True
+    return False
+
+def rejects_watch_capacity(engine: PersistentScheduler) -> bool:
+    try:
+        engine.watch("excess")
+    except InvalidStoredJobError:
+        return True
+    return False
+
+def rejects_unwatch(engine: PersistentScheduler) -> bool:
+    try:
+        engine.unwatch("a-later")
+    except SchedulerStateError:
+        return True
+    return False
+
+def stop_after_call(engine: PersistentScheduler) -> (JobContext, str) -> None:
+    def stop_handler(context: JobContext, config: str) -> None:
+        nox.test.assert_true(rejects_tick(engine), "recursive polling is rejected")
+        nox.test.assert_true(rejects_unwatch(engine), "watch mutation is rejected while polling")
+        engine.stop()
+        nox.test.assert_eq_str(engine.state(), "stopping", "active callback drains synchronously")
+
+    return stop_handler
+
+path: str = nox.os.getenv("CHRONOS_SQLITE_TEST_DB")
+backend: SQLiteJobStore = open_sqlite_store(path)
+handlers: HandlerRegistry = HandlerRegistry()
+source_clock: FakeClock = FakeClock(60000, 0)
+engine: PersistentScheduler = PersistentScheduler(backend, handlers, source_clock, 6)
+handlers.register("ok", verify_handler)
+handlers.register("fail", fail_handler)
+handlers.register("stop", stop_after_call(engine))
+once: str = encode_once_utc(UtcInstant(60000))
+add_definition(backend, "z-invalid", "ok", "cron-utc", "* * * * *")
+add_definition(backend, "y-unknown", "unknown", "once-utc", once)
+add_definition(backend, "x-failure", "fail", "once-utc", once)
+add_definition(backend, "w-cron", "ok", STORED_CRON_KIND, encode_stored_cron("* * * * *", UtcInstant(60000)))
+add_definition(backend, "v-stop", "stop", "once-utc", once)
+add_definition(backend, "a-later", "ok", "once-utc", once)
+for id in ["z-invalid", "y-unknown", "x-failure", "w-cron", "v-stop", "a-later"]:
+    engine.watch(id)
+nox.test.assert_true(rejects_tick(engine), "created scheduler cannot poll")
+nox.test.assert_true(rejects_watch_duplicate(engine), "watches are unique")
+nox.test.assert_true(rejects_watch_capacity(engine), "watch count is bounded")
+engine.start()
+engine.start()
+results: list[PersistentPollResult] = engine.tick()
+nox.test.assert_eq_int(len(results), 5, "stop prevents the next watched job from starting")
+nox.test.assert_eq_str(results[0].job_id, "z-invalid", "poll retains watch order")
+nox.test.assert_eq_str(results[0].status, "invalid-definition", "unsupported record is isolated")
+nox.test.assert_eq_str(results[1].status, "unknown-handler", "unknown handler is isolated")
+nox.test.assert_eq_str(results[2].status, "handler-failed", "callback failure is redacted")
+nox.test.assert_eq_str(results[3].status, "succeeded", "cron dispatch works after earlier errors")
+nox.test.assert_eq_str(results[4].status, "succeeded", "terminal callback drains")
+failed: str | None = engine.latest_outcome("x-failure")
+nox.test.assert_true(failed is not None and failed == "handler-failed", "one safe outcome is retained")
+engine.stop()
+nox.test.assert_eq_str(engine.state(), "stopped", "stop is terminal")
+nox.test.assert_true(rejects_start(engine), "terminal scheduler cannot restart")
+nox.test.assert_true(rejects_tick(engine), "terminal scheduler cannot start callbacks")
+nox.test.assert_eq_int(len(backend.load_all()), 6, "stop leaves the store open")
+backend.close()
+
+reopened: SQLiteJobStore = open_sqlite_store(path)
+next_engine: PersistentScheduler = PersistentScheduler(reopened, handlers, source_clock, 4)
+next_engine.watch("x-failure")
+next_engine.watch("w-cron")
+next_engine.watch("a-later")
+next_engine.watch("missing")
+nox.test.assert_true(next_engine.latest_outcome("x-failure") is None, "outcome is not durable")
+next_engine.start()
+fresh_results: list[PersistentPollResult] = next_engine.tick()
+nox.test.assert_eq_str(fresh_results[0].status, "disabled", "failed once remains consumed after reopen")
+nox.test.assert_eq_str(fresh_results[1].status, "pending", "cron retains its advanced cursor")
+nox.test.assert_eq_str(fresh_results[2].status, "succeeded", "previously unvisited work remains eligible")
+nox.test.assert_eq_str(fresh_results[3].status, "missing", "unknown record returns a safe result")
+nox.test.assert_true(next_engine.unwatch("a-later"), "unwatch removes the result slot")
+nox.test.assert_true(next_engine.latest_outcome("a-later") is None, "unwatch releases retained outcome")
+source_clock.set_utc_ms(120000)
+nox.test.assert_eq_str(next_engine.tick()[1].status, "succeeded", "next cron occurrence runs on time")
+nox.test.assert_eq_str(next_engine.tick()[1].status, "pending", "same occurrence cannot run again")
+latest_cron: str | None = next_engine.latest_outcome("w-cron")
+nox.test.assert_true(latest_cron is not None and latest_cron == "succeeded", "pending polls preserve latest outcome")
+next_engine.stop()
+reopened.close()
+nox.fs.remove_file(path)
+print("persistent-scheduler-ok")

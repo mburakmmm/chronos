@@ -41,7 +41,8 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 | Nox package dependency consumption | Blocked | Self-import limitation remains through Nox 2.1.186; see NXL-007 |
 | Background scheduler | Deferred | Runtime primitives are proven; full worker ownership is not |
 | IANA time zones and DST | Deferred | Current cron and calendar behavior is UTC-only |
-| SQLite definition store | Experimental | Single-owner, revision-checked adapter; scheduler is not connected |
+| SQLite definition store | Experimental | Single-owner, revision-checked adapter |
+| Persistent scheduler | Experimental | Application-driven polling for watched UTC one-shot and cron definitions |
 | Stored UTC one-shot dispatch | Experimental | At most one callback start per armed record through the single-owner SQLite path |
 | Stored UTC cron dispatch | Experimental | Commit the next occurrence before invoking a callback through the single-owner SQLite path |
 | Durable scheduling and distributed coordination | Deferred | Definition reopen is proven, but no restart/delivery guarantee exists |
@@ -140,7 +141,7 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 | macOS | arm64 | LLVM and QBE |
 | Windows | x64 | LLVM and QBE |
 
-The matrix runs all 21 deterministic tests, all 16 core examples, five core runtime/capability proofs, 16 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
+The matrix runs all 21 deterministic tests, all 16 core examples, five core runtime/capability proofs, 17 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
 
 A separate Linux x64 CI job uses checksum-pinned Nox 2.1.186 to fetch the exact Nyx `v0.29.0` and Aether `v0.12.0` locks and execute both optional integration examples on LLVM and QBE. These dependencies never enter the core manifest. See [framework integrations](docs/integrations.md) for the request-driven semantics and `NXL-007` source-overlay boundary.
 

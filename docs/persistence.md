@@ -1,8 +1,8 @@
 # Optional persistence
 
-Status: Phase 5 experimental single-owner SQLite store and at-most-once UTC one-shot and cron dispatch.
+Status: Phase 5 experimental single-owner SQLite store, UTC delivery and manual persistent scheduler.
 
-Chronos remains dependency-free and in-memory unless an application explicitly imports and constructs `SQLiteJobStore`. The current scheduler does not read or write a store. The adapter persists bounded definitions only; it does not restore, register, or execute a job.
+The default `Scheduler` remains dependency-free and in-memory. Applications can opt into `PersistentScheduler` with an explicit `JobStore`. The SQLite adapter stores bounded definitions and delivery cursors. The scheduler and trusted handler registry manage execution.
 
 ## Store boundary
 
@@ -127,9 +127,19 @@ The application polls using the same single-owner, autocommit SQLite constraints
 
 Process tests verify rollback before commit, restart after commit, exit after a handler effect, misfire skip, rejection of a malformed cursor and the first subsequent on-time occurrence. Run the companion example with `noxc run examples/persistence/dispatch_cron.nox`.
 
+## Persistent scheduler lifecycle
+
+Construct `PersistentScheduler` with an open store, a trusted handler registry, a clock and a watch limit. The application supplies the IDs to watch, then calls `start()` and drives `tick()` on a single owner. A tick reads the current definition of each watched ID in registration order and invokes the same at-most-once dispatch functions used for individual polling. It handles `once-utc` and `cron-cursor-utc` records. Application startup must rebuild watches and handler registrations after reopening the database.
+
+Poll results contain only the job ID and a fixed status. Per-job faults leave the remaining watches eligible for the same poll. The scheduler stores at most one safe outcome per watch in memory. No-op statuses such as pending leave that outcome intact. Unwatch releases the outcome. Reopening the store retains consumed one-shots and cron cursors. A fresh scheduler has an empty outcome cache.
+
+Call `stop()` before closing the store. If a callback requests stop, it can finish and the tick stops before checking another job. Recursive ticks and watch changes during a tick are rejected. The application controls the poll cadence. Callbacks and store access are synchronous.
+
+Run the example with `noxc run examples/persistence/poll_stored.nox`.
+
 ## Remaining delivery work
 
-- lifecycle integration with the in-memory scheduler and an explicit plan for persisted execution outcomes;
+- optional durable execution outcomes and their schema migration and recovery rules;
 - explicit restart semantics for monotonic delay, fixed-rate, and fixed-delay schedules;
 - execution-state updates and migration recovery;
 - bounded execution/error history, if any;

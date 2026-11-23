@@ -263,3 +263,5 @@ The application-owned `HandlerRegistry` assembles the executable callback in mem
 `dispatch_stored_once` is an application-driven entry point over `JobStore`. It validates a due one-shot and consumes it with one compare-and-swap before invoking the callback. The committed row remains disabled at the next revision. A process restart sees that state without a schema migration or execution-history table. The trade-off is possible loss between commit and callback invocation.
 
 `dispatch_stored_cron` applies the same commit boundary to a recurring UTC cursor. It advances one field in the existing definition row and retains future scheduling. The cursor represents the next eligible occurrence and advances past all due times in a poll. A dedicated trigger kind keeps cursor-backed definitions distinct from ephemeral cron definitions.
+
+`PersistentScheduler` routes bounded application watches to those same dispatch paths and owns the poll lifecycle. The backend and watch registry have separate lifetimes. A watch retains a single fixed status in memory, while the durable record represents delivery eligibility.

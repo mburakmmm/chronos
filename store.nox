@@ -29,7 +29,7 @@ class StoredJobDefinition:
     policy_format_version: int
 
     def __init__(self, job_id: str, name: str, handler_key: str, handler_config: str, trigger_kind: str, trigger_config: str, policy_config: str, enabled: bool, created_at_utc_ms: int, updated_at_utc_ms: int, revision: int, definition_format_version: int, handler_config_format_version: int, trigger_format_version: int, policy_format_version: int) -> None:
-        _validate_identifier("stored job ID", job_id, 128)
+        validate_stored_job_id(job_id)
         _validate_text("stored job name", name, 256, False)
         validate_handler_key(handler_key)
         _validate_text("handler config", handler_config, MAX_STORED_CONFIG_BYTES, True)
@@ -88,6 +88,9 @@ def copy_stored_job_definition(source: StoredJobDefinition) -> StoredJobDefiniti
 
 def validate_handler_key(key: str) -> None:
     _validate_identifier("handler key", key, MAX_HANDLER_KEY_BYTES)
+
+def validate_stored_job_id(job_id: str) -> None:
+    _validate_identifier("stored job ID", job_id, 128)
 
 def _require_version(component: str, found: int, supported: int) -> None:
     if found != supported:

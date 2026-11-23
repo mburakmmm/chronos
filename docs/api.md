@@ -33,6 +33,7 @@ Methods and fields are supported only when their contract is explicitly describe
 | `job_codec` | `encode_once_utc`, `encode_cron_utc`, `encode_policies`, `restore_utc_job` |
 | `stored_once` | `dispatch_stored_once` |
 | `stored_cron` | `STORED_CRON_KIND`, `encode_stored_cron`, `dispatch_stored_cron` |
+| `persistent_scheduler` | `PersistentScheduler`, `PersistentPollResult` |
 
 The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
 
@@ -258,6 +259,14 @@ This path requires retry policy `none` and a store that commits the revision com
 `encode_stored_cron(expression, start)` initializes the persistent cursor at the first UTC match at or after `start`. Use the encoded value as `trigger_config` and `STORED_CRON_KIND` as `trigger_kind`.
 
 `dispatch_stored_cron(backend, handlers, job_id, now) -> str` uses the same result strings as `dispatch_stored_once`. It advances the revision and next occurrence before a callback runs, while keeping the job enabled. It supports `skip` and `fire-once` with retry disabled. The caller owns the polling loop. See [cron delivery semantics](persistence.md#at-most-once-utc-cron-dispatch).
+
+## `chronos.persistent_scheduler` — Experimental
+
+`PersistentScheduler(backend, handlers, clock, max_jobs)` accepts a caller-owned `JobStore`, handler registry and clock, with a capacity of 1–1,024 watches. `watch(job_id)` adds a unique ID and `unwatch(job_id) -> bool` removes it and its retained outcome. Watch changes require the `created` or idle `running` state. The application writes definitions through the store.
+
+`state()`, `start()` and `stop()` manage `created`, `running`, `stopping` and `stopped`. A running start and repeated stops are idempotent. Stop is terminal. A stop during dispatch lets the current synchronous operation finish and prevents later watched jobs from starting. The application closes the store.
+
+`tick() -> list[PersistentPollResult]` requires a running, idle scheduler. It visits watched IDs once in watch order, reading UTC separately before each job. Each result exposes `job_id` and `status`. Alongside the dispatch statuses, per-job faults return `invalid-definition`, `unknown-handler`, `conflict`, `store-error` or `schedule-error`. A caller-supplied clock failure aborts the tick. `latest_outcome(job_id) -> str | None` retains the most recent status other than `pending`, `disabled` or `missing` for each watch. See [persistent scheduler lifecycle](persistence.md#persistent-scheduler-lifecycle).
 
 ## `chronos.registry` — Internal
 

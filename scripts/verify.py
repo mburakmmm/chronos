@@ -22,6 +22,7 @@ FREESTANDING_MODULES = (
     "handler_registry.nox",
     "job.nox",
     "job_codec.nox",
+    "persistent_scheduler.nox",
     "policy.nox",
     "registry.nox",
     "scheduler.nox",

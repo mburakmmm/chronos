@@ -1,0 +1,152 @@
+from clock import Clock
+from errors import CronSearchLimitError, DuplicateJobError, InvalidStoredJobError, SchedulerStateError, StoreConflictError, StoreError, TimeRangeError, UnknownHandlerError
+from handler_registry import HandlerRegistry
+from store import JobStore, StoredJobDefinition, validate_stored_job_id
+from stored_cron import STORED_CRON_KIND, _dispatch_loaded_cron
+from stored_once import _dispatch_loaded_once
+from time import UtcInstant
+
+class PersistentPollResult:
+    job_id: str
+    status: str
+
+    def __init__(self, job_id: str, status: str) -> None:
+        self.job_id = job_id
+        self.status = status
+
+class WatchedJob:
+    job_id: str
+    latest: str | None
+
+    def __init__(self, job_id: str) -> None:
+        self.job_id = job_id
+        self.latest = None
+
+class PersistentScheduler:
+    backend: JobStore
+    handlers: HandlerRegistry
+    source_clock: Clock
+    watched_jobs: list[WatchedJob]
+    max_jobs: int
+    state_value: str
+    polling: bool
+
+    def __init__(self, backend: JobStore, handlers: HandlerRegistry, source_clock: Clock, max_jobs: int) -> None:
+        if max_jobs < 1 or max_jobs > 1024:
+            raise InvalidStoredJobError("persistent scheduler capacity must be between 1 and 1024")
+        self.backend = backend
+        self.handlers = handlers
+        self.source_clock = source_clock
+        self.watched_jobs = []
+        self.max_jobs = max_jobs
+        self.state_value = "created"
+        self.polling = False
+
+    def state(self) -> str:
+
+        return self.state_value
+
+    def start(self) -> None:
+
+        if self.state_value == "running":
+            return
+        if self.state_value != "created":
+            raise SchedulerStateError(self.state_value, "cannot start")
+        self.state_value = "running"
+
+    def stop(self) -> None:
+
+        if self.state_value == "stopped" or self.state_value == "stopping":
+            return
+        if self.polling:
+            self.state_value = "stopping"
+        else:
+            self.state_value = "stopped"
+
+    def watch(self, job_id: str) -> None:
+
+        self._require_watch_mutable()
+        validate_stored_job_id(job_id)
+        if self._index(job_id) >= 0:
+            raise DuplicateJobError(job_id)
+        if len(self.watched_jobs) >= self.max_jobs:
+            raise InvalidStoredJobError("persistent scheduler capacity exceeded")
+        self.watched_jobs.append(WatchedJob(job_id))
+
+    def unwatch(self, job_id: str) -> bool:
+
+        self._require_watch_mutable()
+        index: int = self._index(job_id)
+        if index < 0:
+            return False
+        self.watched_jobs.pop(index)
+        return True
+
+    def latest_outcome(self, job_id: str) -> str | None:
+
+        index: int = self._index(job_id)
+        if index < 0:
+            return None
+        return self.watched_jobs[index].latest
+
+    def tick(self) -> list[PersistentPollResult]:
+
+        if self.state_value != "running" or self.polling:
+            raise SchedulerStateError(self.state_value, "tick requires an idle running persistent scheduler")
+        self.polling = True
+        results: list[PersistentPollResult] = []
+        try:
+            for entry in self.watched_jobs:
+                if self.state_value != "running":
+                    break
+                current: UtcInstant = self.source_clock.now_utc()
+                observed: UtcInstant = UtcInstant(current.epoch_ms)
+                if self.state_value != "running":
+                    break
+                status: str = self._poll(entry.job_id, observed)
+                if status != "pending" and status != "disabled" and status != "missing":
+                    entry.latest = status
+                results.append(PersistentPollResult(entry.job_id, status))
+        finally:
+            self.polling = False
+            if self.state_value == "stopping":
+                self.state_value = "stopped"
+        return results
+
+    def _poll(self, job_id: str, observed: UtcInstant) -> str:
+
+        try:
+            definition: StoredJobDefinition | None = self.backend.load(job_id)
+            if definition is None:
+                return "missing"
+            if definition.job_id != job_id:
+                return "invalid-definition"
+            if definition.trigger_kind == "once-utc":
+                return _dispatch_loaded_once(self.backend, self.handlers, definition, observed)
+            if definition.trigger_kind == STORED_CRON_KIND:
+                return _dispatch_loaded_cron(self.backend, self.handlers, definition, observed)
+            return "invalid-definition"
+        except InvalidStoredJobError:
+            return "invalid-definition"
+        except UnknownHandlerError:
+            return "unknown-handler"
+        except StoreConflictError:
+            return "conflict"
+        except StoreError:
+            return "store-error"
+        except CronSearchLimitError:
+            return "schedule-error"
+        except TimeRangeError:
+            return "schedule-error"
+
+    def _index(self, job_id: str) -> int:
+
+        for index in range(len(self.watched_jobs)):
+            if self.watched_jobs[index].job_id == job_id:
+                return index
+        return -1
+
+    def _require_watch_mutable(self) -> None:
+
+        if self.polling or self.state_value != "created" and self.state_value != "running":
+            raise SchedulerStateError(self.state_value, "cannot change persistent scheduler watches")

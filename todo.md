@@ -387,11 +387,12 @@ Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementa
 - [x] Definition create/update/delete için atomik CAS ve normal reopen davranışını test et. Commit sonucunun belirsiz kaldığı crash aralığını belgele.
 - [x] Tek sahipli SQLite üzerinde UTC tek seferlik işler için at-most-once dispatch ve süreç sonlandırma testleri ekle.
 - [x] UTC cron için kalıcı cursor, sınırlı misfire davranışı ve at-most-once process restart testlerini ekle.
-- [ ] Kalıcı teslim yollarının scheduler lifecycle ve execution outcome entegrasyonunu belirle.
+- [x] UTC kalıcı teslim yollarını uygulama kontrollü `PersistentScheduler` yaşam döngüsüne bağla.
 - [x] Corrupted row, unsupported record version ve unsupported schema senaryolarını adapter integration testinde doğrula.
 - [x] Handler anahtarlarını uygulamaya ait sınırlı bir registry ile bağla. Bilinmeyen anahtarı hem bellekte hem SQLite tekrar açıldığında reddet.
 - [x] UTC tek seferlik ve cron tetikleyicileri ile doğrulanmış politika yapılandırmasını v1 formatında kodla ve kayıtlı tanımdan iş oluştur.
-- [ ] Execution history ve error retention sınırlarını uygula.
+- [x] İzlenen iş başına tek güvenli sonucu bellekte tut. Ham callback hatalarını ve execution history'yi saklama.
+- [ ] Kalıcı execution outcome ihtiyacını, migration ve retention kurallarıyla değerlendir.
 - [ ] Secret'ları plaintext serialize etme.
 - [ ] Crash/restart integration testleri geçmeden durable scheduling iddiasında bulunma.
 

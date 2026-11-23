@@ -11,8 +11,13 @@ def dispatch_stored_once(backend: JobStore, handlers: HandlerRegistry, job_id: s
     loaded: StoredJobDefinition | None = backend.load(job_id)
     if loaded is None:
         return "missing"
+    if loaded.job_id != job_id:
+        raise InvalidStoredJobError("stored job ID does not match the requested job")
+    return _dispatch_loaded_once(backend, handlers, loaded, observed)
+
+def _dispatch_loaded_once(backend: JobStore, handlers: HandlerRegistry, loaded: StoredJobDefinition, observed: UtcInstant) -> str:
     saved: StoredJobDefinition = copy_stored_job_definition(loaded)
-    if saved.job_id != job_id or saved.trigger_kind != "once-utc":
+    if saved.trigger_kind != "once-utc":
         raise InvalidStoredJobError("stored one-shot definition required")
     if not saved.enabled:
         return "disabled"

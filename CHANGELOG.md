@@ -8,6 +8,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 ### Added
 
+- Application-owned persistent scheduler for watched UTC one-shot and cron definitions, with bounded polling, terminal shutdown and one safe in-memory outcome per watch.
+
 - Experimental single-owner UTC cron delivery with an atomically advanced cursor, bounded missed-run handling and process restart verification on LLVM/QBE.
 
 - Experimental single-owner at-most-once UTC one-shot dispatch with a committed revision guard before callback invocation, verified across process termination and reopen on LLVM/QBE.

@@ -448,3 +448,7 @@ The Nox 2.1.111 LLVM/QBE subprocess suite verifies that `nox.os.exit` interrupts
 ### P5-CRON-001 — persistent UTC cron cursor
 
 The Nox 2.1.111 LLVM/QBE subprocess suite verifies rollback before commit, persistence after commit and no replay after a visible callback effect. Subsequent polls verify that a backward wall-clock reading leaves the committed cursor ahead of consumed times, and that the next on-time occurrence fires once. The suite also checks misfire skip and rejection of a nonmatching cursor.
+
+### P5-SCHED-001 — manually driven persistent scheduler
+
+The SQLite lifecycle proof verifies watch order, capacity, synchronous stop from a callback, recursive tick rejection, safe failure isolation and latest-outcome retention on Nox 2.1.111 LLVM/QBE. Closing and reopening the store preserves consumed one-shots and advanced cron cursors while a fresh scheduler starts with empty outcome slots.
