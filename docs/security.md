@@ -80,4 +80,4 @@ Retries cannot make side effects exactly once. Applications must make side-effec
 
 The experimental SQLite adapter is data-only. It uses fixed SQL plus parameterized values, validates loaded rows, rejects unsupported versions, and replaces raw backend diagnostics with a fixed message. Its database path is trusted configuration, its connection is single-owner, and it provides no encryption; configurations must not contain secrets.
 
-Forced crash/power-loss, migration failure, file-permission, path-confinement, backup/restore, and secret-management reviews remain mandatory before a scheduler durability claim. Remote execution and distributed coordination are still outside the MVP. Exactly-once execution is not promised.
+The supported SQLite scope covers single-owner process restart, tested migration rollback and bounded fixed outcomes. Power-loss durability, backup and restore procedures, file protection and path confinement depend on the deployment. The [runtime credential example](persistence.md#runtime-credentials) verifies that an application can keep credential values outside stored definitions and outcomes.

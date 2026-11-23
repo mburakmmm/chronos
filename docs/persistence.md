@@ -155,6 +155,14 @@ Recording happens after delivery and uses a separate commit. A process exit afte
 
 Exactly-once side effects are not achievable merely by storing a row and will not be advertised.
 
+## Runtime credentials
+
+Store public account or credential aliases in job definitions. Register a trusted callback that maps each allowed alias to an application-owned credential source at execution time. The callback can read process-injected configuration or ask an application-managed secret provider. Validate the alias against the application's allowlist before asking for a credential. A missing credential can raise a handler error and follows the job's delivery policy.
+
+The [credential example](../examples/persistence/secret_reference.nox) accepts a fresh SQLite path as its first program argument. It stores the public alias `reporting` and reads `CHRONOS_EXAMPLE_REPORT_TOKEN` only inside the registered handler. It prints the fixed delivery status. The persistence verifier supplies a synthetic credential and checks the process output, reopened rows and fixture file bytes. It also covers absent and empty credentials.
+
+Chronos treats caller-supplied configuration as opaque text. The application must keep credentials out of all stored fields and callback logs. Use public aliases without embedding secret values in identifiers, database paths or command-line arguments. Protect the SQLite file and its backups according to the sensitivity of the remaining application data.
+
 ## Security
 
 - Database paths are trusted application configuration; Nox filesystem APIs do not confine untrusted paths.

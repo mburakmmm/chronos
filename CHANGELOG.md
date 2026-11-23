@@ -8,6 +8,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 ### Added
 
+- SQLite credential-reference example and regression verification for runtime-only credential lookup, absent credentials and fixed stored outcomes.
+
 - Optional revision-checked SQLite outcomes and transactional schema v1-to-v2 migration with rollback verification.
 
 - Application-owned persistent scheduler for watched UTC one-shot and cron definitions, with bounded polling, terminal shutdown and one safe in-memory outcome per watch.

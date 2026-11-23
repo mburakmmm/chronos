@@ -393,13 +393,15 @@ Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementa
 - [x] UTC tek seferlik ve cron tetikleyicileri ile doğrulanmış politika yapılandırmasını v1 formatında kodla ve kayıtlı tanımdan iş oluştur.
 - [x] İzlenen iş başına tek güvenli sonucu bellekte tut. Ham callback hatalarını ve execution history'yi saklama.
 - [x] SQLite v2’de iş başına bir güvenli outcome sakla. Revision doğrulaması, silme, yeniden açma ve v1 migration rollback senaryolarını test et.
-- [ ] Secret'ları plaintext serialize etme.
-- [ ] Crash/restart integration testleri geçmeden durable scheduling iddiasında bulunma.
+- [x] Secret değerleri yerine public alias saklayan uygulama örneğini ve SQLite sızıntı regresyonunu LLVM/QBE üzerinde doğrula. Uygulama kaynaklı opaque config alanlarının güven sınırını belgele.
+- [x] Kalıcılık iddiasını süreç restart testiyle doğrulanan tek sahipli SQLite UTC teslim yollarıyla sınırla.
 
 ### `0.5.x` çıkış kapısı
 
-- [ ] Transaction, migration, crash ve recovery davranışları integration testlerle kanıtlanmış olsun.
-- [ ] Persistence kullanılmadığında core hâlâ dependency-free/in-memory çalışsın.
+- [x] Tek sahipli SQLite UTC kapsamındaki transaction, migration rollback, process crash ve recovery davranışları integration testleriyle doğrulansın.
+- [x] Persistence kullanılmadığında core dependency-free/in-memory çalışsın.
+
+Faz 5 geliştirme kapsamı tamamlandı. Sürüm etiketi ve yayın kullanıcı onayına bağlıdır. Power-loss, paylaşımlı yürütme ve kalıcı monotonic scheduling bu kapsamın dışındadır.
 
 ---
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shlex
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -127,6 +128,35 @@ def verify_cron_restart(backend: str, executable: Path) -> None:
             raise RuntimeError(f"{backend}: invalid cron cursor changed state")
 
 
+def verify_secret_reference(backend: str) -> None:
+    env_key = "CHRONOS_EXAMPLE_REPORT_TOKEN"
+    token = "chronos-synthetic-runtime-credential-731e"
+    with tempfile.TemporaryDirectory(prefix="chronos-runtime-secret-") as directory:
+        root = Path(directory)
+        executable = root / "secret-reference"
+        run([NOXC, "build", "--backend", backend, "-o", str(executable), "examples/persistence/secret_reference.nox"])
+        for mode, expected in (("present", "succeeded"), ("absent", "handler-failed"), ("empty", "handler-failed")):
+            env = os.environ.copy()
+            env.pop(env_key, None)
+            if mode != "absent":
+                env[env_key] = token if mode == "present" else ""
+            database = root / f"{mode}.db"
+            output = run([str(executable), str(database)], env=env)
+            if output != expected:
+                raise RuntimeError(f"{backend}/{mode}: unexpected credential example status")
+            connection = sqlite3.connect(database)
+            try:
+                record = connection.execute("SELECT handler_config, enabled, revision FROM chronos_jobs").fetchall()
+                outcome = connection.execute("SELECT status, revision FROM chronos_outcomes").fetchall()
+            finally:
+                connection.close()
+            if record != [("reporting", 0, 2)] or outcome != [(expected, 2)]:
+                raise RuntimeError(f"{backend}/{mode}: unexpected credential example records")
+            if token.encode() in database.read_bytes():
+                raise RuntimeError(f"{backend}/{mode}: synthetic runtime credential found in SQLite")
+        print(f"  PASS runtime credential isolation ({backend})", flush=True)
+
+
 def main() -> int:
     version = run([NOXC, "version"])
     if "2.1.111" not in version:
@@ -151,6 +181,7 @@ def main() -> int:
             run([NOXC, "build", "--backend", backend, "-o", str(executable), "proofs/persistence/restart_worker.nox"])
             verify_once_restart(backend, executable)
             verify_cron_restart(backend, executable)
+        verify_secret_reference(backend)
     print("Verified SQLite definition storage and UTC one-shot and cron restart on LLVM/QBE.")
     return 0
 
