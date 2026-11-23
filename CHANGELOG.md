@@ -8,6 +8,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 ### Added
 
+- Optional revision-checked SQLite outcomes and transactional schema v1-to-v2 migration with rollback verification.
+
 - Application-owned persistent scheduler for watched UTC one-shot and cron definitions, with bounded polling, terminal shutdown and one safe in-memory outcome per watch.
 
 - Experimental single-owner UTC cron delivery with an atomically advanced cursor, bounded missed-run handling and process restart verification on LLVM/QBE.

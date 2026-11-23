@@ -69,7 +69,7 @@ def unsupported_schema_is_rejected(database_path: str) -> bool:
     try:
         open_sqlite_store(database_path)
     except UnsupportedStoreVersionError as error:
-        return error.component == "schema" and error.found_version == 2 and error.supported_version == 1
+        return error.component == "schema" and error.found_version == 3 and error.supported_version == 2
     return False
 
 def closed_store_is_rejected(backend: SQLiteJobStore) -> bool:
@@ -162,12 +162,12 @@ nul_store.close()
 
 raw = nox.sqlite.open(path)
 raw.execute("UPDATE chronos_jobs SET handler_config = ''")
-raw.execute("UPDATE chronos_metadata SET schema_version = 2 WHERE singleton = 1")
+raw.execute("UPDATE chronos_metadata SET schema_version = 3 WHERE singleton = 1")
 raw.close()
 nox.test.assert_true(unsupported_schema_is_rejected(path), "newer SQLite schema versions fail closed")
 
 raw = nox.sqlite.open(path)
-raw.execute("UPDATE chronos_metadata SET schema_version = 1 WHERE singleton = 1")
+raw.execute("UPDATE chronos_metadata SET schema_version = 2 WHERE singleton = 1")
 raw.close()
 final_store: SQLiteJobStore = open_sqlite_store(path)
 final_store.delete("billing.daily", 2)

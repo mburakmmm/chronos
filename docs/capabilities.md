@@ -452,3 +452,7 @@ The Nox 2.1.111 LLVM/QBE subprocess suite verifies rollback before commit, persi
 ### P5-SCHED-001 — manually driven persistent scheduler
 
 The SQLite lifecycle proof verifies watch order, capacity, synchronous stop from a callback, recursive tick rejection, safe failure isolation and latest-outcome retention on Nox 2.1.111 LLVM/QBE. Closing and reopening the store preserves consumed one-shots and advanced cron cursors while a fresh scheduler starts with empty outcome slots.
+
+### P5-MIGRATION-001 — SQLite v2 outcome migration
+
+The Nox 2.1.111 LLVM/QBE migration proof opens a v1 fixture and injects a failure after DDL but before version commit. It verifies rollback of the new table, preservation of the old version and rows, and successful migration on retry. It also verifies fixed status validation, stale write rejection, bounded outcome retention and cascade deletion.

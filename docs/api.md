@@ -229,7 +229,9 @@ Calling the wrong-domain method raises `InvalidJobError`.
 
 `JobStore` is a structural protocol with `load`, `load_all`, `put`, `delete`, and `close`. `put(definition, 0)` means create revision `1`; updates require the stored revision to equal `expected_revision` and the replacement revision to be exactly one greater. Delete also requires an exact revision. Implementations return defensive definitions.
 
-The optional `sqlite_store` module implements this contract for one application-owned SQLite connection. `open_sqlite_store(path)` creates or validates schema version `1`; `SQLiteJobStore` provides the protocol operations and idempotent `close()`. The adapter is single-process/single-owner, uses prepared bindings and atomic revision-checked SQL statements, validates rows on load, and redacts raw database diagnostics. It stores definitions only.
+The optional `sqlite_store` module implements this contract for one application-owned SQLite connection. `open_sqlite_store(path)` opens schema version 2 and atomically upgrades version 1. `SQLiteJobStore` provides the protocol operations and idempotent `close()`. The adapter uses prepared bindings and atomic revision-checked SQL statements, validates rows on load, and redacts raw database diagnostics.
+
+`SQLiteJobStore.record_outcome(job_id, revision, status) -> bool` stores one fixed delivery status for the current revision. It returns false for an absent job, a stale revision, or an already recorded revision. `load_outcome(job_id) -> str | None` returns a recorded status only for the current definition revision. See [durable outcomes](persistence.md#optional-durable-outcomes) for caller and crash semantics.
 
 `Scheduler` has an application-driven in-memory lifecycle. See [optional persistence](persistence.md) for the scope of records and reopening.
 
@@ -267,6 +269,8 @@ This path requires retry policy `none` and a store that commits the revision com
 `state()`, `start()` and `stop()` manage `created`, `running`, `stopping` and `stopped`. A running start and repeated stops are idempotent. Stop is terminal. A stop during dispatch lets the current synchronous operation finish and prevents later watched jobs from starting. The application closes the store.
 
 `tick() -> list[PersistentPollResult]` requires a running, idle scheduler. It visits watched IDs once in watch order, reading UTC separately before each job. Each result exposes `job_id` and `status`. Alongside the dispatch statuses, per-job faults return `invalid-definition`, `unknown-handler`, `conflict`, `store-error` or `schedule-error`. A caller-supplied clock failure aborts the tick. `latest_outcome(job_id) -> str | None` retains the most recent status other than `pending`, `disabled` or `missing` for each watch. See [persistent scheduler lifecycle](persistence.md#persistent-scheduler-lifecycle).
+
+`PersistentPollResult.committed_revision` is positive for `succeeded`, `handler-failed` and `skipped`, and zero otherwise. Applications may pass these terminal results to SQLite for explicit recording.
 
 ## `chronos.registry` — Internal
 

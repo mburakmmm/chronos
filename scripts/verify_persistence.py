@@ -26,7 +26,8 @@ CASES = (
     ("examples/persistence/dispatch_once.nox", "reports.daily daily-summary\nsucceeded\ndisabled"),
     ("examples/persistence/dispatch_cron.nox", "60000 summary\nsucceeded\npending\n240000 summary\nsucceeded"),
     ("proofs/persistence/persistent_scheduler_integration.nox", "persistent-scheduler-ok"),
-    ("examples/persistence/poll_stored.nox", "pending\nreport.once summary\nsucceeded\nstopped"),
+    ("proofs/persistence/outcome_migration.nox", "outcome-migration-ok"),
+    ("examples/persistence/poll_stored.nox", "pending\nreport.once summary\nsucceeded\nrecorded succeeded\nstopped"),
 )
 
 

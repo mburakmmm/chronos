@@ -1,0 +1,62 @@
+import nox.fs
+import nox.os
+import nox.sqlite
+import nox.test
+from errors import InvalidStoredJobError, StoreError
+from nox.sqlite import Connection
+from sqlite_store import CREATE_JOBS_SQL, CREATE_METADATA_SQL, SQLiteJobStore, open_sqlite_store
+from store import StoredJobDefinition
+
+def failed_migration(path: str) -> bool:
+    try:
+        open_sqlite_store(path).close()
+    except StoreError as error:
+        return error.message == "store backend operation failed"
+    return False
+
+def rejects_raw_error(backend: SQLiteJobStore) -> bool:
+    try:
+        backend.record_outcome("legacy", 2, "private handler message")
+    except InvalidStoredJobError as error:
+        return error.message == "invalid stored execution outcome"
+    return False
+
+path: str = nox.os.getenv("CHRONOS_SQLITE_TEST_DB")
+old: Connection = nox.sqlite.open(path)
+old.execute(CREATE_METADATA_SQL)
+old.execute(CREATE_JOBS_SQL)
+old.execute("INSERT INTO chronos_metadata VALUES (1, 1)")
+old.execute("INSERT INTO chronos_jobs VALUES ('legacy', 'Legacy', 'trusted', 'public', 'once-utc', '2000', 'default', 0, 100, 200, 2, 1, 1, 1, 1)")
+old.execute("CREATE TRIGGER block_upgrade BEFORE UPDATE OF schema_version ON chronos_metadata BEGIN SELECT RAISE(ABORT, 'migration fixture'); END")
+old.close()
+
+nox.test.assert_true(failed_migration(path), "failed migration is redacted")
+before: Connection = nox.sqlite.open(path)
+nox.test.assert_eq_int(before.query("SELECT schema_version FROM chronos_metadata")[0].get_int(0), 1, "rollback preserves version 1")
+nox.test.assert_eq_int(len(before.query("SELECT name FROM sqlite_master WHERE name = 'chronos_outcomes'")), 0, "rollback removes the newly created table")
+nox.test.assert_eq_int(before.query("SELECT revision FROM chronos_jobs")[0].get_int(0), 2, "rollback preserves existing data")
+before.execute("DROP TRIGGER block_upgrade")
+before.close()
+
+migrated: SQLiteJobStore = open_sqlite_store(path)
+nox.test.assert_eq_int(migrated.connection.query("SELECT schema_version FROM chronos_metadata")[0].get_int(0), 2, "version 1 upgrades in place")
+loaded: StoredJobDefinition | None = migrated.load("legacy")
+nox.test.assert_true(loaded is not None, "migration preserves definition")
+if loaded is not None:
+    nox.test.assert_eq_str(loaded.handler_config, "public", "migration preserves opaque configuration")
+    nox.test.assert_true(not loaded.enabled and loaded.revision == 2, "migration preserves enabled state and revision")
+    nox.test.assert_true(migrated.load_outcome("legacy") is None, "migration never fabricates old outcomes")
+    nox.test.assert_true(rejects_raw_error(migrated), "raw errors cannot become stored statuses")
+    nox.test.assert_true(migrated.record_outcome("legacy", 2, "handler-failed"), "current outcome is accepted")
+    nox.test.assert_true(not migrated.record_outcome("legacy", 2, "succeeded"), "one outcome is immutable within its revision")
+    loaded.revision = 3
+    migrated.put(loaded, 2)
+    nox.test.assert_true(migrated.load_outcome("legacy") is None, "obsolete outcome is hidden")
+    nox.test.assert_true(not migrated.record_outcome("legacy", 2, "succeeded"), "stale write is refused")
+    nox.test.assert_true(migrated.record_outcome("legacy", 3, "skipped"), "next revision replaces the same slot")
+    nox.test.assert_eq_int(migrated.connection.query("SELECT count(*) FROM chronos_outcomes")[0].get_int(0), 1, "history remains bounded to one row")
+    migrated.delete("legacy", 3)
+    nox.test.assert_eq_int(migrated.connection.query("SELECT count(*) FROM chronos_outcomes")[0].get_int(0), 0, "delete cascades to the outcome")
+migrated.close()
+nox.fs.remove_file(path)
+print("outcome-migration-ok")

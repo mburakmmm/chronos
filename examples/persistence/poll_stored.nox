@@ -4,14 +4,14 @@ from job import JobContext
 from job_codec import encode_once_utc, encode_policies
 from persistent_scheduler import PersistentScheduler
 from policy import default_job_policies
-from sqlite_store import open_sqlite_store
+from sqlite_store import SQLiteJobStore, open_sqlite_store
 from store import JobStore, make_stored_job_definition
 from time import UtcInstant
 
 def report(context: JobContext, name: str) -> None:
     print(context.job_id, name)
 
-backend: JobStore = open_sqlite_store(":memory:")
+backend: SQLiteJobStore = open_sqlite_store(":memory:")
 try:
     handlers: HandlerRegistry = HandlerRegistry()
     handlers.register("report", report)
@@ -25,6 +25,11 @@ try:
     source_clock.set_utc_ms(1000)
     for result in engine.tick():
         print(result.status)
+        if result.committed_revision > 0:
+            backend.record_outcome(result.job_id, result.committed_revision, result.status)
+    saved_status: str | None = backend.load_outcome("report.once")
+    if saved_status is not None:
+        print("recorded", saved_status)
     engine.stop()
     print(engine.state())
 finally:

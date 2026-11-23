@@ -252,9 +252,9 @@ Writes use compare-and-swap revisions. Revision zero means create, every update 
 
 Schema version and definition/handler/trigger/policy format versions are separate. A newer version is rejected explicitly so future migrations cannot reinterpret records silently. UTC timestamps are persisted as epoch milliseconds; monotonic instants are deliberately absent because they have no stable meaning across process restart.
 
-The Nox 2.1.111 proofs confirm file-backed SQLite reopen, explicit transactions, rollback on a constraint failure, parameterized binding, and the concrete `SQLiteJobStore` on LLVM/QBE. The adapter initializes schema version `1` transactionally and applies each definition mutation through one revision-guarded SQL statement. It validates persisted rows and redacts raw backend diagnostics.
+The Nox 2.1.111 proofs confirm file-backed SQLite reopen, explicit transactions, rollback on a constraint failure, parameterized binding, and the concrete `SQLiteJobStore` on LLVM/QBE. The adapter initializes schema version 2 or upgrades version 1 in one transaction. It applies each definition mutation through one revision-guarded SQL statement, validates persisted rows and redacts raw backend diagnostics.
 
-`sqlite_store.nox` remains separate from the pure `store.nox` contract and the core manifest still has no dependencies. The adapter stores definitions only: it has no handler hydration, scheduler state, execution history, migration, delivery, lease, or exactly-once semantics. Crash/restart scheduler integration remains a separate release gate.
+`sqlite_store.nox` remains separate from the pure `store.nox` contract and the core manifest still has no dependencies. The adapter stores definitions, delivery cursors and at most one explicitly recorded outcome per job. Handler hydration and the scheduler lifecycle remain application-owned.
 
 The application-owned `HandlerRegistry` assembles the executable callback in memory from an explicitly registered function and a validated definition. The registry stores neither schedules nor execution state. Unknown keys stop binding before a callback can run.
 

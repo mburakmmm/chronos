@@ -83,6 +83,7 @@ The data-only `store.nox` module is part of the pure cross-platform matrix and d
 | Single-owner UTC one-shot process termination and reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 | Single-owner UTC cron cursor process termination and reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 | Persistent scheduler lifecycle, bounded outcomes and SQLite reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
+| SQLite v1-to-v2 outcome migration, rollback and retention | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 
 SQLite runtime evidence covers macOS arm64 and the isolated Linux x64 CI job. Power-loss recovery, concurrent schedulers, migration recovery and SQLite support on other targets require separate verification.
 

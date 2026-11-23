@@ -54,10 +54,11 @@ This prevents silent last-writer-wins updates inside one process. It is not a di
 
 `open_sqlite_store(path)` opens or creates a file-backed database and returns a `SQLiteJobStore`. The path is trusted application configuration. The application must keep one owner for the connection, must not share it between Nox workers, and must call `close()`. Close is idempotent; later operations fail explicitly.
 
-The adapter uses two fixed-schema tables:
+The adapter uses three fixed-schema tables:
 
 - `chronos_metadata`, containing one schema-version row;
-- `chronos_jobs`, containing every `StoredJobDefinition` field with `job_id` as primary key and `revision` as the compare-and-swap guard.
+- `chronos_jobs`, containing every `StoredJobDefinition` field with `job_id` as primary key and `revision` as the compare-and-swap guard;
+- `chronos_outcomes`, holding one optional delivery status per job.
 
 A store accepts up to 10,000 definitions. A fresh create at capacity raises `StoreError`. Listing rejects an over-capacity database. SQLite validates text storage type, byte length and embedded NUL before values cross the Nox driver boundary. See `NXL-009` in the limitations ledger.
 
@@ -69,9 +70,9 @@ The adapter is single-process/single-owner in this release. Conditional SQL make
 
 ## Versioning and schema initialization
 
-The initial constants are schema version `1` and format version `1` for job definitions, handler configuration, trigger configuration, and policy configuration. The factory fills the supported format versions; direct construction is Internal and is used by adapters to reject unknown persisted versions explicitly.
+The current database schema version is `2`. Job definition, handler, trigger and policy formats stay at version `1`. The factory fills the supported format versions and adapters reject unknown versions explicitly.
 
-Initial schema creation runs in one explicit `BEGIN IMMEDIATE` transaction. Failure rolls the transaction back and closes the connection. A store with a newer schema or record format is refused rather than guessed. Schema version `1` has no migrations yet; future upgrades require explicit migration and failure-recovery tests. Backup and restore tooling are not provided.
+Initialization and v1-to-v2 migration run in one explicit `BEGIN IMMEDIATE` transaction. Migration creates an empty outcome table and updates the schema marker while preserving jobs, revisions and delivery cursors. Failure rolls back and closes the connection. Versions beyond the supported schema or record formats are refused. Version 1 binaries cannot open a migrated file.
 
 ## Verified Nox SQLite primitives
 
@@ -103,13 +104,13 @@ Each create, update, and delete is one SQLite statement in autocommit mode. Crea
 
 SQLite owns journaling, synchronization, filesystem, and power-loss behavior; Chronos does not change durability pragmas. If a process fails before a mutation commits, the previous committed definition remains. If it fails after SQLite commits, the replacement may be present even when the application did not observe the return value. The caller must reload and compare revisions after an ambiguous failure instead of blindly replaying a write. This is definition atomicity, not execution atomicity.
 
-Monotonic instants, running counts, retry deadlines, pending overlap state, callbacks, and execution outcomes are not stored. Reopening the database only recovers definitions. It does not restart a scheduler or establish how elapsed-time schedules should resume.
+The definition row omits monotonic instants, running counts, retry deadlines, pending overlap state and callbacks. Reopening recovers the stored records. The application owns startup and elapsed-time scheduling.
 
 ## At-most-once UTC one-shot dispatch
 
 Applications can call `dispatch_stored_once` from their own polling loop with an explicit UTC reading. A future target stays enabled. A due target is validated and its policy evaluated. A single committed compare-and-swap advances the revision and sets `enabled = false` before any callback runs. The SQLite connection must stay in autocommit mode. The callback receives the original planned UTC timestamp and attempt `1`. A misfire skip also consumes the record. The callback runs synchronously.
 
-An existing disabled definition returns `disabled`, whether it was consumed or disabled by the application. A disabled record carries no execution outcome. Explicitly enabling it again or deleting and recreating it arms a new delivery. Keep one application owner and choose one dispatch path per armed job. Poll these records through `dispatch_stored_once` rather than registering the same armed definition with the in-memory scheduler.
+An existing disabled definition returns `disabled`, whether it was consumed or disabled by the application. Inspect an explicitly recorded outcome with `load_outcome`. Explicitly enabling the definition again or deleting and recreating it arms a new delivery. Keep one application owner and one dispatch path per armed job.
 
 If the process terminates before commit, an enabled record remains eligible under its misfire policy. If the commit succeeds and the process terminates before the callback starts, the next poll sees a disabled record and the callback is lost. After a callback starts, the next poll also sees a disabled record, whether the callback ran to completion, raised or performed only some of its side effects. The result returned by the function is transient. Use application-level idempotency for manual rearming and side effects.
 
@@ -137,9 +138,16 @@ Call `stop()` before closing the store. If a callback requests stop, it can fini
 
 Run the example with `noxc run examples/persistence/poll_stored.nox`.
 
+## Optional durable outcomes
+
+After a tick, the application can record terminal results with `record_outcome(result.job_id, result.committed_revision, result.status)` on the same SQLite store. Pass only results with a positive committed revision from the active job lifetime. Discard in-flight results before deleting and recreating an ID, since revisions belong to a single job lifetime. The status allowlist is `succeeded`, `handler-failed` and `skipped`. The application remains responsible for recording or discarding results.
+
+SQLite retains at most one row per job and accepts only the first write for a current revision. A change of revision hides the previous outcome. The next recorded result replaces the row. Deleting a job also deletes its outcome. The stored fields are job ID, revision and fixed status. Handler payloads, configuration and exception messages stay out of the outcome table.
+
+Recording happens after delivery and uses a separate commit. A process exit after cursor advancement, after execution or before outcome recording may leave no visible outcome. This is an unknown result, and the committed cursor still governs restart eligibility. A missing outcome cannot establish whether a callback started or completed.
+
 ## Remaining delivery work
 
-- optional durable execution outcomes and their schema migration and recovery rules;
 - explicit restart semantics for monotonic delay, fixed-rate, and fixed-delay schedules;
 - execution-state updates and migration recovery;
 - bounded execution/error history, if any;

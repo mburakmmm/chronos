@@ -392,7 +392,7 @@ Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementa
 - [x] Handler anahtarlarını uygulamaya ait sınırlı bir registry ile bağla. Bilinmeyen anahtarı hem bellekte hem SQLite tekrar açıldığında reddet.
 - [x] UTC tek seferlik ve cron tetikleyicileri ile doğrulanmış politika yapılandırmasını v1 formatında kodla ve kayıtlı tanımdan iş oluştur.
 - [x] İzlenen iş başına tek güvenli sonucu bellekte tut. Ham callback hatalarını ve execution history'yi saklama.
-- [ ] Kalıcı execution outcome ihtiyacını, migration ve retention kurallarıyla değerlendir.
+- [x] SQLite v2’de iş başına bir güvenli outcome sakla. Revision doğrulaması, silme, yeniden açma ve v1 migration rollback senaryolarını test et.
 - [ ] Secret'ları plaintext serialize etme.
 - [ ] Crash/restart integration testleri geçmeden durable scheduling iddiasında bulunma.
 

@@ -8,6 +8,7 @@ from time import MAX_MS
 
 CREATE_METADATA_SQL: str = "CREATE TABLE IF NOT EXISTS chronos_metadata (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), schema_version INTEGER NOT NULL)"
 CREATE_JOBS_SQL: str = "CREATE TABLE IF NOT EXISTS chronos_jobs (job_id TEXT PRIMARY KEY, name TEXT NOT NULL, handler_key TEXT NOT NULL, handler_config TEXT NOT NULL, trigger_kind TEXT NOT NULL, trigger_config TEXT NOT NULL, policy_config TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled = 0 OR enabled = 1), created_at_utc_ms INTEGER NOT NULL CHECK (created_at_utc_ms >= 0), updated_at_utc_ms INTEGER NOT NULL CHECK (updated_at_utc_ms >= created_at_utc_ms), revision INTEGER NOT NULL CHECK (revision >= 1), definition_format_version INTEGER NOT NULL, handler_config_format_version INTEGER NOT NULL, trigger_format_version INTEGER NOT NULL, policy_format_version INTEGER NOT NULL)"
+CREATE_OUTCOMES_SQL: str = "CREATE TABLE chronos_outcomes (job_id TEXT NOT NULL PRIMARY KEY REFERENCES chronos_jobs(job_id) ON DELETE CASCADE, revision INTEGER NOT NULL CHECK (revision >= 1), status TEXT NOT NULL CHECK (status IN ('succeeded', 'handler-failed', 'skipped')))"
 SELECT_COLUMNS: str = "job_id, name, handler_key, handler_config, trigger_kind, trigger_config, policy_config, enabled, created_at_utc_ms, updated_at_utc_ms, revision, definition_format_version, handler_config_format_version, trigger_format_version, policy_format_version"
 BACKEND_ERROR_MESSAGE: str = "store backend operation failed"
 MAX_STORED_JOBS: int = 10000
@@ -100,6 +101,37 @@ class SQLiteJobStore:
             self.connection.close()
             self.closed = True
 
+    def record_outcome(self, job_id: str, revision: int, status: str) -> bool:
+
+        self._require_open()
+        _validate_job_id(job_id)
+        if revision < 2 or not _valid_outcome(status):
+            raise InvalidStoredJobError("invalid stored execution outcome")
+        try:
+            write: Statement = self.connection.prepare("INSERT INTO chronos_outcomes (job_id, revision, status) SELECT job_id, revision, ? FROM chronos_jobs WHERE job_id = ? AND revision = ? ON CONFLICT(job_id) DO UPDATE SET revision = excluded.revision, status = excluded.status WHERE chronos_outcomes.revision != excluded.revision")
+            write.bind_str(0, status)
+            write.bind_str(1, job_id)
+            write.bind_int(2, revision)
+            return write.execute() == 1
+        except SqliteError:
+            raise StoreError(BACKEND_ERROR_MESSAGE)
+
+    def load_outcome(self, job_id: str) -> str | None:
+
+        self._require_open()
+        _validate_job_id(job_id)
+        try:
+            query: Statement = self.connection.prepare("SELECT CASE WHEN outcome.status IN ('succeeded', 'handler-failed', 'skipped') THEN outcome.status END FROM chronos_outcomes AS outcome JOIN chronos_jobs AS job ON job.job_id = outcome.job_id AND job.revision = outcome.revision WHERE outcome.job_id = ?")
+            query.bind_str(0, job_id)
+            rows: list[Row] = query.query()
+            if len(rows) == 0:
+                return None
+            if len(rows) != 1 or rows[0].is_null(0):
+                raise StoreCorruptionError("invalid-outcome")
+            return rows[0].get_str(0)
+        except SqliteError:
+            raise StoreError(BACKEND_ERROR_MESSAGE)
+
     def _insert(self, definition: StoredJobDefinition) -> None:
 
         try:
@@ -158,24 +190,41 @@ class SQLiteJobStore:
 def open_sqlite_store(path: str) -> SQLiteJobStore:
     connection: Connection = _open_connection(path)
     try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        foreign_keys: list[Row] = connection.query("PRAGMA foreign_keys")
+        if len(foreign_keys) != 1 or foreign_keys[0].get_int(0) != 1:
+            raise StoreError("store foreign keys are unavailable")
         connection.execute("BEGIN IMMEDIATE")
-        objects: list[Row] = connection.query("SELECT type FROM sqlite_master WHERE name IN ('chronos_metadata', 'chronos_jobs')")
+        objects: list[Row] = connection.query("SELECT type FROM sqlite_master WHERE name IN ('chronos_metadata', 'chronos_jobs', 'chronos_outcomes') ORDER BY name")
         if len(objects) == 0:
             connection.execute(CREATE_METADATA_SQL)
             connection.execute(CREATE_JOBS_SQL)
+            connection.execute(CREATE_OUTCOMES_SQL)
             insert_version: Statement = connection.prepare("INSERT INTO chronos_metadata (singleton, schema_version) VALUES (1, ?)")
             insert_version.bind_int(0, STORE_SCHEMA_VERSION)
             insert_version.execute()
         else:
-            if len(objects) != 2 or objects[0].get_str(0) != "table" or objects[1].get_str(0) != "table":
+            expected_tables: list[Row] = connection.query("SELECT name FROM sqlite_master WHERE name IN ('chronos_metadata', 'chronos_jobs') AND type = 'table'")
+            if len(expected_tables) != 2:
                 raise StoreCorruptionError("schema-objects")
             metadata: list[Row] = connection.query("SELECT schema_version, typeof(singleton), singleton, typeof(schema_version) FROM chronos_metadata LIMIT 2")
             if len(metadata) != 1:
                 raise StoreCorruptionError("metadata-cardinality")
             found_version: int = _decode_schema_version(metadata[0])
-            if found_version != STORE_SCHEMA_VERSION:
+            if found_version != 1 and found_version != STORE_SCHEMA_VERSION:
                 raise UnsupportedStoreVersionError("schema", found_version, STORE_SCHEMA_VERSION)
             connection.query("SELECT " + SELECT_COLUMNS + " FROM chronos_jobs LIMIT 0")
+            if found_version == 1:
+                if len(objects) != 2:
+                    raise StoreCorruptionError("schema-objects")
+                connection.execute(CREATE_OUTCOMES_SQL)
+                if connection.execute("UPDATE chronos_metadata SET schema_version = 2 WHERE singleton = 1") != 1:
+                    raise StoreCorruptionError("metadata-migration")
+            else:
+                outcomes: list[Row] = connection.query("SELECT name FROM sqlite_master WHERE name = 'chronos_outcomes' AND type = 'table'")
+                if len(outcomes) != 1:
+                    raise StoreCorruptionError("schema-objects")
+                connection.query("SELECT job_id, revision, status FROM chronos_outcomes LIMIT 0")
         connection.execute("COMMIT")
     except SqliteError:
         _rollback_and_close(connection)
@@ -184,6 +233,9 @@ def open_sqlite_store(path: str) -> SQLiteJobStore:
         _rollback_and_close(connection)
         raise error
     return SQLiteJobStore(connection)
+
+def _valid_outcome(status: str) -> bool:
+    return status == "succeeded" or status == "handler-failed" or status == "skipped"
 
 def _open_connection(path: str) -> Connection:
     try:
