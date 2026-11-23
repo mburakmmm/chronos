@@ -1,0 +1,23 @@
+from handler_registry import HandlerRegistry
+from job import JobContext
+from job_codec import encode_once_utc, encode_policies
+from policy import default_job_policies
+from sqlite_store import open_sqlite_store
+from store import JobStore, make_stored_job_definition
+from stored_once import dispatch_stored_once
+from time import UtcInstant
+
+def report(context: JobContext, report_name: str) -> None:
+    print(context.job_id, report_name)
+
+handlers: HandlerRegistry = HandlerRegistry()
+handlers.register("daily-report", report)
+backend: JobStore = open_sqlite_store(":memory:")
+try:
+    created: UtcInstant = UtcInstant(1000)
+    due: UtcInstant = UtcInstant(2000)
+    backend.put(make_stored_job_definition("reports.daily", "Daily report", "daily-report", "daily-summary", "once-utc", encode_once_utc(due), encode_policies(default_job_policies()), True, created, created, 1), 0)
+    print(dispatch_stored_once(backend, handlers, "reports.daily", due))
+    print(dispatch_stored_once(backend, handlers, "reports.daily", due))
+finally:
+    backend.close()

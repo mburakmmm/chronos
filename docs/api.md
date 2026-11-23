@@ -31,6 +31,7 @@ Methods and fields are supported only when their contract is explicitly describe
 | `sqlite_store` | `SQLiteJobStore`, `open_sqlite_store` |
 | `handler_registry` | `HandlerRegistry` |
 | `job_codec` | `encode_once_utc`, `encode_cron_utc`, `encode_policies`, `restore_utc_job` |
+| `stored_once` | `dispatch_stored_once` |
 
 The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
 
@@ -244,6 +245,12 @@ The optional `sqlite_store` module implements this contract for one application-
 - `restore_utc_job(definition, handlers) -> Job` validates format versions and fields, reconstructs the UTC trigger and policies, and binds the configured handler. The returned job preserves identity, enabled state and UTC record timestamps, with fresh execution counters and empty metadata. The application decides when to register it.
 
 Malformed stored trigger or policy data raises `InvalidStoredJobError` without echoing the payload. Unknown versions and unknown handler keys keep their respective errors. See the [format reference](persistence.md#utc-definition-codec).
+
+## `chronos.stored_once` — Experimental
+
+`dispatch_stored_once(backend: JobStore, handlers: HandlerRegistry, job_id: str, now: UtcInstant) -> str` polls one stored UTC one-shot. The caller owns the store, clock and poll cadence. The function returns `missing`, `disabled` or `pending` for jobs that need no write. A due job is atomically disabled with a revision increment. The result is `skipped` for a misfire discarded by policy, `succeeded` if the callback returns or `handler-failed` if it raises. Callback exception text is discarded. A write error or revision conflict propagates before any callback runs.
+
+This path requires retry policy `none` and a store that commits the revision compare-and-swap before returning from `put`. A process exit between commit and invocation can leave the callback unstarted. Use a single owner with the verified SQLite adapter. See [one-shot delivery guarantees](persistence.md#at-most-once-utc-one-shot-dispatch).
 
 ## `chronos.registry` — Internal
 

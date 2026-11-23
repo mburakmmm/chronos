@@ -20,7 +20,7 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 - **Deterministic scheduling** — pure trigger calculations and fake-clock tests avoid timing-dependent unit tests.
 - **Bounded policies** — catch-up, overlap, retries, listeners, retained state, and parser work all have explicit limits.
 - **Portable execution** — the supported baseline is an application-owned manual scheduler with an inline executor.
-- **Honest guarantees** — no exactly-once, local-time cron, durable scheduling, force-cancellation, or distributed coordination claims.
+- **Explicit guarantees** — UTC schedules, application-owned polling and experimental at-most-once dispatch for stored UTC one-shots.
 
 ## Feature status
 
@@ -42,6 +42,7 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 | Background scheduler | Deferred | Runtime primitives are proven; full worker ownership is not |
 | IANA time zones and DST | Deferred | Current cron and calendar behavior is UTC-only |
 | SQLite definition store | Experimental | Single-owner, revision-checked adapter; scheduler is not connected |
+| Stored UTC one-shot dispatch | Experimental | At most one callback start per armed record through the single-owner SQLite path |
 | Durable scheduling and distributed coordination | Deferred | Definition reopen is proven, but no restart/delivery guarantee exists |
 
 ## Quick start
@@ -124,7 +125,7 @@ An active handler is allowed to return; shutdown starts no later due, catch-up, 
 - Default misfire behavior fires one late occurrence with maximum grace.
 - Default overlap behavior forbids a second instance.
 - Default retry behavior performs no retry.
-- All schedules are in memory and are lost when the process exits.
+- Jobs registered with the manual scheduler live in memory. The optional SQLite store persists definitions for explicit application-driven recovery.
 - Side-effecting handlers should be idempotent; exactly-once execution is not provided.
 
 ## Verification
@@ -138,11 +139,11 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 | macOS | arm64 | LLVM and QBE |
 | Windows | x64 | LLVM and QBE |
 
-The matrix runs all 21 deterministic tests, all 16 core examples, five core runtime/capability proofs, 14 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
+The matrix runs all 21 deterministic tests, all 16 core examples, five core runtime/capability proofs, 15 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
 
 A separate Linux x64 CI job uses checksum-pinned Nox 2.1.186 to fetch the exact Nyx `v0.29.0` and Aether `v0.12.0` locks and execute both optional integration examples on LLVM and QBE. These dependencies never enter the core manifest. See [framework integrations](docs/integrations.md) for the request-driven semantics and `NXL-007` source-overlay boundary.
 
-Another isolated Linux x64 job runs the retained Nox 2.1.111 SQLite primitive and `SQLiteJobStore` integration matrix on LLVM and QBE. It verifies transactional schema setup, prepared binding, definition reopen, revision conflicts, conditional deletion, corrupted rows, version rejection, and error redaction. It is not a scheduler persistence or crash-recovery claim.
+An isolated Linux x64 job verifies SQLite definition storage and UTC one-shot process restart using Nox 2.1.111 on LLVM and QBE. See [one-shot delivery guarantees](docs/persistence.md#at-most-once-utc-one-shot-dispatch).
 
 Run the complete local matrix with:
 

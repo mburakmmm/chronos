@@ -440,3 +440,7 @@ Compiler: checksum-pinned Nox 2.1.111. Host: macOS arm64.
 ### P5-CODEC-001 — version 1 UTC definition restoration
 
 The Nox 2.1.111 LLVM/QBE store tests verify exact signed-64-bit maximum values for UTC timestamps and policy durations, rejection of integer overflow and malformed configurations, and validation through the existing cron and policy constructors. The file-backed SQLite test verifies reconstructing a job from a committed record after reopening the database. The SQLite example dispatches the restored job through an explicitly driven scheduler.
+
+### P5-ONCE-001 — committed consumption before one-shot dispatch
+
+The Nox 2.1.111 LLVM/QBE subprocess suite verifies that `nox.os.exit` interrupts execution before the fixture's database close. A new process opens the same SQLite file after termination before the write, before commit, after commit and after a callback side effect. The verification script checks exit status, row revision, enabled state and an independent effect file. This covers single-owner process restart.

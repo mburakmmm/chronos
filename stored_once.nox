@@ -1,0 +1,49 @@
+from errors import InvalidStoredJobError, StoreError
+from handler_registry import HandlerRegistry
+from job import Job, JobContext
+from job_codec import restore_utc_job
+from policy import JobPolicies, MISFIRE_SKIP, RETRY_NONE
+from store import JobStore, StoredJobDefinition, copy_stored_job_definition
+from time import Duration, MAX_MS, UtcInstant
+
+def dispatch_stored_once(backend: JobStore, handlers: HandlerRegistry, job_id: str, now: UtcInstant) -> str:
+    observed: UtcInstant = UtcInstant(now.epoch_ms)
+    loaded: StoredJobDefinition | None = backend.load(job_id)
+    if loaded is None:
+        return "missing"
+    saved: StoredJobDefinition = copy_stored_job_definition(loaded)
+    if saved.job_id != job_id or saved.trigger_kind != "once-utc":
+        raise InvalidStoredJobError("stored one-shot definition required")
+    if not saved.enabled:
+        return "disabled"
+
+    restored: Job = restore_utc_job(saved, handlers)
+    config: JobPolicies = restored.policy_config()
+    if config.retry.kind != RETRY_NONE:
+        raise InvalidStoredJobError("stored one-shot dispatch requires no retry")
+    planned: UtcInstant | None = restored.next_utc_at_or_after(UtcInstant(0))
+    if planned is None:
+        raise InvalidStoredJobError("stored one-shot target is missing")
+    if observed.epoch_ms < planned.epoch_ms:
+        return "pending"
+
+    lateness: Duration = Duration(observed.epoch_ms - planned.epoch_ms)
+    skipped: bool = lateness.value_ms > 0 and config.misfire.action_for_lateness(lateness) == MISFIRE_SKIP
+    context: JobContext = JobContext(saved.job_id, "utc", planned.epoch_ms, 1)
+    if saved.revision == MAX_MS:
+        raise StoreError("stored one-shot revision cannot advance")
+    expected: int = saved.revision
+    saved.enabled = False
+    saved.revision = expected + 1
+    if observed.epoch_ms > saved.updated_at_utc_ms:
+        saved.updated_at_utc_ms = observed.epoch_ms
+
+    # A store must commit its compare-and-swap before returning success.
+    backend.put(saved, expected)
+    if skipped:
+        return "skipped"
+    try:
+        restored.run(context)
+    except Exception:
+        return "handler-failed"
+    return "succeeded"

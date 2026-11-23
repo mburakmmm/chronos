@@ -1,6 +1,6 @@
 # Optional persistence
 
-Status: Phase 5 store contract and experimental single-owner SQLite adapter; no scheduler integration or durable-scheduling claim yet.
+Status: Phase 5 experimental single-owner SQLite store and at-most-once UTC one-shot dispatch.
 
 Chronos remains dependency-free and in-memory unless an application explicitly imports and constructs `SQLiteJobStore`. The current scheduler does not read or write a store. The adapter persists bounded definitions only; it does not restore, register, or execute a job.
 
@@ -95,7 +95,7 @@ Run the retained proof with:
 python3 scripts/verify_persistence.py
 ```
 
-The adapter integration is not a scheduler durability test. It does not simulate process termination, disk-full behavior, torn writes, migration failure, or concurrent schedulers.
+The definition-store tests cover the database operations above. A separate subprocess suite covers one-shot delivery across process termination.
 
 ## Atomicity, crash windows, and restart boundary
 
@@ -105,12 +105,21 @@ SQLite owns journaling, synchronization, filesystem, and power-loss behavior; Ch
 
 Monotonic instants, running counts, retry deadlines, pending overlap state, callbacks, and execution outcomes are not stored. Reopening the database only recovers definitions. It does not restart a scheduler or establish how elapsed-time schedules should resume.
 
-## Delivery semantics
+## At-most-once UTC one-shot dispatch
 
-No current API promises at-most-once or at-least-once execution after restart. The scheduler is still ephemeral and ignores `JobStore`; therefore the adapter currently has **no job-delivery semantics**. Before a durable claim is added, scheduler integration must define and test:
+Applications can call `dispatch_stored_once` from their own polling loop with an explicit UTC reading. A future target stays enabled. A due target is validated and its policy evaluated. A single committed compare-and-swap advances the revision and sets `enabled = false` before any callback runs. The SQLite connection must stay in autocommit mode. The callback receives the original planned UTC timestamp and attempt `1`. A misfire skip also consumes the record. The callback runs synchronously.
 
-- the crash window before dispatch, after dispatch, and after handler side effects;
-- restart reconciliation of restored UTC one-shot and UTC cron jobs with prior execution state;
+An existing disabled definition returns `disabled`, whether it was consumed or disabled by the application. A disabled record carries no execution outcome. Explicitly enabling it again or deleting and recreating it arms a new delivery. Keep one application owner and choose one dispatch path per armed job. Poll these records through `dispatch_stored_once` rather than registering the same armed definition with the in-memory scheduler.
+
+If the process terminates before commit, an enabled record remains eligible under its misfire policy. If the commit succeeds and the process terminates before the callback starts, the next poll sees a disabled record and the callback is lost. After a callback starts, the next poll also sees a disabled record, whether the callback ran to completion, raised or performed only some of its side effects. The result returned by the function is transient. Use application-level idempotency for manual rearming and side effects.
+
+The verified SQLite suite reopens the same database in a fresh process after termination before the write, before transaction commit, after commit, and after a handler side effect. It also checks pending polls, misfire skip and a redacted handler failure. These tests establish process-restart behavior for a single owner. Power loss, disk failure, migration recovery and other backends require separate verification.
+
+Run the in-memory example with `noxc run examples/persistence/dispatch_once.nox`. Use a file-backed SQLite store for process-restart behavior.
+
+## Remaining delivery work
+
+- restart reconciliation of recurring UTC cron jobs with prior execution state;
 - explicit restart semantics for monotonic delay, fixed-rate, and fixed-delay schedules;
 - execution-state updates and migration recovery;
 - bounded execution/error history, if any;

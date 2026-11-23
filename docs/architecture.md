@@ -257,3 +257,7 @@ The Nox 2.1.111 proofs confirm file-backed SQLite reopen, explicit transactions,
 `sqlite_store.nox` remains separate from the pure `store.nox` contract and the core manifest still has no dependencies. The adapter stores definitions only: it has no handler hydration, scheduler state, execution history, migration, delivery, lease, or exactly-once semantics. Crash/restart scheduler integration remains a separate release gate.
 
 The application-owned `HandlerRegistry` assembles the executable callback in memory from an explicitly registered function and a validated definition. The registry stores neither schedules nor execution state. Unknown keys stop binding before a callback can run.
+
+### UTC one-shot consumption
+
+`dispatch_stored_once` is an application-driven entry point over `JobStore`. It validates a due one-shot and consumes it with one compare-and-swap before invoking the callback. The committed row remains disabled at the next revision. A process restart sees that state without a schema migration or execution-history table. The trade-off is possible loss between commit and callback invocation. Recurring occurrence tracking remains a separate design.

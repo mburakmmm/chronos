@@ -8,6 +8,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 ### Added
 
+- Experimental single-owner at-most-once UTC one-shot dispatch with a committed revision guard before callback invocation, verified across process termination and reopen on LLVM/QBE.
+
 - Application-owned handler registry for stored definitions, with bounded registrations, explicit unknown-key errors, and deferred execution of trusted typed callbacks.
 - Version 1 UTC one-shot, cron and policy codecs with explicit in-memory job restoration and fixed diagnostics for malformed stored configurations.
 

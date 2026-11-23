@@ -23,6 +23,7 @@ CASES = (
         "sqlite-store-ok",
     ),
     ("examples/persistence/sqlite_definitions.nox", "reports.daily daily-summary"),
+    ("examples/persistence/dispatch_once.nox", "reports.daily daily-summary\nsucceeded\ndisabled"),
 )
 
 
@@ -32,7 +33,7 @@ def display(arguments: list[str]) -> str:
     return shlex.join(arguments)
 
 
-def run(arguments: list[str], env: dict[str, str] | None = None) -> str:
+def run(arguments: list[str], env: dict[str, str] | None = None, expected_status: int = 0) -> str:
     print(f"+ {display(arguments)}", flush=True)
     completed = subprocess.run(
         arguments,
@@ -42,13 +43,50 @@ def run(arguments: list[str], env: dict[str, str] | None = None) -> str:
         stderr=subprocess.STDOUT,
         text=True,
         env=env,
+        timeout=90,
     )
     output = completed.stdout.strip()
-    if completed.returncode != 0:
+    if completed.returncode != expected_status:
         if output:
             print(output, file=sys.stderr)
-        raise RuntimeError(f"command failed: {display(arguments)}")
+        raise RuntimeError(f"expected exit {expected_status}, got {completed.returncode}: {display(arguments)}")
     return output
+
+
+def verify_once_restart(backend: str) -> None:
+    effect = "once:1000:1:public\n"
+    scenarios = (
+        ("before-write", 71, "", "", "succeeded 2 False 1100", effect),
+        ("before-commit", 74, "", "", "succeeded 2 False 1100", effect),
+        ("after-commit", 72, "", "", "disabled 2 False 1050", ""),
+        ("after-effect", 73, "", effect, "disabled 2 False 1050", effect),
+        ("handler-error", 0, "handler-failed 2 False 1050", effect, "disabled 2 False 1050", effect),
+        ("skip", 0, "skipped 2 False 1050", "", "disabled 2 False 1050", ""),
+    )
+    with tempfile.TemporaryDirectory(prefix="chronos-once-restart-") as directory:
+        root = Path(directory)
+        executable = root / "worker"
+        run([NOXC, "build", "--backend", backend, "-o", str(executable), "proofs/persistence/once_restart_worker.nox"])
+        for mode, status, output, initial_effect, restart, final_effect in scenarios:
+            database = root / f"{mode}.db"
+            effects = root / f"{mode}.effects"
+            command = [str(executable), str(database), str(effects)]
+            run([*command, "init-skip" if mode == "skip" else "init"])
+            pending = run([*command, "poll", "999"])
+            if pending != "pending 1 True 200" or effects.exists():
+                raise RuntimeError(f"{backend}/{mode}: polling before the deadline changed state")
+            initial = run([*command, mode, "1050"], expected_status=status)
+            observed = effects.read_text() if effects.exists() else ""
+            if initial != output or observed != initial_effect:
+                raise RuntimeError(f"{backend}/{mode}: unexpected state at interruption")
+            recovered = run([*command, "poll", "1100"])
+            observed = effects.read_text() if effects.exists() else ""
+            if recovered != restart or observed != final_effect:
+                raise RuntimeError(f"{backend}/{mode}: unexpected state after reopening")
+            again = run([*command, "poll", "1200"])
+            if not again.startswith("disabled 2 False ") or (effects.read_text() if effects.exists() else "") != final_effect:
+                raise RuntimeError(f"{backend}/{mode}: consumed job dispatched again")
+            print(f"  PASS restart {mode} ({backend})", flush=True)
 
 
 def main() -> int:
@@ -69,7 +107,9 @@ def main() -> int:
                     f"expected:\n{expected}\nactual:\n{output}"
                 )
             print(f"  PASS {source} ({backend})", flush=True)
-    print("Verified SQLite primitives and the single-owner Chronos adapter on LLVM/QBE.")
+    for backend in ("llvm", "qbe"):
+        verify_once_restart(backend)
+    print("Verified SQLite primitives, definition storage and one-shot restart on LLVM/QBE.")
     return 0
 
 

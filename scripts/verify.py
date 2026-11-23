@@ -26,6 +26,7 @@ FREESTANDING_MODULES = (
     "registry.nox",
     "scheduler.nox",
     "store.nox",
+    "stored_once.nox",
     "time.nox",
     "trigger.nox",
 )

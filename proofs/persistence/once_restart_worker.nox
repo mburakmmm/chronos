@@ -1,0 +1,79 @@
+import nox.fs
+import nox.os
+import nox.test
+from handler_registry import HandlerRegistry
+from job import JobContext
+from job_codec import encode_once_utc, encode_policies
+from policy import JobPolicies, default_job_policies, forbid_overlap, no_retry, skip_misfires
+from sqlite_store import SQLiteJobStore, open_sqlite_store
+from store import JobStore, StoredJobDefinition, make_stored_job_definition
+from stored_once import dispatch_stored_once
+from time import Duration, UtcInstant
+
+class InterruptedStore:
+    backend: SQLiteJobStore
+    mode: str
+
+    def __init__(self, backend: SQLiteJobStore, mode: str) -> None:
+        self.backend = backend
+        self.mode = mode
+
+    def load(self, job_id: str) -> StoredJobDefinition | None:
+
+        return self.backend.load(job_id)
+
+    def load_all(self) -> list[StoredJobDefinition]:
+
+        return self.backend.load_all()
+
+    def put(self, definition: StoredJobDefinition, expected_revision: int) -> None:
+
+        if self.mode == "before-write":
+            nox.os.exit(71)
+        if self.mode == "before-commit":
+            self.backend.connection.execute("BEGIN IMMEDIATE")
+            self.backend.put(definition, expected_revision)
+            nox.os.exit(74)
+        self.backend.put(definition, expected_revision)
+        if self.mode == "after-commit":
+            nox.os.exit(72)
+
+    def delete(self, job_id: str, expected_revision: int) -> None:
+
+        self.backend.delete(job_id, expected_revision)
+
+    def close(self) -> None:
+
+        self.backend.close()
+
+def make_handler(path: str, mode: str) -> (JobContext, str) -> None:
+    def handle(context: JobContext, config: str) -> None:
+        nox.fs.append_string(path, context.job_id + ":" + str(context.scheduled_time_ms) + ":" + str(context.attempt) + ":" + config + "\n")
+        if mode == "after-effect":
+            nox.os.exit(73)
+        if mode == "handler-error":
+            raise ValueError("private handler message")
+
+    return handle
+
+database_path: str = nox.os.arg(1)
+effect_path: str = nox.os.arg(2)
+mode: str = nox.os.arg(3)
+sqlite: SQLiteJobStore = open_sqlite_store(database_path)
+backend: JobStore = InterruptedStore(sqlite, mode)
+try:
+    if mode == "init" or mode == "init-skip":
+        policies: JobPolicies = default_job_policies()
+        if mode == "init-skip":
+            policies = JobPolicies(skip_misfires(Duration(500)), forbid_overlap(), no_retry())
+        backend.put(make_stored_job_definition("once", "One-shot", "example", "public", "once-utc", encode_once_utc(UtcInstant(1000)), encode_policies(policies), True, UtcInstant(100), UtcInstant(200), 1), 0)
+    else:
+        handlers: HandlerRegistry = HandlerRegistry()
+        handlers.register("example", make_handler(effect_path, mode))
+        result: str = dispatch_stored_once(backend, handlers, "once", UtcInstant(int(nox.os.arg(4))))
+        record: StoredJobDefinition | None = backend.load("once")
+        nox.test.assert_true(record is not None, "consumption retains the definition")
+        if record is not None:
+            print(result, record.revision, record.enabled, record.updated_at_utc_ms)
+finally:
+    backend.close()
