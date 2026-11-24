@@ -40,6 +40,7 @@ PROOF_EXPECTATIONS = {
     "proofs/scheduler_sleep_probe.nox": "fast sleeper",
     "proofs/timezone/resolve_probe.nox": "timezone-prototype-ok",
     "proofs/timezone/local_cron_probe.nox": "local-cron-prototype-ok",
+    "proofs/timezone/manual_scheduler_probe.nox": "timezone-scheduler-ok",
 }
 BENCHMARK_SOURCES = (
     "benchmarks/cron_benchmark.nox",

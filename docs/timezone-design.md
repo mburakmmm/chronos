@@ -40,4 +40,12 @@ LLVM and QBE agree at millisecond boundaries around Berlin gaps and folds, Lord 
 
 The prototype implements inclusive and exclusive UTC queries. It accepts references from the table's UTC start plus 48 hours through its UTC end minus 48 hours, exclusive. The same interval bounds returned occurrences and leaves enough rule coverage to classify ambiguous local times. Exhausting that interval returns `None`. Invalid references and matcher search exhaustion remain errors. Each query evaluates at most 2,048 local candidates.
 
-The proof covers all four fold policies, nonexistent times, increasing UTC order, Lord Howe's half-hour transitions, a local weekday that differs from the UTC weekday, and second-resolution offsets. Run it with `noxc run --backend llvm proofs/timezone/local_cron_probe.nox` or use `--backend qbe`. A general-purpose data provider, scheduler integration and persisted zoned schedules still require validation.
+The proof covers all four fold policies, nonexistent times, increasing UTC order, Lord Howe's half-hour transitions, a local weekday that differs from the UTC weekday, and second-resolution offsets. Run it with `noxc run --backend llvm proofs/timezone/local_cron_probe.nox` or use `--backend qbe`. A general-purpose data provider and persisted zoned schedules still require validation.
+
+## Manual scheduler integration proof
+
+`ManualLocalCronTrigger` adapts the prototype to `UtcTrigger`. Tests register it with `make_utc_job_with_policies` and drive `Scheduler` with `FakeClock`. Callback context contains the planned UTC millisecond and attempt number. The tests cover inclusive registration, both fold occurrences, a backward clock jump, an omitted spring gap and bounded catch-up.
+
+Registration requires complete coverage. If completion or a late tick moves to or beyond the effective coverage end, the adapter's exclusive query returns `None` and clears the next run. This preserves the scheduler's normal late-occurrence policy while preventing replay of the final occurrence. Direct prototype queries still report an out-of-coverage reference. These contracts apply to the in-memory proof under `proofs/timezone`.
+
+Run `noxc run --backend llvm proofs/timezone/manual_scheduler_probe.nox` and repeat with `--backend qbe`.

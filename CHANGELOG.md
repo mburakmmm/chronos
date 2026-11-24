@@ -9,6 +9,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Internal IANA timezone proof for bounded local-time resolution on LLVM and QBE, using reproducible 2026f fixtures for three zones.
 - Validated Gregorian civil fields and explicit ruleset version checks in the internal timezone prototype.
 - Internal local cron trigger proof with explicit fold selection, gap skipping and monotonic UTC search across offset transitions.
+- Manual scheduler integration proof for local cron, including clock rollback, bounded catch-up and terminal coverage exhaustion.
 
 ## 0.5.0 — 2026-11-24
 

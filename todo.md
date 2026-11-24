@@ -418,6 +418,7 @@ Faz 5 geliştirme kapsamı tamamlandı. Sürüm etiketi ve yayın kullanıcı on
 - [x] Üç bölgeli Nox prototipinde UTC adaylarını ve saat geçişi sınırlarını LLVM/QBE üzerinde doğrula.
 - [x] Yerel Gregorian tarih ve saat alanlarını doğrula; açık sürüm eşleşmesi isteyen fixture sağlayıcısını LLVM/QBE üzerinde test et.
 - [x] Yerel beş alanlı cron prototipinde fold seçimini, gap skip davranışını ve artan UTC sırasını doğrula.
+- [x] Yerel cron prototipini FakeClock ile manuel scheduler'a bağla; fold, gap, UTC geri sıçraması, catch-up ve kapsama bitişini test et.
 - [ ] Named zone, ambiguous fall-back ve nonexistent spring-forward policy'lerini tasarla.
 - [ ] Half-hour/unusual offset, southern hemisphere ve tarihsel transition testleri ekle.
 - [ ] Makine locale'ından implicit timezone çıkarma.

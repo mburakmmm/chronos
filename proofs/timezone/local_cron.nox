@@ -31,10 +31,14 @@ class LocalCronPrototype:
 
         return self._next(reference, 0)
 
+    def coverage_end_utc_ms(self) -> int:
+
+        return self.rules.end_utc_ms - 2 * WALL_MARGIN_MS
+
     def _next(self, reference: UtcInstant, advance: int) -> UtcInstant | None:
 
         start: int = self.rules.start_utc_ms + 2 * WALL_MARGIN_MS
-        end: int = self.rules.end_utc_ms - 2 * WALL_MARGIN_MS
+        end: int = self.coverage_end_utc_ms()
         if reference.epoch_ms < start or reference.epoch_ms >= end:
             raise TimeRangeError("reference is outside local cron coverage")
         lower: int = reference.epoch_ms + advance
@@ -87,3 +91,20 @@ class LocalCronPrototype:
         if self.fold_policy == "last":
             return candidates[len(candidates) - 1].epoch_ms == candidate
         return False
+
+class ManualLocalCronTrigger:
+    prototype: LocalCronPrototype
+
+    def __init__(self, prototype: LocalCronPrototype) -> None:
+        self.prototype = prototype
+
+    def next_fire_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        # Completion time may jump past the last covered instant after a callback.
+        if reference.epoch_ms >= self.prototype.coverage_end_utc_ms():
+            return None
+        return self.prototype.next_fire_after(reference)
+
+    def next_fire_at_or_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        return self.prototype.next_fire_at_or_after(reference)

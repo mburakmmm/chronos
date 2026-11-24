@@ -1,0 +1,103 @@
+import nox.test
+from clock import FakeClock
+from errors import TimeRangeError
+from job import Job, JobContext, make_utc_job_with_policies
+from policy import JobPolicies, catch_up_misfires, default_job_policies, forbid_overlap, no_retry
+from proofs.timezone.fixture import FixtureZoneProvider
+from proofs.timezone.local_cron import LocalCronPrototype, ManualLocalCronTrigger
+from scheduler import Scheduler, TickResult
+from time import Duration, UtcInstant
+
+class Observation:
+    planned: list[int]
+
+    def __init__(self) -> None:
+        self.planned = []
+
+def record_into(observed: Observation) -> (JobContext) -> None:
+    def record(context: JobContext) -> None:
+        nox.test.assert_eq_str(context.time_domain, "utc", "scheduler context carries UTC")
+        nox.test.assert_eq_int(context.attempt, 1, "one attempt per occurrence")
+        observed.planned.append(context.scheduled_time_ms)
+
+    return record
+
+def make_local(expression: str, observed: Observation, policies: JobPolicies) -> Job:
+    prototype: LocalCronPrototype = LocalCronPrototype(FixtureZoneProvider(), "2026f", "Europe/Berlin", expression, "both", "skip")
+    return make_utc_job_with_policies("local", "Local cron proof", ManualLocalCronTrigger(prototype), record_into(observed), True, UtcInstant(0), [], policies)
+
+def verify_next(engine: Scheduler, expected: int) -> None:
+    due: UtcInstant | None = engine.next_run_utc("local")
+    nox.test.assert_true(due is not None, "job should have a scheduled UTC instant")
+    if due is not None:
+        nox.test.assert_eq_int(due.epoch_ms, expected, "scheduled UTC instant")
+
+def rejects_registration(engine: Scheduler, candidate: Job) -> bool:
+    try:
+        engine.add(candidate)
+    except TimeRangeError:
+        return True
+    return False
+
+first_fold: int = 1729989000000
+last_fold: int = 1729992600000
+fall_clock: FakeClock = FakeClock(first_fold, 0)
+fall_observed: Observation = Observation()
+fall_engine: Scheduler = Scheduler(fall_clock, 1)
+fall_engine.add(make_local("30 2 * * *", fall_observed, default_job_policies()))
+fall_engine.start()
+verify_next(fall_engine, first_fold)
+nox.test.assert_eq_int(fall_engine.tick().dispatched(), 1, "inclusive registration fires at first fold boundary")
+verify_next(fall_engine, last_fold)
+fall_clock.jump_utc_ms(-3600000)
+nox.test.assert_eq_int(fall_engine.tick().dispatched(), 0, "clock rollback cannot refire consumed occurrence")
+fall_clock.set_utc_ms(first_fold)
+nox.test.assert_eq_int(fall_engine.tick().dispatched(), 0, "first fold occurrence stays consumed")
+fall_clock.set_utc_ms(last_fold)
+nox.test.assert_eq_int(fall_engine.tick().dispatched(), 1, "second fold occurrence fires")
+nox.test.assert_eq_int(len(fall_observed.planned), 2, "two callback invocations")
+nox.test.assert_eq_int(fall_observed.planned[0], first_fold, "first UTC instant recorded")
+nox.test.assert_eq_int(fall_observed.planned[1], last_fold, "second UTC instant recorded")
+nox.test.assert_eq_int(fall_engine.tick().dispatched(), 0, "same tick timestamp does not repeat")
+fall_engine.stop()
+
+spring_clock: FakeClock = FakeClock(1711846799999, 0)
+spring_observed: Observation = Observation()
+spring_engine: Scheduler = Scheduler(spring_clock, 1)
+spring_engine.add(make_local("30 2 * * *", spring_observed, default_job_policies()))
+spring_engine.start()
+verify_next(spring_engine, 1711931400000)
+spring_clock.set_utc_ms(1711848600000)
+nox.test.assert_eq_int(spring_engine.tick().dispatched(), 0, "nonexistent local occurrence does not dispatch")
+spring_clock.set_utc_ms(1711931400000)
+nox.test.assert_eq_int(spring_engine.tick().succeeded, 1, "next valid local day dispatches")
+nox.test.assert_eq_int(spring_observed.planned[0], 1711931400000, "spring callback gets valid UTC instant")
+spring_engine.stop()
+
+catch_clock: FakeClock = FakeClock(first_fold - 1, 0)
+catch_observed: Observation = Observation()
+catch_engine: Scheduler = Scheduler(catch_clock, 1)
+catch_engine.add(make_local("30 2 * * *", catch_observed, JobPolicies(catch_up_misfires(Duration(7200000), 2, 8), forbid_overlap(), no_retry())))
+catch_engine.start()
+catch_clock.set_utc_ms(last_fold + 1)
+batch: TickResult = catch_engine.tick()
+nox.test.assert_eq_int(batch.catch_up_dispatched, 2, "bounded catch-up consumes both eligible fold instants")
+nox.test.assert_eq_int(catch_observed.planned[0], first_fold, "catch-up preserves earlier UTC instant")
+nox.test.assert_eq_int(catch_observed.planned[1], last_fold, "catch-up preserves later UTC instant")
+nox.test.assert_eq_int(catch_engine.tick().dispatched(), 0, "catch-up does not replay")
+catch_engine.stop()
+
+end_clock: FakeClock = FakeClock(1767052740000, 0)
+end_observed: Observation = Observation()
+end_engine: Scheduler = Scheduler(end_clock, 1)
+end_engine.add(make_local("* * * * *", end_observed, default_job_policies()))
+end_engine.start()
+end_clock.set_utc_ms(1767052800000)
+nox.test.assert_eq_int(end_engine.tick().succeeded, 1, "allowed late occurrence can run at coverage end")
+nox.test.assert_true(end_engine.next_run_utc("local") is None, "coverage exhaustion clears the schedule")
+nox.test.assert_eq_int(end_engine.tick().dispatched(), 0, "late final occurrence does not replay")
+end_engine.stop()
+outside: Scheduler = Scheduler(end_clock, 1)
+nox.test.assert_true(rejects_registration(outside, make_local("* * * * *", end_observed, default_job_policies())), "new outside-coverage registration fails")
+nox.test.assert_eq_int(len(outside.list_jobs()), 0, "failed registration leaves scheduler unchanged")
+print("timezone-scheduler-ok")
