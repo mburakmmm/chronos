@@ -403,6 +403,9 @@ Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementa
 
 Faz 5 geliştirme kapsamı tamamlandı. Sürüm etiketi ve yayın kullanıcı onayına bağlıdır. Power-loss, paylaşımlı yürütme ve kalıcı monotonic scheduling bu kapsamın dışındadır.
 
+- [x] `24f970d` için [altı CI işinin tamamını](https://github.com/mburakmmm/chronos/actions/runs/45267286106) doğrula ve [0.5.0 yayın taslağını](docs/release-0.5.0.md) hazırla.
+- [ ] Açık kullanıcı onayıyla nihai sürüm commit'ini doğrula, `v0.5.0` etiketi ve GitHub kaynak sürümünü yayımla.
+
 ---
 
 # Phase 6 — Chronos `0.6+`: ileri scheduling — bağımsız onay ve inceleme gerekir

@@ -2,7 +2,7 @@
 
 Status: Phase 5 core/store-contract and experimental SQLite adapter compatibility baseline.
 
-Last verified locally: 2026-11-20
+Last verified locally: 2026-11-24
 
 ## Verified development target
 
@@ -15,7 +15,7 @@ Last verified locally: 2026-11-20
 | Default profile | hosted | core, scheduler, examples, and `SystemClock` verified |
 | Freestanding profile | no clock capability | 17 clock-independent modules type-checked on LLVM and QBE |
 
-This table records a reproducible development baseline, not a promise that every earlier or later Nox release behaves identically. A minimum supported Nox version has not been selected. The complete cross-platform run is recorded in [GitHub Actions run 43460710827](https://github.com/mburakmmm/chronos/actions/runs/43460710827) for commit `a8211b0`.
+This table records a reproducible development baseline. A minimum supported Nox version has not been selected. The Phase 5 cross-platform run is recorded in [GitHub Actions run 45267286106](https://github.com/mburakmmm/chronos/actions/runs/45267286106) for commit `24f970d`.
 
 ## Backend matrix
 
@@ -85,7 +85,7 @@ The data-only `store.nox` module is part of the pure cross-platform matrix and d
 | Persistent scheduler lifecycle, bounded outcomes and SQLite reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 | SQLite v1-to-v2 outcome migration, rollback and retention | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
 
-SQLite runtime evidence covers macOS arm64 and the isolated Linux x64 CI job. Power-loss recovery, concurrent schedulers, migration recovery and SQLite support on other targets require separate verification.
+SQLite runtime evidence covers macOS arm64 and the isolated Linux x64 CI job. The suite covers rollback and retry of the v1-to-v2 migration. Power-loss recovery, concurrent schedulers and SQLite support on other targets require separate verification.
 
 ## Platform claims
 
