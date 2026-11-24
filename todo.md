@@ -404,13 +404,15 @@ Bu faz MVP'nin parçası değildir. Kullanıcı açıkça onaylamadan implementa
 Faz 5 geliştirme kapsamı tamamlandı. Sürüm etiketi ve yayın kullanıcı onayına bağlıdır. Power-loss, paylaşımlı yürütme ve kalıcı monotonic scheduling bu kapsamın dışındadır.
 
 - [x] `24f970d` için [altı CI işinin tamamını](https://github.com/mburakmmm/chronos/actions/runs/45267286106) doğrula ve [0.5.0 yayın taslağını](docs/release-0.5.0.md) hazırla.
-- [ ] Açık kullanıcı onayıyla nihai sürüm commit'ini doğrula, `v0.5.0` etiketi ve GitHub kaynak sürümünü yayımla.
+- [x] `b9bbba6` için [nihai CI koşusundaki altı işi](https://github.com/mburakmmm/chronos/actions/runs/45336722843) doğrula ve kullanıcı onayıyla [`v0.5.0` GitHub kaynak sürümünü](https://github.com/mburakmmm/chronos/releases/tag/v0.5.0) yayımla.
 
 ---
 
 # Phase 6 — Chronos `0.6+`: ileri scheduling — bağımsız onay ve inceleme gerekir
 
 ## IANA timezone ve calendar
+
+- [x] İlk dilim için [IANA ve DST prototip taslağını](docs/timezone-design.md) hazırla.
 
 - [ ] Lisanslı/sürümlenebilir gerçek IANA tzdata kaynağı doğrulanmadan başlama.
 - [ ] Named zone, ambiguous fall-back ve nonexistent spring-forward policy'lerini tasarla.
