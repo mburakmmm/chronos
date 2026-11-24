@@ -1,0 +1,44 @@
+import nox.time
+from proofs.timezone.model import LocalWallTime, ZonePrototypeError, ZoneRules
+from time import UtcInstant
+
+class LocalDateTime:
+    wall_ms: int
+
+    def __init__(self, year: int, month: int, day: int, hour: int, minute: int, second: int, millisecond: int) -> None:
+        if year < 1970 or year > 9999 or month < 1 or month > 12:
+            raise ZonePrototypeError("invalid civil year or month")
+        if day < 1 or day > _month_days(year, month):
+            raise ZonePrototypeError("invalid civil day")
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59 or second < 0 or second > 59 or millisecond < 0 or millisecond > 999:
+            raise ZonePrototypeError("invalid civil clock fields")
+        calendar: nox.time.DateTime = nox.time.DateTime(year, month, day, hour, minute, second)
+        # Project the calendar fields onto the epoch axis without selecting an offset.
+        self.wall_ms = calendar.to_epoch_ms() + millisecond
+
+    def to_wall_time(self) -> LocalWallTime:
+
+        return LocalWallTime(self.wall_ms)
+
+protocol ZoneProvider:
+    def version(self: ZoneProvider) -> str:
+        pass
+
+    def rules_for(self: ZoneProvider, zone_name: str) -> ZoneRules:
+
+        pass
+
+def resolve_civil(provider: ZoneProvider, expected_version: str, zone_name: str, civil: LocalDateTime) -> list[UtcInstant]:
+    if expected_version == "" or provider.version() != expected_version:
+        raise ZonePrototypeError("timezone ruleset version mismatch")
+    rules: ZoneRules = provider.rules_for(zone_name)
+    return rules.resolve(civil.to_wall_time())
+
+def _month_days(year: int, month: int) -> int:
+    if month == 2:
+        if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+            return 29
+        return 28
+    if month == 4 or month == 6 or month == 9 or month == 11:
+        return 30
+    return 31

@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 
 ARCHIVE_SHA256 = "01b4a91cec5167ed48c11e8ab78f2048cead78ce94b0cafcad0ae8c5a3044d3d"
+TZDATA_VERSION = "2026f"
 TOOL_VERSION = "2022g"
 CASES = (
     ("Europe/Berlin", 2024, 2026),
@@ -83,6 +84,17 @@ def fixture(archive: Path) -> str:
             lines.append(f'    if zone_name == "{name}":')
             lines.append(f"        return ZoneRules({start_seconds * 1000}, {end_seconds * 1000}, {initial_offset}, [{', '.join(transitions)}])")
     lines.append('    raise ZonePrototypeError("unknown timezone fixture")')
+    lines.extend([
+        "",
+        "class FixtureZoneProvider:",
+        "    def version(self) -> str:",
+        "",
+        f'        return "{TZDATA_VERSION}"',
+        "",
+        "    def rules_for(self, zone_name: str) -> ZoneRules:",
+        "",
+        "        return fixture_rules(zone_name)",
+    ])
     return "\n".join(lines) + "\n"
 
 

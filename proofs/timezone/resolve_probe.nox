@@ -1,6 +1,7 @@
 import nox.test
 from errors import TimeRangeError
-from proofs.timezone.fixture import fixture_rules
+from proofs.timezone.civil import LocalDateTime, ZoneProvider, resolve_civil
+from proofs.timezone.fixture import FixtureZoneProvider, fixture_rules
 from proofs.timezone.model import LocalWallTime, ZonePrototypeError, ZoneRules, ZoneTransition, select_occurrences
 from time import UtcInstant
 
@@ -63,4 +64,41 @@ verify(second_offset, 172845000, [172800000])
 nox.test.assert_true(rejects_bad_zone(), "unknown zones are rejected")
 nox.test.assert_true(rejects_outside(berlin), "incomplete boundary coverage is rejected")
 nox.test.assert_true(rejects_unordered_rules(), "unordered tables are rejected")
+
+def rejects_civil(year: int, month: int, day: int, hour: int, minute: int, second: int, ms: int) -> bool:
+    try:
+        LocalDateTime(year, month, day, hour, minute, second, ms)
+    except ZonePrototypeError:
+        return True
+    return False
+
+def rejects_provider_request(provider: ZoneProvider, version: str, zone_name: str, expected: str) -> bool:
+    try:
+        resolve_civil(provider, version, zone_name, LocalDateTime(2024, 10, 27, 2, 0, 0, 0))
+    except ZonePrototypeError as error:
+        return error.message == expected
+    return False
+
+provider: ZoneProvider = FixtureZoneProvider()
+nox.test.assert_eq_str(provider.version(), "2026f", "fixture advertises the pinned ruleset")
+calendar_fold: list[UtcInstant] = resolve_civil(provider, "2026f", "Europe/Berlin", LocalDateTime(2024, 10, 27, 2, 59, 59, 999))
+nox.test.assert_eq_int(len(calendar_fold), 2, "fold survives civil conversion")
+nox.test.assert_eq_int(calendar_fold[0].epoch_ms, 1729990799999, "first fold preserves milliseconds")
+nox.test.assert_eq_int(calendar_fold[1].epoch_ms, 1729994399999, "second fold preserves milliseconds")
+nox.test.assert_eq_int(len(resolve_civil(provider, "2026f", "Europe/Berlin", LocalDateTime(2024, 3, 31, 2, 0, 0, 0))), 0, "civil gap yields no candidate")
+ordinary: list[UtcInstant] = resolve_civil(provider, "2026f", "Asia/Kathmandu", LocalDateTime(1986, 1, 1, 0, 15, 0, 12))
+nox.test.assert_eq_int(len(ordinary), 1, "ordinary civil result is unambiguous")
+nox.test.assert_eq_int(ordinary[0].epoch_ms, 504901800012, "historical offset preserves milliseconds")
+nox.test.assert_eq_int(LocalDateTime(2000, 2, 29, 0, 0, 0, 9).to_wall_time().wall_ms, 951782400009, "century leap rule")
+nox.test.assert_eq_int(LocalDateTime(9999, 12, 31, 23, 59, 59, 999).to_wall_time().wall_ms, 253402300799999, "civil construction upper bound")
+nox.test.assert_true(rejects_civil(2100, 2, 29, 0, 0, 0, 0), "century non-leap rule")
+nox.test.assert_true(rejects_civil(2024, 4, 31, 0, 0, 0, 0), "month-specific day bounds")
+nox.test.assert_true(rejects_civil(2024, 13, 1, 0, 0, 0, 0), "month must be in range")
+nox.test.assert_true(rejects_civil(1969, 12, 31, 23, 59, 59, 999), "pre-epoch civil year rejected")
+nox.test.assert_true(rejects_civil(2024, 1, 1, 24, 0, 0, 0), "24:00 rejected")
+nox.test.assert_true(rejects_civil(2024, 1, 1, 0, 0, 60, 0), "leap second rejected")
+nox.test.assert_true(rejects_civil(2024, 1, 1, 0, 0, 0, 1000), "milliseconds must be in range")
+nox.test.assert_true(rejects_provider_request(provider, "2026e", "Europe/Berlin", "timezone ruleset version mismatch"), "different ruleset rejected")
+nox.test.assert_true(rejects_provider_request(provider, "", "Europe/Berlin", "timezone ruleset version mismatch"), "explicit ruleset required")
+nox.test.assert_true(rejects_provider_request(provider, "2026f", "Europe/Unknown", "unknown timezone fixture"), "unknown zone fails closed")
 print("timezone-prototype-ok")

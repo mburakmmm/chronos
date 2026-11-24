@@ -7,6 +7,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 ## Unreleased
 
 - Internal IANA timezone proof for bounded local-time resolution on LLVM and QBE, using reproducible 2026f fixtures for three zones.
+- Validated Gregorian civil fields and explicit ruleset version checks in the internal timezone prototype.
 
 ## 0.5.0 — 2026-11-24
 

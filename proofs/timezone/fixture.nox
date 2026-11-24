@@ -9,3 +9,12 @@ def fixture_rules(zone_name: str) -> ZoneRules:
     if zone_name == "Asia/Kathmandu":
         return ZoneRules(473385600000, 567993600000, 19800, [ZoneTransition(504901800000, 20700)])
     raise ZonePrototypeError("unknown timezone fixture")
+
+class FixtureZoneProvider:
+    def version(self) -> str:
+
+        return "2026f"
+
+    def rules_for(self, zone_name: str) -> ZoneRules:
+
+        return fixture_rules(zone_name)

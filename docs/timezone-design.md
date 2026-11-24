@@ -1,6 +1,6 @@
 # Phase 6 timezone prototype
 
-The internal prototype maps local wall-clock coordinates to UTC candidates using bounded transition tables. It lives under `proofs/timezone`. The public scheduler in Chronos 0.5.0 uses UTC.
+The internal prototype maps local civil fields to UTC candidates using bounded transition tables. It lives under `proofs/timezone`. The public scheduler in Chronos 0.5.0 uses UTC.
 
 ## Data and scope
 
@@ -24,6 +24,12 @@ noxc run --backend qbe proofs/timezone/resolve_probe.nox
 - Historical UTC offsets may include seconds, and changes can be smaller than one hour. Keep the full offset when resolving a calendar timestamp.
 - A ruleset revision changes the interpretation of future civil times. An eventual persistence format must record the zone, ruleset version and resolution policies. Reconciliation across versions needs an explicit migration.
 
+## Civil input and provider contract
+
+`LocalDateTime(year, month, day, hour, minute, second, millisecond)` validates proleptic Gregorian fields for years 1970–9999. Gregorian leap-year rules apply. The constructor accepts seconds 0–59 and milliseconds 0–999. It uses Nox's calendar conversion only to encode fields on an epoch-shaped wall coordinate. The zone provider supplies the offset rules that turn that coordinate into UTC instants.
+
+The prototype `ZoneProvider` protocol exposes `version()` and `rules_for(zone_name)`. `resolve_civil(provider, expected_version, zone_name, civil)` requires a nonempty exact version match before looking up the zone. The generated provider uses explicit, case-sensitive IANA names. An unknown zone or version fails explicitly. Actual date coverage remains the narrower window declared by the returned rule table.
+
 ## Verified behavior and remaining work
 
-LLVM and QBE agree at millisecond boundaries around Berlin gaps and folds, Lord Howe's half-hour DST transitions, and Kathmandu's historical 15-minute shift. A synthetic rule verifies second-resolution offsets. A full zone provider, a civil calendar API, local cron and persisted zoned schedules require separate validation.
+LLVM and QBE agree at millisecond boundaries around Berlin gaps and folds, Lord Howe's half-hour DST transitions, and Kathmandu's historical 15-minute shift. A synthetic rule verifies second-resolution offsets. The civil probe also covers year 2000 versus 2100, invalid month lengths, invalid clock fields, and wrong or absent ruleset versions. A general-purpose data provider, local cron and persisted zoned schedules require separate validation.
