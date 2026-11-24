@@ -6,6 +6,8 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 ## Unreleased
 
+## 0.5.0 — 2026-11-24
+
 ### Added
 
 - SQLite credential-reference example and regression verification for runtime-only credential lookup, absent credentials and fixed stored outcomes.
@@ -108,7 +110,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 ### Breaking changes for pinned development snapshots
 
-No Chronos version has been tagged or published yet. The following changes affect applications pinned to earlier `0.1.0-dev` or `0.2.0-dev` commits:
+The following changes affect applications pinned to earlier `0.1.0-dev` or `0.2.0-dev` commits:
 
 - Custom `UtcTrigger` and `MonotonicTrigger` implementations must provide inclusive `next_fire_at_or_after` in addition to strictly-exclusive `next_fire_after`; this preserves exact registration-time boundaries.
 - Direct construction of `UtcJob`, `MonotonicJob`, `FixedDelayJob`, and base `Job` is no longer supported. Use the source-compatible `make_*` factories or the explicit `make_*_with_policies` variants.

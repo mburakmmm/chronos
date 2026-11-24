@@ -1,6 +1,6 @@
 # Chronos migration guide
 
-Status: `0.5.0-dev`; no Chronos release has been tagged.
+Status: `0.5.0` source release.
 
 Chronos follows Semantic Versioning, but the repository is still on an unreleased `0.x` development line. This guide is for applications pinned to an earlier Chronos commit. It does not imply that `0.1.0`, `0.2.0`, or `0.3.0` was published.
 
@@ -18,7 +18,7 @@ External package installation is not supported yet. Nox's open `NXL-007` self-im
 
 These commits are audit boundaries, not release tags. The authoritative current surface is always [the public API allowlist](api.md).
 
-## Entering `0.5.0-dev`
+## Entering `0.5.0`
 
 The opt-in `store` module provides `StoredJobDefinition` and `JobStore`. The optional SQLite adapter opens a single-owner store through `open_sqlite_store(path)`. Applications use `HandlerRegistry` to bind trusted callbacks and rebuild `PersistentScheduler` watches after startup. SQLite retains the consumed state of UTC one-shots and the current cursor of persisted UTC cron jobs.
 

@@ -1,6 +1,4 @@
-# Chronos 0.5.0 release draft
-
-Status: draft for a GitHub source release. The working manifest remains `0.5.0-dev` pending approval.
+# Chronos 0.5.0
 
 ## Highlights
 
@@ -11,9 +9,9 @@ Status: draft for a GitHub source release. The working manifest remains `0.5.0-d
 
 ## Upgrade notes
 
-Opening a v1 SQLite database upgrades it to v2 transactionally. Job definitions and delivery cursors are preserved, and the outcome table starts empty. Keep a copy of the v1 file if retaining the option to run an older binary. See the [migration guide](migration-guide.md) and [persistence rules](persistence.md).
+Opening a v1 SQLite database upgrades it to v2 transactionally. Job definitions and delivery cursors are preserved, and the outcome table starts empty. Keep a copy of the v1 file if retaining the option to run an older binary. See the [migration guide](https://github.com/mburakmmm/chronos/blob/v0.5.0/docs/migration-guide.md) and [persistence rules](https://github.com/mburakmmm/chronos/blob/v0.5.0/docs/persistence.md).
 
-The public API remains experimental. Use the source checkout. External Nox package-consumer imports are blocked by NXL-007, so Nox registry availability is outside this release draft. See [known Nox limitations](../NOX_LIMITATIONS.md).
+The public API remains experimental. Use the source checkout. External Nox package-consumer imports are blocked by NXL-007. See [known Nox limitations](https://github.com/mburakmmm/chronos/blob/v0.5.0/NOX_LIMITATIONS.md).
 
 ## Verification
 
@@ -27,7 +25,3 @@ python3 scripts/verify_persistence.py
 ```
 
 SQLite delivery evidence covers a single owner and process restart. Power-loss recovery, shared execution, exactly-once side effects and persistent monotonic schedules are outside this scope.
-
-## Publication
-
-After explicit approval, set the manifest to `0.5.0`, date the changelog entry, and verify CI on the final release commit. Use that verified commit for the `v0.5.0` tag and GitHub Release.

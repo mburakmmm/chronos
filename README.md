@@ -12,7 +12,7 @@
 Chronos is a Nox-native library for deterministic UTC scheduling, monotonic timers, five-field cron expressions, and bounded in-process job execution. It is designed for scripts, CLIs, services, and application-owned workers without requiring a database, daemon, web framework, or cloud service.
 
 > [!IMPORTANT]
-> Chronos is under active `0.x` development and has not published its first release. The API is experimental. Pin the resolved commit in `nox.lock` and review breaking changes before updating.
+> Chronos 0.5.0 is a source release with an experimental API. Use a source checkout and review the migration guide before updating.
 
 ## Why Chronos
 
