@@ -32,4 +32,12 @@ The prototype `ZoneProvider` protocol exposes `version()` and `rules_for(zone_na
 
 ## Verified behavior and remaining work
 
-LLVM and QBE agree at millisecond boundaries around Berlin gaps and folds, Lord Howe's half-hour DST transitions, and Kathmandu's historical 15-minute shift. A synthetic rule verifies second-resolution offsets. The civil probe also covers year 2000 versus 2100, invalid month lengths, invalid clock fields, and wrong or absent ruleset versions. A general-purpose data provider, local cron and persisted zoned schedules require separate validation.
+LLVM and QBE agree at millisecond boundaries around Berlin gaps and folds, Lord Howe's half-hour DST transitions, and Kathmandu's historical 15-minute shift. A synthetic rule verifies second-resolution offsets. The civil probe also covers year 2000 versus 2100, invalid month lengths, invalid clock fields, and wrong or absent ruleset versions.
+
+## Local cron proof
+
+`LocalCronPrototype` borrows the existing five-field cron matcher for local calendar fields, including weekdays. It searches UTC segments in chronological order and uses each segment's offset to find matching local minutes. This preserves UTC ordering even when the local clock turns backward. The trigger requires a pinned provider version and explicit fold policy. The only supported gap policy is `skip`.
+
+The prototype implements inclusive and exclusive UTC queries. It accepts references from the table's UTC start plus 48 hours through its UTC end minus 48 hours, exclusive. The same interval bounds returned occurrences and leaves enough rule coverage to classify ambiguous local times. Exhausting that interval returns `None`. Invalid references and matcher search exhaustion remain errors. Each query evaluates at most 2,048 local candidates.
+
+The proof covers all four fold policies, nonexistent times, increasing UTC order, Lord Howe's half-hour transitions, a local weekday that differs from the UTC weekday, and second-resolution offsets. Run it with `noxc run --backend llvm proofs/timezone/local_cron_probe.nox` or use `--backend qbe`. A general-purpose data provider, scheduler integration and persisted zoned schedules still require validation.

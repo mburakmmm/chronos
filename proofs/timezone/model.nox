@@ -69,8 +69,7 @@ class ZoneRules:
         return result
 
 def select_occurrences(candidates: list[UtcInstant], fold_policy: str) -> list[UtcInstant]:
-    if fold_policy != "first" and fold_policy != "last" and fold_policy != "both" and fold_policy != "neither":
-        raise ZonePrototypeError("unknown timezone fold policy")
+    validate_fold_policy(fold_policy)
     if len(candidates) < 2 or fold_policy == "both":
         return candidates
     if fold_policy == "first":
@@ -78,6 +77,10 @@ def select_occurrences(candidates: list[UtcInstant], fold_policy: str) -> list[U
     if fold_policy == "last":
         return [candidates[len(candidates) - 1]]
     return []
+
+def validate_fold_policy(fold_policy: str) -> None:
+    if fold_policy != "first" and fold_policy != "last" and fold_policy != "both" and fold_policy != "neither":
+        raise ZonePrototypeError("unknown timezone fold policy")
 
 def _validate_offset(seconds: int) -> None:
     if seconds < -OFFSET_LIMIT_SECONDS or seconds > OFFSET_LIMIT_SECONDS:

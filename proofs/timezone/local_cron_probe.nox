@@ -1,0 +1,73 @@
+import nox.test
+from errors import TimeRangeError
+from proofs.timezone.civil import ZoneProvider
+from proofs.timezone.fixture import FixtureZoneProvider
+from proofs.timezone.local_cron import LocalCronPrototype
+from proofs.timezone.model import ZonePrototypeError, ZoneRules
+from time import UtcInstant
+from trigger import UtcTrigger
+
+def require_match(candidate: UtcInstant | None, expected_ms: int) -> None:
+    nox.test.assert_true(candidate is not None, "local cron should have a candidate")
+    if candidate is not None:
+        nox.test.assert_eq_int(candidate.epoch_ms, expected_ms, "UTC candidate")
+
+def rejects_reference(trigger_view: UtcTrigger, utc_ms: int) -> bool:
+    try:
+        trigger_view.next_fire_after(UtcInstant(utc_ms))
+    except TimeRangeError:
+        return True
+    return False
+
+def rejects_policy(provider: ZoneProvider, version: str, fold: str, gap: str) -> bool:
+    try:
+        LocalCronPrototype(provider, version, "Europe/Berlin", "* * * * *", fold, gap)
+    except ZonePrototypeError:
+        return True
+    return False
+
+class SyntheticZoneProvider:
+    def version(self) -> str:
+        return "synthetic"
+
+    def rules_for(self, zone_name: str) -> ZoneRules:
+
+        return ZoneRules(0, 864000000, 45, [])
+
+provider: ZoneProvider = FixtureZoneProvider()
+berlin_both: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "both", "skip")
+require_match(berlin_both.next_fire_at_or_after(UtcInstant(1729987200000)), 1729987200000)
+require_match(berlin_both.next_fire_after(UtcInstant(1729987200000)), 1729987260000)
+require_match(berlin_both.next_fire_after(UtcInstant(1729990740000)), 1729990800000)
+require_match(berlin_both.next_fire_after(UtcInstant(1729990800000)), 1729990860000)
+
+berlin_first: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "first", "skip")
+require_match(berlin_first.next_fire_after(UtcInstant(1729987199999)), 1729987200000)
+require_match(berlin_first.next_fire_after(UtcInstant(1729990740000)), 1729994400000)
+berlin_last: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "last", "skip")
+require_match(berlin_last.next_fire_after(UtcInstant(1729987199999)), 1729990800000)
+berlin_neither: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "neither", "skip")
+require_match(berlin_neither.next_fire_after(UtcInstant(1729987199999)), 1729994400000)
+
+spring: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "30 2 * * *", "both", "skip")
+require_match(spring.next_fire_after(UtcInstant(1711846799999)), 1711931400000)
+half_hour: UtcTrigger = LocalCronPrototype(provider, "2026f", "Australia/Lord_Howe", "45 1 * * *", "both", "skip")
+require_match(half_hour.next_fire_after(UtcInstant(1712414699999)), 1712414700000)
+require_match(half_hour.next_fire_after(UtcInstant(1712414700000)), 1712416500000)
+half_gap: UtcTrigger = LocalCronPrototype(provider, "2026f", "Australia/Lord_Howe", "15,30 2 * * *", "both", "skip")
+require_match(half_gap.next_fire_after(UtcInstant(1728142199999)), 1728142200000)
+local_sunday: UtcTrigger = LocalCronPrototype(provider, "2026f", "Australia/Lord_Howe", "0 0 * * 0", "both", "skip")
+require_match(local_sunday.next_fire_after(UtcInstant(1712408399999)), 1712408400000)
+
+second_offset: UtcTrigger = LocalCronPrototype(SyntheticZoneProvider(), "synthetic", "test", "* * * * *", "both", "skip")
+require_match(second_offset.next_fire_after(UtcInstant(172800000)), 172815000)
+
+out_of_season: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "30 2 31 3 *", "both", "skip")
+nox.test.assert_true(out_of_season.next_fire_after(UtcInstant(1766534400000)) is None, "coverage exhaustion is explicit")
+nox.test.assert_true(berlin_both.next_fire_after(UtcInstant(1767052799999)) is None, "exclusive final millisecond has no later coverage")
+nox.test.assert_true(rejects_reference(berlin_both, 1767052800000), "coverage end is exclusive")
+nox.test.assert_true(rejects_reference(berlin_both, 1704067200000), "coverage boundary requires complete rules")
+nox.test.assert_true(rejects_policy(provider, "2026e", "both", "skip"), "ruleset is pinned")
+nox.test.assert_true(rejects_policy(provider, "2026f", "automatic", "skip"), "fold policy must be explicit")
+nox.test.assert_true(rejects_policy(provider, "2026f", "both", "shift"), "shift policy is rejected")
+print("local-cron-prototype-ok")

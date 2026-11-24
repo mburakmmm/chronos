@@ -29,10 +29,13 @@ protocol ZoneProvider:
         pass
 
 def resolve_civil(provider: ZoneProvider, expected_version: str, zone_name: str, civil: LocalDateTime) -> list[UtcInstant]:
+    rules: ZoneRules = rules_for_version(provider, expected_version, zone_name)
+    return rules.resolve(civil.to_wall_time())
+
+def rules_for_version(provider: ZoneProvider, expected_version: str, zone_name: str) -> ZoneRules:
     if expected_version == "" or provider.version() != expected_version:
         raise ZonePrototypeError("timezone ruleset version mismatch")
-    rules: ZoneRules = provider.rules_for(zone_name)
-    return rules.resolve(civil.to_wall_time())
+    return provider.rules_for(zone_name)
 
 def _month_days(year: int, month: int) -> int:
     if month == 2:

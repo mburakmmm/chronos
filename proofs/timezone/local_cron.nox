@@ -1,0 +1,89 @@
+from cron import CronSchedule, MINUTE_MS, parse
+from errors import CronSearchLimitError, TimeRangeError
+from proofs.timezone.civil import ZoneProvider, rules_for_version
+from proofs.timezone.model import LocalWallTime, WALL_MARGIN_MS, ZonePrototypeError, ZoneRules, ZoneTransition, validate_fold_policy
+from time import UtcInstant
+
+MAX_LOCAL_CANDIDATES: int = 2048
+MAX_CALENDAR_END_UTC_MS: int = 253402300800000
+
+class LocalCronPrototype:
+    rules: ZoneRules
+    schedule: CronSchedule
+    fold_policy: str
+
+    def __init__(self, provider: ZoneProvider, version: str, zone_name: str, expression: str, fold_policy: str, gap_policy: str) -> None:
+        validate_fold_policy(fold_policy)
+        if gap_policy != "skip":
+            raise ZonePrototypeError("unsupported timezone gap policy")
+        selected: ZoneRules = rules_for_version(provider, version, zone_name)
+        if selected.end_utc_ms > MAX_CALENDAR_END_UTC_MS or selected.end_utc_ms - selected.start_utc_ms <= 4 * WALL_MARGIN_MS:
+            raise ZonePrototypeError("invalid local cron coverage")
+        self.rules = selected
+        self.schedule = parse(expression)
+        self.fold_policy = fold_policy
+
+    def next_fire_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        return self._next(reference, 1)
+
+    def next_fire_at_or_after(self, reference: UtcInstant) -> UtcInstant | None:
+
+        return self._next(reference, 0)
+
+    def _next(self, reference: UtcInstant, advance: int) -> UtcInstant | None:
+
+        start: int = self.rules.start_utc_ms + 2 * WALL_MARGIN_MS
+        end: int = self.rules.end_utc_ms - 2 * WALL_MARGIN_MS
+        if reference.epoch_ms < start or reference.epoch_ms >= end:
+            raise TimeRangeError("reference is outside local cron coverage")
+        lower: int = reference.epoch_ms + advance
+        offset_seconds: int = self.rules.initial_offset_seconds
+        evaluated: int = 0
+        count: int = len(self.rules.transitions)
+        for index in range(count + 1):
+            upper: int = end
+            next_offset: int = offset_seconds
+            if index < count:
+                transition: ZoneTransition = self.rules.transitions[index]
+                next_offset = transition.offset_seconds
+                if transition.utc_ms < end:
+                    upper = transition.utc_ms
+            if upper <= lower:
+                if upper == end:
+                    return None
+                offset_seconds = next_offset
+                continue
+            # This UTC segment has one constant offset, so the local matcher can jump.
+            offset: int = offset_seconds * 1000
+            wall: int = lower + offset
+            wall_end: int = upper + offset
+            while wall < wall_end:
+                if evaluated >= MAX_LOCAL_CANDIDATES:
+                    raise CronSearchLimitError("local cron candidate limit exceeded")
+                evaluated += 1
+                match: UtcInstant = self.schedule.next_fire_at_or_after(UtcInstant(wall))
+                if match.epoch_ms >= wall_end:
+                    break
+                candidate: int = match.epoch_ms - offset
+                if self._accepts(match.epoch_ms, candidate):
+                    return UtcInstant(candidate)
+                wall = match.epoch_ms + MINUTE_MS
+            if upper == end:
+                return None
+            lower = upper
+            offset_seconds = next_offset
+        return None
+
+    def _accepts(self, wall: int, candidate: int) -> bool:
+
+        if self.fold_policy == "both":
+            return True
+        candidates: list[UtcInstant] = self.rules.resolve(LocalWallTime(wall))
+        if len(candidates) == 1:
+            return True
+        if self.fold_policy == "first":
+            return candidates[0].epoch_ms == candidate
+        if self.fold_policy == "last":
+            return candidates[len(candidates) - 1].epoch_ms == candidate
+        return False
