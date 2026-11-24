@@ -1,0 +1,84 @@
+from errors import TimeRangeError
+from time import MAX_MS, UtcInstant
+
+OFFSET_LIMIT_SECONDS: int = 86400
+WALL_MARGIN_MS: int = 86400000
+MAX_TRANSITIONS: int = 512
+
+class ZonePrototypeError(Exception):
+    pass
+
+class LocalWallTime:
+    # Gregorian wall-clock fields encoded on the epoch axis, with no UTC offset applied.
+    wall_ms: int
+
+    def __init__(self, wall_ms: int) -> None:
+        if wall_ms < 0:
+            raise TimeRangeError("local wall coordinate must be nonnegative")
+        self.wall_ms = wall_ms
+
+class ZoneTransition:
+    utc_ms: int
+    offset_seconds: int
+
+    def __init__(self, utc_ms: int, offset_seconds: int) -> None:
+        self.utc_ms = utc_ms
+        self.offset_seconds = offset_seconds
+
+class ZoneRules:
+    start_utc_ms: int
+    end_utc_ms: int
+    initial_offset_seconds: int
+    transitions: list[ZoneTransition]
+
+    def __init__(self, start_utc_ms: int, end_utc_ms: int, initial_offset_seconds: int, transitions: list[ZoneTransition]) -> None:
+        if start_utc_ms < 0 or end_utc_ms < start_utc_ms or end_utc_ms > MAX_MS - WALL_MARGIN_MS:
+            raise ZonePrototypeError("invalid timezone coverage bounds")
+        if end_utc_ms - start_utc_ms <= 2 * WALL_MARGIN_MS or len(transitions) > MAX_TRANSITIONS:
+            raise ZonePrototypeError("invalid timezone table size or coverage")
+        _validate_offset(initial_offset_seconds)
+        self.start_utc_ms = start_utc_ms
+        self.end_utc_ms = end_utc_ms
+        self.initial_offset_seconds = initial_offset_seconds
+        self.transitions = []
+        previous_utc_ms: int = start_utc_ms
+        for transition in transitions:
+            if transition.utc_ms <= previous_utc_ms or transition.utc_ms >= end_utc_ms:
+                raise ZonePrototypeError("invalid timezone transition order")
+            _validate_offset(transition.offset_seconds)
+            self.transitions.append(ZoneTransition(transition.utc_ms, transition.offset_seconds))
+            previous_utc_ms = transition.utc_ms
+
+    def resolve(self, local: LocalWallTime) -> list[UtcInstant]:
+
+        wall_ms: int = local.wall_ms
+        if wall_ms < self.start_utc_ms + WALL_MARGIN_MS or wall_ms >= self.end_utc_ms - WALL_MARGIN_MS:
+            raise TimeRangeError("local time is outside the timezone coverage window")
+        result: list[UtcInstant] = []
+        segment_start: int = self.start_utc_ms
+        offset_seconds: int = self.initial_offset_seconds
+        for transition in self.transitions:
+            candidate: int = wall_ms - offset_seconds * 1000
+            if candidate >= segment_start and candidate < transition.utc_ms:
+                result.append(UtcInstant(candidate))
+            segment_start = transition.utc_ms
+            offset_seconds = transition.offset_seconds
+        final_candidate: int = wall_ms - offset_seconds * 1000
+        if final_candidate >= segment_start and final_candidate < self.end_utc_ms:
+            result.append(UtcInstant(final_candidate))
+        return result
+
+def select_occurrences(candidates: list[UtcInstant], fold_policy: str) -> list[UtcInstant]:
+    if fold_policy != "first" and fold_policy != "last" and fold_policy != "both" and fold_policy != "neither":
+        raise ZonePrototypeError("unknown timezone fold policy")
+    if len(candidates) < 2 or fold_policy == "both":
+        return candidates
+    if fold_policy == "first":
+        return [candidates[0]]
+    if fold_policy == "last":
+        return [candidates[len(candidates) - 1]]
+    return []
+
+def _validate_offset(seconds: int) -> None:
+    if seconds < -OFFSET_LIMIT_SECONDS or seconds > OFFSET_LIMIT_SECONDS:
+        raise ZonePrototypeError("timezone offset exceeds supported bound")

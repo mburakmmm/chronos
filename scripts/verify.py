@@ -38,6 +38,7 @@ PROOF_EXPECTATIONS = {
     "proofs/indexed_due_order.nox": "b\na\nTrue",
     "proofs/limitations/module_visibility_consumer.nox": "7\n9",
     "proofs/scheduler_sleep_probe.nox": "fast sleeper",
+    "proofs/timezone/resolve_probe.nox": "timezone-prototype-ok",
 }
 BENCHMARK_SOURCES = (
     "benchmarks/cron_benchmark.nox",

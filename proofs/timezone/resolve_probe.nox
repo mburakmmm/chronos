@@ -1,0 +1,66 @@
+import nox.test
+from errors import TimeRangeError
+from proofs.timezone.fixture import fixture_rules
+from proofs.timezone.model import LocalWallTime, ZonePrototypeError, ZoneRules, ZoneTransition, select_occurrences
+from time import UtcInstant
+
+def verify(zone_rules: ZoneRules, wall_ms: int, expected: list[int]) -> None:
+    candidates: list[UtcInstant] = zone_rules.resolve(LocalWallTime(wall_ms))
+    nox.test.assert_eq_int(len(candidates), len(expected), "candidate count")
+    for index in range(len(expected)):
+        nox.test.assert_eq_int(candidates[index].epoch_ms, expected[index], "ordered UTC candidate")
+
+def rejects_bad_zone() -> bool:
+    try:
+        fixture_rules("Unknown/Zone")
+    except ZonePrototypeError:
+        return True
+    return False
+
+def rejects_outside(zone_rules: ZoneRules) -> bool:
+    try:
+        zone_rules.resolve(LocalWallTime(1704067200000))
+    except TimeRangeError:
+        return True
+    return False
+
+def rejects_unordered_rules() -> bool:
+    try:
+        ZoneRules(0, 345600000, 0, [ZoneTransition(200000000, 2000), ZoneTransition(100000000, 1000)])
+    except ZonePrototypeError:
+        return True
+    return False
+
+berlin: ZoneRules = fixture_rules("Europe/Berlin")
+verify(berlin, 1711850399999, [1711846799999])
+verify(berlin, 1711850400000, [])
+verify(berlin, 1711853999999, [])
+verify(berlin, 1711854000000, [1711846800000])
+verify(berlin, 1729994399999, [1729987199999])
+verify(berlin, 1729994400000, [1729987200000, 1729990800000])
+verify(berlin, 1729997999999, [1729990799999, 1729994399999])
+verify(berlin, 1729998000000, [1729994400000])
+folded: list[UtcInstant] = berlin.resolve(LocalWallTime(1729994400000))
+nox.test.assert_eq_int(select_occurrences(folded, "first")[0].epoch_ms, 1729987200000, "first fold occurrence")
+nox.test.assert_eq_int(select_occurrences(folded, "last")[0].epoch_ms, 1729990800000, "last fold occurrence")
+nox.test.assert_eq_int(len(select_occurrences(folded, "both")), 2, "both fold occurrences")
+nox.test.assert_eq_int(len(select_occurrences(folded, "neither")), 0, "neither fold occurrence")
+nox.test.assert_eq_int(len(select_occurrences(berlin.resolve(LocalWallTime(1711850400000)), "first")), 0, "gap remains empty")
+
+lord_howe: ZoneRules = fixture_rules("Australia/Lord_Howe")
+verify(lord_howe, 1712453400000, [1712413800000, 1712415600000])
+verify(lord_howe, 1712455200000, [1712417400000])
+verify(lord_howe, 1728180000000, [])
+verify(lord_howe, 1728181800000, [1728142200000])
+
+kathmandu: ZoneRules = fixture_rules("Asia/Kathmandu")
+verify(kathmandu, 504921599999, [504901799999])
+verify(kathmandu, 504921600000, [])
+verify(kathmandu, 504922500000, [504901800000])
+second_offset: ZoneRules = ZoneRules(0, 345600000, 45, [])
+verify(second_offset, 172845000, [172800000])
+
+nox.test.assert_true(rejects_bad_zone(), "unknown zones are rejected")
+nox.test.assert_true(rejects_outside(berlin), "incomplete boundary coverage is rejected")
+nox.test.assert_true(rejects_unordered_rules(), "unordered tables are rejected")
+print("timezone-prototype-ok")

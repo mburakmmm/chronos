@@ -1,21 +1,29 @@
-# Phase 6 timezone prototype proposal
+# Phase 6 timezone prototype
 
-The initial prototype would map a local civil timestamp in an explicitly named IANA zone to UTC using a pinned transition table. The application would supply the zone and rules. Chronos 0.5.0 uses UTC scheduling.
+The internal prototype maps local wall-clock coordinates to UTC candidates using bounded transition tables. It lives under `proofs/timezone`. The public scheduler in Chronos 0.5.0 uses UTC.
 
 ## Data and scope
 
-The candidate input is IANA tzdata 2026f. Before generating fixtures, pin the exact source archive, tool version and checksum. Retain the upstream license notice and record the version and coverage window in the generated output. The upstream license describes public-domain data and exceptions for specific code files. See the [IANA release index](https://www.iana.org/time-zones) and [license](https://data.iana.org/time-zones/tzdb/LICENSE).
+The fixture uses [IANA tzdata 2026f](https://data.iana.org/time-zones/releases/tzdata2026f.tar.gz), SHA-256 `01b4a91cec5167ed48c11e8ab78f2048cead78ce94b0cafcad0ae8c5a3044d3d`. The generator requires tzcode `zic` and `zdump` version `2022g`. It compiles the pinned data, extracts transitions from `zdump`, and checks their offsets with Python's standard-library `zoneinfo` using the compiled files. The fixture derives from public-domain IANA data. The archive's license lists BSD exceptions for specific code files, which are not included in the fixture. See the [upstream notice](https://data.iana.org/time-zones/tzdb/LICENSE).
 
-Start with a small reference corpus for Europe/Berlin, Australia/Lord_Howe and Asia/Kathmandu. Generate transition fixtures offline from the pinned archive and compare with the output from the IANA reference tools. Keep runtime inputs independent of the host timezone, locale and database. Reject unknown zones and timestamps outside the fixture's explicit range.
+The UTC coverage is 2024–2025 for Europe/Berlin and Australia/Lord_Howe and 1985–1987 for Asia/Kathmandu. A local coordinate must lie at least 24 hours after the coverage start and strictly before the coverage end minus 24 hours, so every candidate UTC instant under the supported offset bound lies within known coverage. The resolver rejects unknown fixtures and out-of-range coordinates. Each table supports up to 512 transitions. No host timezone is read during the Nox proof.
+
+Reproduce the fixture and run the probe with Nox 2.1.111:
+
+```sh
+python3 scripts/generate_timezone_fixture.py /path/to/tzdata2026f.tar.gz | diff -u proofs/timezone/fixture.nox -
+noxc run --backend llvm proofs/timezone/resolve_probe.nox
+noxc run --backend qbe proofs/timezone/resolve_probe.nox
+```
 
 ## Resolution rules to verify
 
 - An ordinary local time resolves to one UTC instant.
-- A repeated local time returns UTC candidates in increasing order. The policy must select the first, last, both or neither explicitly.
-- A nonexistent local time reports a gap. The first prototype can skip it. Any shift policy needs its own definition and tests.
+- A repeated local time returns UTC candidates in increasing order. An explicit policy selects the first, last, both or neither.
+- A nonexistent local time yields no candidates. Shift policies require separate definitions and tests.
 - Historical UTC offsets may include seconds, and changes can be smaller than one hour. Keep the full offset when resolving a calendar timestamp.
 - A ruleset revision changes the interpretation of future civil times. An eventual persistence format must record the zone, ruleset version and resolution policies. Reconciliation across versions needs an explicit migration.
 
-## Prototype exit checks
+## Verified behavior and remaining work
 
-Verify equivalent LLVM and QBE results at and around gap and fold boundaries, plus ordinary times on either side. Include a southern-hemisphere transition, a half-hour DST change and a historical non-hour base offset. Keep the UTC scheduler and formats outside the prototype. Review the verified converter before connecting it to cron or persistence.
+LLVM and QBE agree at millisecond boundaries around Berlin gaps and folds, Lord Howe's half-hour DST transitions, and Kathmandu's historical 15-minute shift. A synthetic rule verifies second-resolution offsets. A full zone provider, a civil calendar API, local cron and persisted zoned schedules require separate validation.
