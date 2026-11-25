@@ -49,3 +49,13 @@ The proof covers all four fold policies, nonexistent times, increasing UTC order
 Registration requires complete coverage. If completion or a late tick moves to or beyond the effective coverage end, the adapter's exclusive query returns `None` and clears the next run. This preserves the scheduler's normal late-occurrence policy while preventing replay of the final occurrence. Direct prototype queries still report an out-of-coverage reference. These contracts apply to the in-memory proof under `proofs/timezone`.
 
 Run `noxc run --backend llvm proofs/timezone/manual_scheduler_probe.nox` and repeat with `--backend qbe`.
+
+## Stored ruleset migration proof
+
+The internal `cron-cursor-zoned` kind uses the existing SQLite v2 definition row. Its payload is `version|zone|fold|gap|cursor-utc-ms|expression`. Reading the payload checks that the supplied provider advertises the pinned version and that the cursor is an eligible match under that version. Opening SQLite leaves the stored value intact.
+
+Migration is an explicit revision-checked write. It requires the old provider, the new provider, the new version, the current revision and an operator-selected UTC cutoff. Under the new rules, Chronos chooses the first eligible candidate strictly after the cutoff and at or after the old saved cursor. This avoids replay at or before the cutoff and prevents moving the pending cursor backward. Old pending occurrences may be dropped by that boundary. The contract is defined in UTC instants. A repeated civil label can resolve to a different UTC instant after a ruleset change.
+
+The zone, cron expression, fold and gap policies, handler and enabled state remain intact. A missing matching version, a stale revision or insufficient target coverage prevents the write. The reference providers must stay available for validation and review. The two-backend SQLite proof uses real `2026f` input and a synthetic revised provider to exercise the change without claiming a second IANA release. It verifies both the new cursor and the rejection path after reopening.
+
+Run `python3 scripts/verify_persistence.py` with Nox 2.1.111. The prototype validates and migrates records. The supported persistent scheduler currently dispatches UTC jobs only.

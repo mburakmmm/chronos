@@ -1,0 +1,99 @@
+import nox.fs
+import nox.os
+import nox.test
+from errors import StoreConflictError, TimeRangeError
+from job_codec import encode_policies
+from policy import default_job_policies
+from proofs.timezone.civil import ZoneProvider
+from proofs.timezone.fixture import FixtureZoneProvider
+from proofs.timezone.model import ZonePrototypeError, ZoneRules
+from proofs.timezone.stored_local_cron import ZONED_CRON_KIND, ZonedCronConfig, encode_zoned_cron, migrate_zoned_cron, validate_zoned_cron
+from sqlite_store import SQLiteJobStore, open_sqlite_store
+from store import JobStore, StoredJobDefinition, make_stored_job_definition
+from time import UtcInstant
+
+class ShiftedBerlinProvider:
+    offset_seconds: int
+    version_name: str
+
+    def __init__(self, offset_seconds: int, version_name: str) -> None:
+        self.offset_seconds = offset_seconds
+        self.version_name = version_name
+
+    def version(self) -> str:
+
+        return self.version_name
+
+    def rules_for(self, zone_name: str) -> ZoneRules:
+
+        if zone_name != "Europe/Berlin":
+            raise ZonePrototypeError("unknown synthetic timezone")
+        return ZoneRules(1704067200000, 1767225600000, self.offset_seconds, [])
+
+def read(backend: JobStore, job_id: str) -> StoredJobDefinition:
+    definition: StoredJobDefinition | None = backend.load(job_id)
+    if definition is None:
+        raise ValueError("missing test definition")
+    return definition
+
+def rejects_wrong_version(definition: StoredJobDefinition, provider: ZoneProvider) -> bool:
+    try:
+        validate_zoned_cron(definition, provider)
+    except ZonePrototypeError as error:
+        return error.message == "timezone ruleset version mismatch"
+    return False
+
+def rejects_outside_coverage(backend: JobStore, original: ZoneProvider, shifted: ZoneProvider) -> bool:
+    try:
+        migrate_zoned_cron(backend, original, shifted, "synthetic-review-1", "future", 1, UtcInstant(1767312000000))
+    except TimeRangeError:
+        return True
+    return False
+
+def rejects_stale(backend: JobStore, original: ZoneProvider, shifted: ZoneProvider) -> bool:
+    try:
+        migrate_zoned_cron(backend, original, shifted, "synthetic-review-1", "future", 1, UtcInstant(1719813600000))
+    except StoreConflictError as error:
+        return error.expected_revision == 1 and error.actual_revision == 2
+    return False
+
+original: ZoneProvider = FixtureZoneProvider()
+shifted: ZoneProvider = ShiftedBerlinProvider(3600, "synthetic-review-1")
+earlier: ZoneProvider = ShiftedBerlinProvider(10800, "synthetic-review-2")
+path: str = nox.os.getenv("CHRONOS_SQLITE_TEST_DB")
+backend: SQLiteJobStore = open_sqlite_store(path)
+start: UtcInstant = UtcInstant(1719813600000)
+payload: str = encode_zoned_cron(original, "2026f", "Europe/Berlin", "0 9 * * *", "first", "skip", start)
+for key in ["future", "cutoff", "no-rewind"]:
+    backend.put(make_stored_job_definition(key, "Report", "report", "public", ZONED_CRON_KIND, payload, encode_policies(default_job_policies()), False, start, start, 1), 0)
+backend.close()
+
+reopened: SQLiteJobStore = open_sqlite_store(path)
+original_record: StoredJobDefinition = read(reopened, "future")
+nox.test.assert_eq_int(validate_zoned_cron(original_record, original).cursor.epoch_ms, 1719817200000, "old pending cursor remains pinned")
+nox.test.assert_true(rejects_wrong_version(original_record, shifted), "different provider cannot reinterpret a record")
+nox.test.assert_true(rejects_outside_coverage(reopened, original, shifted), "failed migration rejects target outside coverage")
+nox.test.assert_eq_str(read(reopened, "future").trigger_config, payload, "failed migration preserves cursor")
+nox.test.assert_eq_int(read(reopened, "future").revision, 1, "failed migration preserves revision")
+migrate_zoned_cron(reopened, original, shifted, "synthetic-review-1", "future", 1, start)
+migrate_zoned_cron(reopened, original, shifted, "synthetic-review-1", "cutoff", 1, UtcInstant(1719820800000))
+migrate_zoned_cron(reopened, original, earlier, "synthetic-review-2", "no-rewind", 1, UtcInstant(1719813599999))
+nox.test.assert_true(rejects_stale(reopened, original, shifted), "stale migration cannot overwrite a new revision")
+reopened.close()
+
+updated: SQLiteJobStore = open_sqlite_store(path)
+record: StoredJobDefinition = read(updated, "future")
+migrated: ZonedCronConfig = validate_zoned_cron(record, shifted)
+nox.test.assert_eq_int(record.revision, 2, "migration commits one revision")
+nox.test.assert_true(not record.enabled, "migration preserves disabled state")
+nox.test.assert_eq_str(record.policy_config, original_record.policy_config, "migration preserves dispatch policies")
+nox.test.assert_eq_str(record.handler_key, original_record.handler_key, "migration preserves handler identity")
+nox.test.assert_eq_str(migrated.version, "synthetic-review-1", "new version survives process-style reopen")
+nox.test.assert_eq_str(migrated.fold, "first", "fold rule stays pinned")
+nox.test.assert_eq_int(migrated.cursor.epoch_ms, 1719820800000, "new rules determine the next UTC candidate")
+nox.test.assert_eq_int(validate_zoned_cron(read(updated, "cutoff"), shifted).cursor.epoch_ms, 1719907200000, "exact cutoff is not replayed")
+nox.test.assert_eq_int(validate_zoned_cron(read(updated, "no-rewind"), earlier).cursor.epoch_ms, 1719900000000, "earlier revised match cannot move the pending cursor backward")
+nox.test.assert_true(rejects_wrong_version(record, original), "the old provider cannot resume the migrated record")
+updated.close()
+nox.fs.remove_file(path)
+print("zoned-cron-migration-ok")

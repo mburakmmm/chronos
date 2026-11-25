@@ -28,6 +28,7 @@ CASES = (
     ("examples/persistence/dispatch_cron.nox", "60000 summary\nsucceeded\npending\n240000 summary\nsucceeded"),
     ("proofs/persistence/persistent_scheduler_integration.nox", "persistent-scheduler-ok"),
     ("proofs/persistence/outcome_migration.nox", "outcome-migration-ok"),
+    ("proofs/timezone/stored_local_cron_probe.nox", "zoned-cron-migration-ok"),
     ("examples/persistence/poll_stored.nox", "pending\nreport.once summary\nsucceeded\nrecorded succeeded\nstopped"),
 )
 

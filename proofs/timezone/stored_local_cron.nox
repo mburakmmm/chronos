@@ -1,0 +1,90 @@
+import nox.strings
+from errors import InvalidStoredJobError, StoreConflictError, StoreError
+from job_codec import _read_nonnegative
+from proofs.timezone.civil import ZoneProvider
+from proofs.timezone.local_cron import LocalCronPrototype
+from store import JobStore, StoredJobDefinition, copy_stored_job_definition
+from time import MAX_MS, UtcInstant
+
+ZONED_CRON_KIND: str = "cron-cursor-zoned"
+MAX_ZONED_CONFIG_BYTES: int = 512
+
+class ZonedCronConfig:
+    version: str
+    zone_name: str
+    fold: str
+    gap: str
+    cursor: UtcInstant
+    expression: str
+
+    def __init__(self, version: str, zone_name: str, fold: str, gap: str, cursor: UtcInstant, expression: str) -> None:
+        self.version = version
+        self.zone_name = zone_name
+        self.fold = fold
+        self.gap = gap
+        self.cursor = cursor
+        self.expression = expression
+
+def encode_zoned_cron(provider: ZoneProvider, version: str, zone_name: str, expression: str, fold: str, gap: str, start: UtcInstant) -> str:
+    _validate_zoned_key(version, 32, False)
+    _validate_zoned_key(zone_name, 128, True)
+    local_schedule: LocalCronPrototype = LocalCronPrototype(provider, version, zone_name, expression, fold, gap)
+    cursor: UtcInstant | None = local_schedule.next_fire_at_or_after(start)
+    if cursor is None:
+        raise InvalidStoredJobError("no covered zoned cron occurrence")
+    return _encode(ZonedCronConfig(version, zone_name, fold, gap, cursor, expression))
+
+def validate_zoned_cron(definition: StoredJobDefinition, provider: ZoneProvider) -> ZonedCronConfig:
+    checked: StoredJobDefinition = copy_stored_job_definition(definition)
+    if checked.trigger_kind != ZONED_CRON_KIND or nox.strings.byte_len(checked.trigger_config) > MAX_ZONED_CONFIG_BYTES:
+        raise InvalidStoredJobError("invalid zoned cron configuration")
+    fields: list[str] = checked.trigger_config.split("|")
+    if len(fields) != 6:
+        raise InvalidStoredJobError("invalid zoned cron field count")
+    _validate_zoned_key(fields[0], 32, False)
+    _validate_zoned_key(fields[1], 128, True)
+    cursor: UtcInstant = UtcInstant(_read_nonnegative(fields[4]))
+    local_schedule: LocalCronPrototype = LocalCronPrototype(provider, fields[0], fields[1], fields[5], fields[2], fields[3])
+    match: UtcInstant | None = local_schedule.next_fire_at_or_after(cursor)
+    if match is None or match.epoch_ms != cursor.epoch_ms:
+        raise InvalidStoredJobError("zoned cron cursor does not match its rules")
+    return ZonedCronConfig(fields[0], fields[1], fields[2], fields[3], cursor, fields[5])
+
+def migrate_zoned_cron(backend: JobStore, old_provider: ZoneProvider, new_provider: ZoneProvider, new_version: str, job_id: str, expected_revision: int, cutoff: UtcInstant) -> None:
+    current: StoredJobDefinition | None = backend.load(job_id)
+    if current is None:
+        raise StoreConflictError(job_id, expected_revision, 0)
+    if current.job_id != job_id:
+        raise InvalidStoredJobError("stored job ID does not match the requested job")
+    if current.revision != expected_revision:
+        raise StoreConflictError(job_id, expected_revision, current.revision)
+    if expected_revision == MAX_MS or cutoff.epoch_ms == MAX_MS:
+        raise StoreError("zoned cron migration cannot advance")
+    old: ZonedCronConfig = validate_zoned_cron(current, old_provider)
+    if new_version == old.version:
+        raise InvalidStoredJobError("zoned cron migration requires a different ruleset version")
+    checked_cutoff: UtcInstant = UtcInstant(cutoff.epoch_ms)
+    lower: int = checked_cutoff.epoch_ms + 1
+    if old.cursor.epoch_ms > lower:
+        lower = old.cursor.epoch_ms
+    replacement: StoredJobDefinition = copy_stored_job_definition(current)
+    replacement.trigger_config = encode_zoned_cron(new_provider, new_version, old.zone_name, old.expression, old.fold, old.gap, UtcInstant(lower))
+    replacement.revision = expected_revision + 1
+    if checked_cutoff.epoch_ms > replacement.updated_at_utc_ms:
+        replacement.updated_at_utc_ms = checked_cutoff.epoch_ms
+    backend.put(replacement, expected_revision)
+
+def _encode(config: ZonedCronConfig) -> str:
+    return config.version + "|" + config.zone_name + "|" + config.fold + "|" + config.gap + "|" + str(config.cursor.epoch_ms) + "|" + config.expression
+
+def _validate_zoned_key(value: str, maximum: int, allow_slash: bool) -> None:
+    length: int = nox.strings.byte_len(value)
+    if length < 1 or length > maximum:
+        raise InvalidStoredJobError("invalid zoned cron identifier")
+    for index in range(length):
+        byte: int = nox.strings.byte_at(value, index)
+        letter: bool = byte >= 65 and byte <= 90 or byte >= 97 and byte <= 122
+        digit: bool = byte >= 48 and byte <= 57
+        punctuation: bool = byte == 45 or byte == 46 or byte == 95 or allow_slash and (byte == 43 or byte == 47)
+        if not letter and not digit and not punctuation:
+            raise InvalidStoredJobError("invalid zoned cron identifier")

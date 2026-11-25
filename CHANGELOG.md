@@ -10,6 +10,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Validated Gregorian civil fields and explicit ruleset version checks in the internal timezone prototype.
 - Internal local cron trigger proof with explicit fold selection, gap skipping and monotonic UTC search across offset transitions.
 - Manual scheduler integration proof for local cron, including clock rollback, bounded catch-up and terminal coverage exhaustion.
+- Internal SQLite proof for pinning zoned cron records to a ruleset and migrating their UTC cursor explicitly.
 
 ## 0.5.0 — 2026-11-24
 

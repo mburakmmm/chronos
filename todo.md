@@ -422,7 +422,8 @@ Faz 5 geliştirme kapsamı tamamlandı. Sürüm etiketi ve yayın kullanıcı on
 - [ ] Named zone, ambiguous fall-back ve nonexistent spring-forward policy'lerini tasarla.
 - [ ] Half-hour/unusual offset, southern hemisphere ve tarihsel transition testleri ekle.
 - [ ] Makine locale'ından implicit timezone çıkarma.
-- [ ] Tzdata değişiminin persisted schedule davranışını tanımla.
+- [x] Tzdata değişiminde eski kayıtları sürüme sabitle; açık UTC kesim anı ve revision kontrollü geçişi SQLite yeniden açma testiyle doğrula.
+- [ ] Yerel cron kayıtları için desteklenen kalıcı dispatch yolu ve gerçek veri sağlayıcısını doğrula.
 
 ## PostgreSQL ve dağıtık koordinasyon
 

@@ -75,6 +75,8 @@ Latest audit (2026-11-13, Nox 2.1.98): still open. `noxc check` reports the same
 
 Nox 2.1.111 audit: still open with the same two `UndefinedFunction` errors.
 
+Phase 6 reproduced the collision with a local `trigger: LocalCronPrototype` and a transitively imported `trigger` module. A call to `trigger.next_fire_at_or_after` was resolved as a module member. Renaming the local to `local_schedule` fixed the type check.
+
 Nox 2.1.186 integration audit: still open. A flat Chronos/Nyx source overlay resolved Nyx locals named `errors` and `registry` as the Chronos module aliases, producing `module 'errors' has no member named 'append'` and `module 'registry' has no member named 'has'`. Moving Chronos under the qualified `chronos.*` namespace avoids these cross-library collisions without renaming framework locals.
 
 ## NXL-004 — pre-epoch `DateTime.to_epoch_ms()` did not complete
