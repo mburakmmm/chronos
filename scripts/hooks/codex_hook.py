@@ -24,14 +24,16 @@ def output(event, **fields):
 
 def graphify(payload, kind, graphify_exe):
     if not graphify_exe or not (ROOT / "graphify-out" / "graph.json").is_file():
-        return ""
+        return {}
     args = [graphify_exe, "hook-guard", kind]
     if kind != "compact":
         args.append("--strict")
     result = subprocess.run(
         args, cwd=ROOT, input=json.dumps(payload), text=True, capture_output=True, timeout=3,
     )
-    return result.stdout.strip() if result.returncode == 0 else ""
+    if result.returncode != 0 or not result.stdout.strip():
+        return {}
+    return json.loads(result.stdout)["hookSpecificOutput"]
 
 
 def pre(payload):
@@ -50,13 +52,11 @@ def pre(payload):
             return "RTK could not check the command. Check the RTK installation."
 
     kind = "read" if tool in {"Read", "Glob"} else "search"
-    graph_reply = graphify(payload, kind, shutil.which("graphify"))
-    if graph_reply:
-        fields = json.loads(graph_reply)["hookSpecificOutput"]
-        if fields.get("permissionDecision") == "deny":
-            return "Query the Chronos Graphify graph first, then retry with a targeted read or search."
-        if fields.get("additionalContext"):
-            output("PreToolUse", additionalContext=fields["additionalContext"])
+    fields = graphify(payload, kind, shutil.which("graphify"))
+    if fields.get("permissionDecision") == "deny":
+        return "Query the Chronos Graphify graph first, then retry with a targeted read or search."
+    if fields.get("additionalContext"):
+        output("PreToolUse", additionalContext=fields["additionalContext"])
     return None
 
 
@@ -101,8 +101,9 @@ def main():
             rules += " Install RTK and ensure it is on PATH."
         if event == "SessionStart" and payload.get("source") == "compact":
             try:
-                reminder = graphify(payload, "compact", shutil.which("graphify"))
-            except (OSError, subprocess.TimeoutExpired):
+                fields = graphify(payload, "compact", shutil.which("graphify"))
+                reminder = fields.get("additionalContext", "")
+            except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
                 reminder = ""
             if reminder:
                 rules += "\n" + reminder
