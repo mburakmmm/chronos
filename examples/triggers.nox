@@ -1,5 +1,5 @@
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
 
 once: OnceTrigger = OnceTrigger(UtcInstant(2000))
 once_next: UtcInstant | None = once.next_fire_after(UtcInstant(1500))

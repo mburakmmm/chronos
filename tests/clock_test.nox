@@ -1,7 +1,7 @@
 import nox.test
-from clock import Clock, FakeClock
-from errors import TimeRangeError
-from time import Duration, MAX_MS
+from chronos.clock import Clock, FakeClock
+from chronos.errors import TimeRangeError
+from chronos.time import Duration, MAX_MS
 
 def read_utc_ms(source: Clock) -> int:
     return source.now_utc().as_epoch_ms()

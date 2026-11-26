@@ -16,7 +16,14 @@ Bu dosya, `AGENTS.md` içindeki bağlayıcı kuralları uygulanabilir sürümler
 - Nox compiler/runtime/stdlib değişikliği ve herhangi bir yayın işlemi açık kullanıcı onayı gerektirir.
 - Sürüm numaraları SemVer ile takip edilir. `0.x` içindeki kırıcı değişiklikler de `CHANGELOG.md` ve geçiş notlarında açıkça belirtilir.
 
-## Mevcut durum özeti — 2026-11-09
+## Güncel durum — 2026-11-26
+
+- [x] Faz 5, `v0.5.0` kaynak sürümüyle kapandı.
+- [x] Faz 6 geliştirme manifestini `0.6.0-dev` sürümüne ve CI araç zincirini Nox 2.2.70’e taşı.
+- [x] Chronos’un gerçek Git paketini ve sabitlenmiş Nyx/Aether örneklerini LLVM/QBE üzerinde doğrula.
+- [x] RTK kurallarını Chronos Codex ana oturumlarına ve alt ajanlarına ekle. Etkinleştirme, Codex’in proje hook incelemesine bağlıdır.
+
+## İlk envanter — 2026-11-09
 
 - [x] Depodaki 976 satırlık `AGENTS.md` baştan sona incelendi.
 - [x] Çalışma dizini envanteri çıkarıldı: şu anda yalnızca `AGENTS.md` bulunuyor.
@@ -419,10 +426,11 @@ Faz 5 geliştirme kapsamı tamamlandı. Sürüm etiketi ve yayın kullanıcı on
 - [x] Yerel Gregorian tarih ve saat alanlarını doğrula; açık sürüm eşleşmesi isteyen fixture sağlayıcısını LLVM/QBE üzerinde test et.
 - [x] Yerel beş alanlı cron prototipinde fold seçimini, gap skip davranışını ve artan UTC sırasını doğrula.
 - [x] Yerel cron prototipini FakeClock ile manuel scheduler'a bağla; fold, gap, UTC geri sıçraması, catch-up ve kapsama bitişini test et.
-- [ ] Named zone, ambiguous fall-back ve nonexistent spring-forward policy'lerini tasarla.
-- [ ] Half-hour/unusual offset, southern hemisphere ve tarihsel transition testleri ekle.
-- [ ] Makine locale'ından implicit timezone çıkarma.
+- [x] Prototipte açık, büyük/küçük harfe duyarlı IANA bölge adı, dört fold seçeneği ve gap için `skip` davranışını tanımla.
+- [x] Lord Howe ile yarım saatlik güney yarımküre geçişlerini ve Kathmandu ile tarihsel 15 dakikalık dilim değişikliğini doğrula.
+- [x] Sağlayıcıya açık bölge adı ve tzdata sürümü ver; prototipte makine locale’ından bölge türetme.
 - [x] Tzdata değişiminde eski kayıtları sürüme sabitle; açık UTC kesim anı ve revision kontrollü geçişi SQLite yeniden açma testiyle doğrula.
+- [x] Tek sahipli SQLite prototipinde Berlin’in iki fold anını ayrı çalıştır, yeniden açılışta ilkini tekrar oynatma ve kapsama bitişini kalıcılaştır. Nox 2.2.70 LLVM/QBE doğrulaması `scripts/verify_persistence.py` içinde.
 - [ ] Yerel cron kayıtları için desteklenen kalıcı dispatch yolu ve gerçek veri sağlayıcısını doğrula.
 
 ## PostgreSQL ve dağıtık koordinasyon
@@ -522,4 +530,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Phase 4 / `0.4.0`: cron parse/next-fire ve 100/1k/10k job due-lookup benchmark altyapısını ekle; ölçüm olmadan veri yapısını değiştirme.
+Faz 6 / `0.6.0-dev`. Kalıcı yerel cron için tek sahipli dispatch prototipinden üretimde kullanılacak sürümlü IANA sağlayıcısına geç. Veri biçimini, kapsama sonundaki yeniden yapılandırmayı ve public scheduler entegrasyonunu doğrula.

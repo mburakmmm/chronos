@@ -1,8 +1,8 @@
 import nox.test
-from executor import ExecutionOutcome, InlineExecutor
-from job import Job, JobContext, make_utc_job
-from time import UtcInstant
-from trigger import OnceTrigger
+from chronos.executor import ExecutionOutcome, InlineExecutor
+from chronos.job import Job, JobContext, make_utc_job
+from chronos.time import UtcInstant
+from chronos.trigger import OnceTrigger
 
 class HandlerFailure(Exception):
     def __init__(self, message: str) -> None:

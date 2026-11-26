@@ -1,7 +1,7 @@
 import nox.strings
 import nox.time
-from errors import CronParseError, CronSearchLimitError, TimeRangeError
-from time import MAX_MS, UtcInstant, _checked_add_int64
+from chronos.errors import CronParseError, CronSearchLimitError, TimeRangeError
+from chronos.time import MAX_MS, UtcInstant, _checked_add_int64
 
 MAX_EXPRESSION_BYTES: int = 256
 MAX_ITEMS: int = 128

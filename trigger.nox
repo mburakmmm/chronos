@@ -1,5 +1,5 @@
-from errors import TimeRangeError
-from time import Duration, MAX_MS, MonotonicInstant, UtcInstant, add_monotonic_duration, elapsed_between, multiply_duration, require_positive_interval
+from chronos.errors import TimeRangeError
+from chronos.time import Duration, MAX_MS, MonotonicInstant, UtcInstant, add_monotonic_duration, elapsed_between, multiply_duration, require_positive_interval
 
 protocol UtcTrigger:
     def next_fire_after(self, reference: UtcInstant) -> UtcInstant | None:

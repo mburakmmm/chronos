@@ -8,7 +8,7 @@ The fixture uses [IANA tzdata 2026f](https://data.iana.org/time-zones/releases/t
 
 The UTC coverage is 2024–2025 for Europe/Berlin and Australia/Lord_Howe and 1985–1987 for Asia/Kathmandu. A local coordinate must lie at least 24 hours after the coverage start and strictly before the coverage end minus 24 hours, so every candidate UTC instant under the supported offset bound lies within known coverage. The resolver rejects unknown fixtures and out-of-range coordinates. Each table supports up to 512 transitions. No host timezone is read during the Nox proof.
 
-Reproduce the fixture and run the probe with Nox 2.1.111:
+Reproduce the fixture and run the probe with Nox 2.2.70:
 
 ```sh
 python3 scripts/generate_timezone_fixture.py /path/to/tzdata2026f.tar.gz | diff -u proofs/timezone/fixture.nox -
@@ -58,4 +58,10 @@ Migration is an explicit revision-checked write. It requires the old provider, t
 
 The zone, cron expression, fold and gap policies, handler and enabled state remain intact. A missing matching version, a stale revision or insufficient target coverage prevents the write. The reference providers must stay available for validation and review. The two-backend SQLite proof uses real `2026f` input and a synthetic revised provider to exercise the change without claiming a second IANA release. It verifies both the new cursor and the rejection path after reopening.
 
-Run `python3 scripts/verify_persistence.py` with Nox 2.1.111. The prototype validates and migrates records. The supported persistent scheduler currently dispatches UTC jobs only.
+## Stored zoned dispatch proof
+
+The internal `dispatch_zoned_cron` function loads one record and verifies the pinned ruleset and pending UTC occurrence. It accepts skip or fire-once misfires without retries. When a poll is due, it writes the next cursor after the observed UTC time using the current revision before invoking the trusted handler. A process exit after commit can lose that invocation. Earlier occurrences cannot be replayed by moving the wall clock backward.
+
+When the rules have no later covered occurrence, dispatch commits an exhausted disabled record. The old payload remains available for inspection and further dispatch returns `exhausted`. Resuming after terminal exhaustion and loading general IANA coverage remain separate work.
+
+Run `python3 scripts/verify_persistence.py` with Nox 2.2.70. The SQLite proof exercises both Berlin fold occurrences across a database reopen, clock rewind and persisted terminal exhaustion. The public persistent scheduler currently dispatches UTC jobs only.

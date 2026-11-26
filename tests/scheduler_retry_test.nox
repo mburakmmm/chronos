@@ -1,13 +1,13 @@
 import nox.test
-from clock import FakeClock
-from cron import CronTrigger, parse
-from errors import InvalidPolicyError, SchedulerStateError
-from events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_RETRIED, EVENT_STARTED, EVENT_SUCCEEDED
-from job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job_with_policies, make_utc_job_with_policies
-from policy import JobPolicies, catch_up_misfires, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, queue_one_overlap
-from scheduler import STATE_FAILED, STATE_STOPPED, Scheduler, TickResult
-from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
-from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
+from chronos.clock import FakeClock
+from chronos.cron import CronTrigger, parse
+from chronos.errors import InvalidPolicyError, SchedulerStateError
+from chronos.events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_RETRIED, EVENT_STARTED, EVENT_SUCCEEDED
+from chronos.job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job_with_policies, make_utc_job_with_policies
+from chronos.policy import JobPolicies, catch_up_misfires, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, queue_one_overlap
+from chronos.scheduler import STATE_FAILED, STATE_STOPPED, Scheduler, TickResult
+from chronos.time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedDelay, FixedRateTrigger, OnceTrigger
 
 class PlannedFailure(Exception):
     def __init__(self, message: str) -> None:

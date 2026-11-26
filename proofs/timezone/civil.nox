@@ -1,6 +1,6 @@
 import nox.time
 from proofs.timezone.model import LocalWallTime, ZonePrototypeError, ZoneRules
-from time import UtcInstant
+from chronos.time import UtcInstant
 
 class LocalDateTime:
     wall_ms: int

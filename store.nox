@@ -1,6 +1,6 @@
 import nox.strings
-from errors import InvalidStoredJobError, UnsupportedStoreVersionError
-from time import MAX_MS, UtcInstant
+from chronos.errors import InvalidStoredJobError, UnsupportedStoreVersionError
+from chronos.time import MAX_MS, UtcInstant
 
 STORE_SCHEMA_VERSION: int = 2
 JOB_DEFINITION_FORMAT_VERSION: int = 1

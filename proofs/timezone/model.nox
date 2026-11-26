@@ -1,5 +1,5 @@
-from errors import TimeRangeError
-from time import MAX_MS, UtcInstant
+from chronos.errors import TimeRangeError
+from chronos.time import MAX_MS, UtcInstant
 
 OFFSET_LIMIT_SECONDS: int = 86400
 WALL_MARGIN_MS: int = 86400000

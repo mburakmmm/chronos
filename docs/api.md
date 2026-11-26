@@ -1,8 +1,8 @@
 # Chronos public API
 
-Status: curated experimental surface (`0.5.0`).
+Status: curated experimental surface (`0.6.0-dev`).
 
-This document is the only authoritative Chronos API allowlist. Nox 2.1.111 has no module export allowlist or `public`/`private` keywords: every top-level name is technically importable, including names beginning with `_`. Importability therefore does not imply support. See `NXL-008` in `NOX_LIMITATIONS.md`. Applications pinned to an earlier development commit should follow the [migration guide](migration-guide.md).
+This document is the authoritative Chronos API allowlist. Nox 2.2.70 supports opt-in `__all__` enforcement, used by `handler_registry`. Other internal imports may still be reachable. Applications pinned to an earlier development commit should follow the [migration guide](migration-guide.md).
 
 ## Stability labels
 
@@ -387,10 +387,10 @@ from chronos.time import MAX_MS, MIN_MS, Duration, MonotonicInstant, UtcInstant
 from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, MonotonicTrigger, OnceTrigger, UtcTrigger
 ```
 
-These dependency-qualified imports describe the intended package surface, but external `noxc add` consumption remains blocked by `NXL-007`. Repository examples use checkout-local module names until that resolver issue is fixed and external-consumer integration tests pass.
+These imports work at the project root and in a fetched Git dependency under the canonical `chronos` alias on Nox 2.2.70.
 
 ## Contract verification
 
-`tests/api_contract_test.nox` imports every allowlisted name through the current checkout-local module form. It fixes the observable contracts for checked time arithmetic, both clock implementations, trigger boundaries, cron matching, policy bounds, all six job factories, event kind values, handler context, scheduler inspection/mutation, lifecycle, and tick results. CI executes the same contract test independently on LLVM and QBE.
+`tests/api_contract_test.nox` uses package-qualified imports to exercise checked time arithmetic, clock adapters, trigger boundaries, cron matching, policy bounds, job factories, events and scheduler lifecycle on LLVM and QBE.
 
-The test intentionally does not import Internal symbols. It is a source-checkout contract, not evidence that dependency-qualified imports work; that separate package-consumer gate remains blocked by `NXL-007`.
+The separate `scripts/verify_integrations.py` check builds and runs standalone cron and scheduler consumers against a fetched Git dependency.

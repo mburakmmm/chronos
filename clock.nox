@@ -1,5 +1,5 @@
-from errors import TimeRangeError
-from time import Duration, MonotonicInstant, UtcInstant, _checked_add_int64, add_monotonic_duration
+from chronos.errors import TimeRangeError
+from chronos.time import Duration, MonotonicInstant, UtcInstant, _checked_add_int64, add_monotonic_duration
 
 protocol Clock:
     def now_utc(self) -> UtcInstant:

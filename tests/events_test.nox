@@ -1,6 +1,6 @@
 import nox.test
-from errors import EventListenerLimitError, InvalidEventError
-from events import ChronosEvent, EVENT_SCHEDULED, EventDispatcher
+from chronos.errors import EventListenerLimitError, InvalidEventError
+from chronos.events import ChronosEvent, EVENT_SCHEDULED, EventDispatcher
 
 class EventRecorder:
     kinds: list[str]

@@ -1,12 +1,12 @@
 import nox.test
-from clock import FakeClock
-from errors import SchedulerStateError
-from events import ChronosEvent, EVENT_SCHEDULER_STOPPED
-from job import Job, JobContext, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
-from policy import JobPolicies, catch_up_misfires, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap
-from scheduler import STATE_CREATED, STATE_STOPPED, Scheduler, TickResult
-from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
-from trigger import FixedRateTrigger, OnceTrigger
+from chronos.clock import FakeClock
+from chronos.errors import SchedulerStateError
+from chronos.events import ChronosEvent, EVENT_SCHEDULER_STOPPED
+from chronos.job import Job, JobContext, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
+from chronos.policy import JobPolicies, catch_up_misfires, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap
+from chronos.scheduler import STATE_CREATED, STATE_STOPPED, Scheduler, TickResult
+from chronos.time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedRateTrigger, OnceTrigger
 
 class PlannedFailure(Exception):
     def __init__(self, message: str) -> None:

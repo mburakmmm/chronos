@@ -1,9 +1,9 @@
 import nox.test
-from errors import TimeRangeError
+from chronos.errors import TimeRangeError
 from proofs.timezone.civil import LocalDateTime, ZoneProvider, resolve_civil
 from proofs.timezone.fixture import FixtureZoneProvider, fixture_rules
 from proofs.timezone.model import LocalWallTime, ZonePrototypeError, ZoneRules, ZoneTransition, select_occurrences
-from time import UtcInstant
+from chronos.time import UtcInstant
 
 def verify(zone_rules: ZoneRules, wall_ms: int, expected: list[int]) -> None:
     candidates: list[UtcInstant] = zone_rules.resolve(LocalWallTime(wall_ms))

@@ -1,6 +1,6 @@
 import nox.time
-from cron import CronSchedule, parse
-from time import UtcInstant
+from chronos.cron import CronSchedule, parse
+from chronos.time import UtcInstant
 
 reference: UtcInstant = UtcInstant(nox.time.DateTime(2024, 1, 1, 8, 30, 0).to_epoch_ms())
 weekdays: CronSchedule = parse("0 9 * * 1-5")

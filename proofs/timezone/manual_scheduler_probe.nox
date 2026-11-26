@@ -1,12 +1,12 @@
 import nox.test
-from clock import FakeClock
-from errors import TimeRangeError
-from job import Job, JobContext, make_utc_job_with_policies
-from policy import JobPolicies, catch_up_misfires, default_job_policies, forbid_overlap, no_retry
+from chronos.clock import FakeClock
+from chronos.errors import TimeRangeError
+from chronos.job import Job, JobContext, make_utc_job_with_policies
+from chronos.policy import JobPolicies, catch_up_misfires, default_job_policies, forbid_overlap, no_retry
 from proofs.timezone.fixture import FixtureZoneProvider
 from proofs.timezone.local_cron import LocalCronPrototype, ManualLocalCronTrigger
-from scheduler import Scheduler, TickResult
-from time import Duration, UtcInstant
+from chronos.scheduler import Scheduler, TickResult
+from chronos.time import Duration, UtcInstant
 
 class Observation:
     planned: list[int]

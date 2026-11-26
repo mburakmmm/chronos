@@ -13,7 +13,7 @@ Do not modify the Nox compiler, runtime, or standard library as part of a Chrono
 
 ## Development setup
 
-Chronos core currently verifies against Nox 2.1.111. Optional Nyx/Aether integration verification requires Nox 2.1.186. Install Nox from the [official download page](https://noxlang.com/download/), then clone the repository:
+Chronos core and optional integrations verify against Nox 2.2.70. Install that version from the [official release](https://github.com/mburakmmm/nox-lang/releases/tag/v2.2.70), then clone the repository:
 
 ```sh
 git clone https://github.com/mburakmmm/chronos.git
@@ -52,7 +52,7 @@ The verifier checks:
 - clock-independent modules under the freestanding profile;
 - the hosted `SystemClock` adapter.
 
-Changes to optional framework examples must also run, with Nox 2.1.186:
+Run the optional framework verifier with Nox 2.2.70 when changing integration examples:
 
 ```sh
 python3 scripts/verify_integrations.py

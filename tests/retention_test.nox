@@ -1,10 +1,10 @@
 import nox.test
-from clock import FakeClock
-from events import ChronosEvent, EVENT_FAILED, EVENT_SUCCEEDED
-from job import Job, JobContext, JobMetadata, make_monotonic_job
-from scheduler import Scheduler, TickResult
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedRateTrigger
+from chronos.clock import FakeClock
+from chronos.events import ChronosEvent, EVENT_FAILED, EVENT_SUCCEEDED
+from chronos.job import Job, JobContext, JobMetadata, make_monotonic_job
+from chronos.scheduler import Scheduler, TickResult
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedRateTrigger
 
 EXECUTIONS: int = 1000
 METADATA_LIMIT: int = 16

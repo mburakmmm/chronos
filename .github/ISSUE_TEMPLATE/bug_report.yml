@@ -12,7 +12,7 @@ body:
     attributes:
       label: Nox version
       description: Output of `noxc version`.
-      placeholder: noxc 2.1.111
+      placeholder: noxc 2.2.70
     validations:
       required: true
   - type: dropdown

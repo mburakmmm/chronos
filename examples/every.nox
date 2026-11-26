@@ -1,8 +1,8 @@
-from clock import FakeClock
-from job import Job, JobContext, make_monotonic_job
-from scheduler import Scheduler
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedRateTrigger
+from chronos.clock import FakeClock
+from chronos.job import Job, JobContext, make_monotonic_job
+from chronos.scheduler import Scheduler
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedRateTrigger
 
 def heartbeat(context: JobContext) -> None:
     print("heartbeat", context.scheduled_time_ms)

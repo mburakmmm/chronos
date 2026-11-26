@@ -1,8 +1,8 @@
 import nox.test
 import nox.time
-from cron import CronSchedule, parse
-from errors import TimeRangeError
-from time import UtcInstant
+from chronos.cron import CronSchedule, parse
+from chronos.errors import TimeRangeError
+from chronos.time import UtcInstant
 
 def rejects_pre_epoch_utc() -> bool:
     try:

@@ -9,6 +9,10 @@
 
 ---
 
+# Agent tool policy
+
+All agents and subagents working in Chronos use RTK for supported shell commands. Use `rtk bypass` for exact output when RTK's transformed output is insufficient. When a fresh Graphify graph exists, orient with `graphify query` or `graphify explain`, then read the relevant source. See [agent tooling](docs/agent-tooling.md) for the Codex hooks and supported tool surfaces.
+
 # 1. Mission and non-goals
 
 Create a Nox-native scheduling library that is:

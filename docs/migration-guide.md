@@ -1,10 +1,12 @@
 # Chronos migration guide
 
-Status: `0.5.0` source release.
+Status: `0.6.0-dev` development snapshot and earlier releases.
 
-Chronos follows Semantic Versioning, but the repository is still on an unreleased `0.x` development line. This guide is for applications pinned to an earlier Chronos commit. It does not imply that `0.1.0`, `0.2.0`, or `0.3.0` was published.
+Chronos follows Semantic Versioning. The `v0.5.0` tag is a source release. The `0.1.0-dev` through `0.4.0-dev` boundaries below are development snapshots.
 
-External package installation is not supported yet. Nox's open `NXL-007` self-import limitation still prevents one safe import form from working in both the Chronos project root and an external consumer. Use the checkout-local imports shown by the executable examples until a package-consumer test passes.
+## Entering `0.6.0-dev`
+
+Use the Nox 2.2.70 verification baseline and update application imports to `chronos.*`, including when building from a Chronos checkout. Consumers can fetch a pinned development commit using the canonical `chronos` dependency alias. See [integration manifests](integrations.md) and [the remaining alias limitation](../NOX_LIMITATIONS.md#nxl-007--a-package-cannot-use-one-internal-import-form-in-both-its-own-project-and-a-consumer).
 
 ## Development boundaries
 
@@ -118,7 +120,7 @@ Run the repository matrix with the checksum-pinned core compiler:
 python3 scripts/verify.py
 ```
 
-This executes the aggregate suite, every test and example on LLVM/QBE, runtime proofs, freestanding checks, and benchmark type-checks. Optional Nyx/Aether examples have their separate Nox 2.1.186 verifier documented in [framework integrations](integrations.md).
+This executes the aggregate suite, every core test and example on LLVM/QBE, runtime proofs, freestanding checks and benchmark type-checks. The package and optional Nyx/Aether verifier uses the same compiler. See [framework integrations](integrations.md).
 
 The SQLite primitive check is also isolated from the dependency-free core matrix:
 

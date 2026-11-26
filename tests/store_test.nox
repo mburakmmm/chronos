@@ -1,12 +1,12 @@
 import nox.strings
 import nox.test
-from errors import InvalidStoredJobError, StoreConflictError, StoreError, UnknownHandlerError, UnsupportedStoreVersionError
-from handler_registry import HandlerRegistry
-from job import Job, JobContext
-from job_codec import encode_cron_utc, encode_once_utc, encode_policies, restore_utc_job
-from policy import JobPolicies, catch_up_misfires, default_job_policies, exponential_retry, fire_once_misfires, forbid_overlap, no_retry, queue_one_overlap
-from store import JOB_DEFINITION_FORMAT_VERSION, HANDLER_CONFIG_FORMAT_VERSION, POLICY_FORMAT_VERSION, TRIGGER_FORMAT_VERSION, JobStore, StoredJobDefinition, copy_stored_job_definition, make_stored_job_definition
-from time import Duration, MAX_MS, UtcInstant
+from chronos.errors import InvalidStoredJobError, StoreConflictError, StoreError, UnknownHandlerError, UnsupportedStoreVersionError
+from chronos.handler_registry import HandlerRegistry
+from chronos.job import Job, JobContext
+from chronos.job_codec import encode_cron_utc, encode_once_utc, encode_policies, restore_utc_job
+from chronos.policy import JobPolicies, catch_up_misfires, default_job_policies, exponential_retry, fire_once_misfires, forbid_overlap, no_retry, queue_one_overlap
+from chronos.store import JOB_DEFINITION_FORMAT_VERSION, HANDLER_CONFIG_FORMAT_VERSION, POLICY_FORMAT_VERSION, TRIGGER_FORMAT_VERSION, JobStore, StoredJobDefinition, copy_stored_job_definition, make_stored_job_definition
+from chronos.time import Duration, MAX_MS, UtcInstant
 
 class MemoryBackend:
     definitions: list[StoredJobDefinition]

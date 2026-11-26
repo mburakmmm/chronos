@@ -1,4 +1,4 @@
-from errors import InvalidDurationError, TimeRangeError
+from chronos.errors import InvalidDurationError, TimeRangeError
 
 _MIN_INT64: int = -9223372036854775807 - 1
 MIN_MS: int = 0

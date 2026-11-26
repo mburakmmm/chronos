@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NOX_VERSION: 2.1.111
+  NOX_VERSION: 2.2.70
   NOX_POOL_WORKERS: 2
 
 jobs:
@@ -29,19 +29,19 @@ jobs:
           - name: Linux x64
             runner: ubuntu-24.04
             platform: linux-x64
-            sha256: 6ccbe9f9c20813e14bab767c07622a92f680d6d9701b4d941f698a260d4e4b13
+            sha256: 1920366b080bffaaf8dabef6ed4a37cd1ad4230c5b96a3b0241cba6850427b76
           - name: Linux arm64
             runner: ubuntu-24.04-arm
             platform: linux-arm64
-            sha256: 3937e4db3fc670e2b1dc0d328823eecaa157d39ef97028aa26d31d60119da3ee
+            sha256: b193478ba556125b3b8bb6b8ab56a6924aeeecbdd123c5819d2287c137d11bf6
           - name: macOS arm64
             runner: macos-15
             platform: macos-arm64
-            sha256: 3d672b5943dcaf856b2204fb146269c41971f6584548128109384f9245215743
+            sha256: 0bcf719d1a5207e3470d8461f203b56ca086d04baaa2858cbdc6081ccebea7d1
           - name: Windows x64
             runner: windows-latest
             platform: windows-x64
-            sha256: e26b0124e179d9e2a99b4cfb7d89244301f373760df029960293e132289c195a
+            sha256: 61f40a7599ba280f3f4ba44e1332984d50c14ce33f146563de398a5ea90dcfb7
 
     steps:
       - name: Check out repository
@@ -91,12 +91,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Nox 2.1.186
+      - name: Install Nox 2.2.70
         uses: ./.github/actions/setup-nox
         with:
-          version: "2.1.186"
+          version: ${{ env.NOX_VERSION }}
           platform: linux-x64
-          sha256: a2e3ef3be38067e6c9cb27665dac45e783c1577be82444a6ee97a5e78d692992
+          sha256: 1920366b080bffaaf8dabef6ed4a37cd1ad4230c5b96a3b0241cba6850427b76
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -119,12 +119,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Nox 2.1.111
+      - name: Install Nox 2.2.70
         uses: ./.github/actions/setup-nox
         with:
-          version: "2.1.111"
+          version: ${{ env.NOX_VERSION }}
           platform: linux-x64
-          sha256: 6ccbe9f9c20813e14bab767c07622a92f680d6d9701b4d941f698a260d4e4b13
+          sha256: 1920366b080bffaaf8dabef6ed4a37cd1ad4230c5b96a3b0241cba6850427b76
 
       - name: Set up Python
         uses: actions/setup-python@v7

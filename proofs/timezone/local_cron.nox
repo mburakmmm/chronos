@@ -1,8 +1,8 @@
-from cron import CronSchedule, MINUTE_MS, parse
-from errors import CronSearchLimitError, TimeRangeError
+from chronos.cron import CronSchedule, MINUTE_MS, parse
+from chronos.errors import CronSearchLimitError, TimeRangeError
 from proofs.timezone.civil import ZoneProvider, rules_for_version
 from proofs.timezone.model import LocalWallTime, WALL_MARGIN_MS, ZonePrototypeError, ZoneRules, ZoneTransition, validate_fold_policy
-from time import UtcInstant
+from chronos.time import UtcInstant
 
 MAX_LOCAL_CANDIDATES: int = 2048
 MAX_CALENDAR_END_UTC_MS: int = 253402300800000

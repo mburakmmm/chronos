@@ -1,11 +1,11 @@
 import nox.strings
 import nox.test
-from cron import CronTrigger, parse
-from errors import InvalidJobError
-from job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job, make_utc_job_with_policies
-from policy import MISFIRE_FIRE_ONCE, OVERLAP_FORBID, RETRY_NONE, JobPolicies, fire_once_misfires, forbid_overlap, no_retry, skip_misfires
-from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
-from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
+from chronos.cron import CronTrigger, parse
+from chronos.errors import InvalidJobError
+from chronos.job import Job, JobContext, JobMetadata, make_fixed_delay_job, make_monotonic_job, make_utc_job, make_utc_job_with_policies
+from chronos.policy import MISFIRE_FIRE_ONCE, OVERLAP_FORBID, RETRY_NONE, JobPolicies, fire_once_misfires, forbid_overlap, no_retry, skip_misfires
+from chronos.time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedDelay, FixedRateTrigger, OnceTrigger
 
 class Recorder:
     calls: int

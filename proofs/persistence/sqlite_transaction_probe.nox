@@ -1,6 +1,7 @@
 import nox.fs
 import nox.os
 import nox.sqlite
+import nox.strings
 from nox.db import Row, Statement
 from nox.sqlite import Connection, SqliteError
 
@@ -47,6 +48,7 @@ print(rows[0].get_str(1) == payload)
 print(rows[0].get_int(2))
 print(rolled_back)
 text_rows: list[Row] = reopened.query("SELECT CAST(X'610062' AS TEXT), length(X'610062')")
-print(text_rows[0].get_str(0) + ":" + str(text_rows[0].get_int(1)))
+value: str = text_rows[0].get_str(0)
+print(nox.strings.byte_len(value), nox.strings.byte_at(value, 1), text_rows[0].get_int(1))
 reopened.close()
 nox.fs.remove_file(path)

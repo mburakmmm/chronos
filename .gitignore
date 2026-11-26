@@ -5,6 +5,8 @@
 *.dSYM/
 test-results.xml
 .chronos-sqlite-transaction-probe.db
+.chronos-hook-audit/
+/graphify-out/
 
 # Known local example/test binaries.
 /examples/calendar_probe

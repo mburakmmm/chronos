@@ -1,0 +1,40 @@
+from chronos.job import JobContext
+from chronos.time import UtcInstant
+from chronos.trigger import OnceTrigger, UtcTrigger
+
+class JobState:
+    completed_ms: int | None
+
+    def __init__(self) -> None:
+        self.completed_ms = None
+
+class ProbeJob(JobState):
+    next_ms: int | None
+    schedule: UtcTrigger
+    handler: (JobContext) -> int
+
+    def __init__(self, schedule: UtcTrigger, handler: (JobContext) -> int) -> None:
+        super().__init__()
+        self.next_ms = None
+        self.schedule = schedule
+        self.handler = handler
+
+    def execute(self) -> None:
+        candidate: UtcInstant | None = self.schedule.next_fire_after(UtcInstant(0))
+        if candidate is not None:
+            self.next_ms = candidate.epoch_ms
+            self.completed_ms = self.handler(JobContext("probe", "utc", candidate.epoch_ms, 1))
+
+def completion_with_delay(delay: int) -> (JobContext) -> int:
+    def complete(context: JobContext) -> int:
+        return context.scheduled_time_ms + delay
+
+    return complete
+
+candidate_job: ProbeJob = ProbeJob(OnceTrigger(UtcInstant(1000)), completion_with_delay(25))
+print(candidate_job.next_ms is None, candidate_job.completed_ms is None)
+candidate_job.execute()
+planned: int | None = candidate_job.next_ms
+completed: int | None = candidate_job.completed_ms
+if planned is not None and completed is not None:
+    print(planned, completed)

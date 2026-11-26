@@ -1,5 +1,5 @@
-from clock import FakeClock
-from time import Duration
+from chronos.clock import FakeClock
+from chronos.time import Duration
 
 clock: FakeClock = FakeClock(0, 0)
 clock.advance(Duration(1))

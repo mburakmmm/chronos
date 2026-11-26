@@ -76,7 +76,7 @@ Initialization and v1-to-v2 migration run in one explicit `BEGIN IMMEDIATE` tran
 
 ## Verified Nox SQLite primitives
 
-`proofs/persistence/sqlite_transaction_probe.nox` and `proofs/persistence/sqlite_store_integration.nox` are executed with checksum-pinned Nox 2.1.111 on LLVM and QBE. Together they verify:
+`proofs/persistence/sqlite_transaction_probe.nox` and `proofs/persistence/sqlite_store_integration.nox` run with checksum-pinned Nox 2.2.70 on LLVM and QBE. Together they verify:
 
 1. opening a file-backed database and reopening it after close;
 2. single-statement `BEGIN IMMEDIATE`, `COMMIT`, and `ROLLBACK` through `Connection.execute`;

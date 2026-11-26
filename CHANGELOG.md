@@ -6,11 +6,15 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 
 ## Unreleased
 
+- Require the Nox 2.2.70 verification baseline and qualified `chronos.*` imports. Standalone, Nyx and Aether consumers now fetch Chronos under the canonical package alias.
+- Enforce the exported `HandlerRegistry` API with Nox module visibility and verify SQLite's embedded-NUL behavior.
+- Add repository Codex hooks for RTK enforcement, Graphify discovery and local aggregate tool counters.
 - Internal IANA timezone proof for bounded local-time resolution on LLVM and QBE, using reproducible 2026f fixtures for three zones.
 - Validated Gregorian civil fields and explicit ruleset version checks in the internal timezone prototype.
 - Internal local cron trigger proof with explicit fold selection, gap skipping and monotonic UTC search across offset transitions.
 - Manual scheduler integration proof for local cron, including clock rollback, bounded catch-up and terminal coverage exhaustion.
 - Internal SQLite proof for pinning zoned cron records to a ruleset and migrating their UTC cursor explicitly.
+- Internal SQLite dispatch proof that consumes zoned cron cursors before callback invocation and records terminal coverage exhaustion across reopen.
 
 ## 0.5.0 — 2026-11-24
 

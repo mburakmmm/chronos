@@ -1,12 +1,16 @@
 import nox.strings
-from errors import InvalidStoredJobError, StoreConflictError, StoreError
-from job_codec import _read_nonnegative
+from chronos.errors import InvalidStoredJobError, StoreConflictError, StoreError
+from chronos.handler_registry import HandlerRegistry
+from chronos.job import JobContext
+from chronos.job_codec import _decode_policies, _read_nonnegative
+from chronos.policy import JobPolicies, MISFIRE_CATCH_UP, MISFIRE_SKIP, RETRY_NONE
 from proofs.timezone.civil import ZoneProvider
 from proofs.timezone.local_cron import LocalCronPrototype
-from store import JobStore, StoredJobDefinition, copy_stored_job_definition
-from time import MAX_MS, UtcInstant
+from chronos.store import JobStore, StoredJobDefinition, copy_stored_job_definition
+from chronos.time import Duration, MAX_MS, UtcInstant
 
 ZONED_CRON_KIND: str = "cron-cursor-zoned"
+EXHAUSTED_ZONED_CRON_KIND: str = "cron-zoned-exhausted"
 MAX_ZONED_CONFIG_BYTES: int = 512
 
 class ZonedCronConfig:
@@ -16,14 +20,16 @@ class ZonedCronConfig:
     gap: str
     cursor: UtcInstant
     expression: str
+    schedule: LocalCronPrototype
 
-    def __init__(self, version: str, zone_name: str, fold: str, gap: str, cursor: UtcInstant, expression: str) -> None:
+    def __init__(self, version: str, zone_name: str, fold: str, gap: str, cursor: UtcInstant, expression: str, schedule: LocalCronPrototype) -> None:
         self.version = version
         self.zone_name = zone_name
         self.fold = fold
         self.gap = gap
         self.cursor = cursor
         self.expression = expression
+        self.schedule = schedule
 
 def encode_zoned_cron(provider: ZoneProvider, version: str, zone_name: str, expression: str, fold: str, gap: str, start: UtcInstant) -> str:
     _validate_zoned_key(version, 32, False)
@@ -32,7 +38,7 @@ def encode_zoned_cron(provider: ZoneProvider, version: str, zone_name: str, expr
     cursor: UtcInstant | None = local_schedule.next_fire_at_or_after(start)
     if cursor is None:
         raise InvalidStoredJobError("no covered zoned cron occurrence")
-    return _encode(ZonedCronConfig(version, zone_name, fold, gap, cursor, expression))
+    return _encode(ZonedCronConfig(version, zone_name, fold, gap, cursor, expression, local_schedule))
 
 def validate_zoned_cron(definition: StoredJobDefinition, provider: ZoneProvider) -> ZonedCronConfig:
     checked: StoredJobDefinition = copy_stored_job_definition(definition)
@@ -48,7 +54,58 @@ def validate_zoned_cron(definition: StoredJobDefinition, provider: ZoneProvider)
     match: UtcInstant | None = local_schedule.next_fire_at_or_after(cursor)
     if match is None or match.epoch_ms != cursor.epoch_ms:
         raise InvalidStoredJobError("zoned cron cursor does not match its rules")
-    return ZonedCronConfig(fields[0], fields[1], fields[2], fields[3], cursor, fields[5])
+    return ZonedCronConfig(fields[0], fields[1], fields[2], fields[3], cursor, fields[5], local_schedule)
+
+def dispatch_zoned_cron(backend: JobStore, handlers: HandlerRegistry, provider: ZoneProvider, job_id: str, now: UtcInstant) -> str:
+    observed: UtcInstant = UtcInstant(now.epoch_ms)
+    loaded: StoredJobDefinition | None = backend.load(job_id)
+    if loaded is None:
+        return "missing"
+    saved: StoredJobDefinition = copy_stored_job_definition(loaded)
+    if saved.job_id != job_id:
+        raise InvalidStoredJobError("stored job ID does not match the requested job")
+    if saved.trigger_kind == EXHAUSTED_ZONED_CRON_KIND:
+        return "exhausted"
+    if saved.trigger_kind != ZONED_CRON_KIND:
+        raise InvalidStoredJobError("stored zoned cron cursor definition required")
+    if not saved.enabled:
+        return "disabled"
+
+    config: ZonedCronConfig = validate_zoned_cron(saved, provider)
+    policies: JobPolicies = _decode_policies(saved.policy_config)
+    if policies.retry.kind != RETRY_NONE or policies.misfire.kind == MISFIRE_CATCH_UP:
+        raise InvalidStoredJobError("stored zoned cron requires no retry and a skip or fire-once misfire policy")
+    planned: UtcInstant = config.cursor
+    if observed.epoch_ms < planned.epoch_ms:
+        return "pending"
+    if saved.revision == MAX_MS:
+        raise StoreError("stored zoned cron revision cannot advance")
+
+    lateness: Duration = Duration(observed.epoch_ms - planned.epoch_ms)
+    skipped: bool = lateness.value_ms > 0 and policies.misfire.action_for_lateness(lateness) == MISFIRE_SKIP
+    callback: (JobContext) -> None = handlers.bind(saved)
+    following: UtcInstant | None = None
+    if observed.epoch_ms < config.schedule.coverage_end_utc_ms():
+        following = config.schedule.next_fire_after(observed)
+    if following is None:
+        saved.trigger_kind = EXHAUSTED_ZONED_CRON_KIND
+        saved.enabled = False
+    else:
+        config.cursor = following
+        saved.trigger_config = _encode(config)
+    expected: int = saved.revision
+    saved.revision = expected + 1
+    if observed.epoch_ms > saved.updated_at_utc_ms:
+        saved.updated_at_utc_ms = observed.epoch_ms
+    # Commit consumption before invoking the application handler.
+    backend.put(saved, expected)
+    if skipped:
+        return "skipped"
+    try:
+        callback(JobContext(job_id, "utc", planned.epoch_ms, 1))
+    except Exception:
+        return "handler-failed"
+    return "succeeded"
 
 def migrate_zoned_cron(backend: JobStore, old_provider: ZoneProvider, new_provider: ZoneProvider, new_version: str, job_id: str, expected_revision: int, cutoff: UtcInstant) -> None:
     current: StoredJobDefinition | None = backend.load(job_id)

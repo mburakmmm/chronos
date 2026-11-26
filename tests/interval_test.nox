@@ -1,7 +1,7 @@
 import nox.test
-from errors import InvalidDurationError, TimeRangeError
-from time import Duration, MAX_MS, MonotonicInstant
-from trigger import FixedDelay, FixedRateTrigger
+from chronos.errors import InvalidDurationError, TimeRangeError
+from chronos.time import Duration, MAX_MS, MonotonicInstant
+from chronos.trigger import FixedDelay, FixedRateTrigger
 
 def rejects_zero_interval() -> bool:
     try:

@@ -1,7 +1,7 @@
 # Nox capability matrix
 
-Last updated: 2026-11-20
-Chronos phase: 5 (`0.5.0` optional persistence, unreleased)
+Last updated 2026-11-26.
+Chronos phase 6 (`0.6.0-dev`).
 
 This document separates documentation findings from executable verification. A documented API is not marked fully verified until an appropriate Chronos proof of concept compiles and runs.
 
@@ -9,7 +9,7 @@ This document separates documentation findings from executable verification. A d
 
 | Item | Observed value | Status |
 |---|---|---|
-| Compiler | `noxc 2.1.111` core; `2.1.186` optional integrations | core release baseline plus targeted framework verification; original Phase 0 evidence used 2.1.0 |
+| Compiler | `noxc 2.2.70` | current verification pin; historical release evidence below |
 | Host | Darwin 27.2.0 arm64 | verified locally |
 | LLVM driver | `/usr/bin/clang` | present; compile/run POC verified |
 | C driver | `/usr/bin/cc` | present |
@@ -26,7 +26,7 @@ This document separates documentation findings from executable verification. A d
 | Dependency alias import | Root `cron.nox` imported as `chronos.cron` | verified |
 | Nested source namespace | `chronos/cron.nox` required `chronos.chronos.cron` | verified; rejected for Chronos layout |
 | `nox.lock` reproducible pin | Local package refs resolved to exact commits | verified in POC |
-| Namespaced framework source overlay | Real Chronos sources qualified under `chronos.*` beside locked Nyx/Aether packages | verified on LLVM/QBE with Nox 2.1.186; not a fetched-Chronos consumer claim |
+| Fetched Chronos package | Standalone consumers and locked Nyx/Aether use the canonical `chronos` dependency alias | verified on LLVM/QBE with Nox 2.2.70 |
 
 ## Time capabilities
 
@@ -73,7 +73,7 @@ The documented suspend behavior of `Instant` differs by platform, while `boot_ms
 | Generic inference | Generic identity function inferred from argument | verified on LLVM/QBE |
 | Explicit generic call syntax | `identity[str](...)` | rejected by installed 2.1.0 despite current documentation; avoid until resolved |
 | Deferred handler mutations | Context collected add/remove requests | verified as language/design POC |
-| Module visibility | All top-level names are importable; `_` is conventional only | verified from Nox 2.1.186 docs and by cross-module LLVM/QBE proof on 2.1.111/2.1.186; tracked as NXL-008 |
+| Module visibility | Opt-in `__all__` enforces a module export list | private import rejection verified for `handler_registry` on LLVM/QBE with Nox 2.2.70 |
 
 ## Test and filesystem capabilities
 
@@ -171,7 +171,7 @@ This POC verifies wait/wake and command transport primitives only. Chronos backg
 
 ## Minimum Nox version
 
-Not decided. The latest development matrix uses Nox 2.1.111; historical implementation evidence began on 2.1.0. A minimum supported version will be published only after Phase 4 compatibility tests.
+The current development and CI baseline is Nox 2.2.70. Historical implementation evidence began on 2.1.0. See the [limitations audit](../NOX_LIMITATIONS.md) for version-specific results and the [compatibility matrix](compatibility.md) for current coverage.
 
 ## Phase 1 implementation evidence
 

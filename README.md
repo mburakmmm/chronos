@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/mburakmmm/chronos/actions/workflows/ci.yml"><img src="https://github.com/mburakmmm/chronos/actions/workflows/ci.yml/badge.svg" alt="Cross-platform CI"></a>
-  <a href="https://github.com/mburakmmm/nox-lang/releases/tag/v2.1.111"><img src="https://img.shields.io/badge/Nox-2.1.111-0e7490" alt="Nox 2.1.111"></a>
+  <a href="https://github.com/mburakmmm/nox-lang/releases/tag/v2.2.70"><img src="https://img.shields.io/badge/Nox-2.2.70-0e7490" alt="Nox 2.2.70"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f59e0b" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/status-experimental-64748b" alt="Experimental status">
 </p>
@@ -38,7 +38,7 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 | Public API contract | Experimental | Curated allowlist; no Stable names before the first tagged release |
 | Compiler-enforced API visibility | Unavailable | Nox imports all top-level names; see NXL-008 |
 | Nyx/Aether integration examples | Verified separately | Request-driven manual polling; no core dependency or background claim |
-| Nox package dependency consumption | Blocked | Self-import limitation remains through Nox 2.1.186; see NXL-007 |
+| Nox package dependency consumption | Experimental | Git dependency under the canonical `chronos` alias on Nox 2.2.70 |
 | Background scheduler | Deferred | Runtime primitives are proven; full worker ownership is not |
 | IANA time zones and DST | Deferred | Current cron and calendar behavior is UTC-only |
 | SQLite definition store | Experimental | Single-owner, revision-checked adapter |
@@ -49,16 +49,10 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 
 ## Quick start
 
-Install [Nox](https://noxlang.com/download/) 2.1.111:
+Install the archive for your platform from [Nox 2.2.70 releases](https://github.com/mburakmmm/nox-lang/releases/tag/v2.2.70), add its `bin` directory to `PATH` and verify the compiler version:
 
 ```sh
-curl -fsSL https://noxlang.com/install.sh | sh
-```
-
-Windows PowerShell:
-
-```powershell
-irm https://noxlang.com/install.ps1 | iex
+noxc version
 ```
 
 Clone and verify Chronos:
@@ -70,7 +64,13 @@ noxc test tests
 noxc run examples/poll.nox
 ```
 
-Chronos is currently verified from a source checkout. Nox 2.1.186 still cannot resolve the same package-internal import form both from the package's own project root and from an external consumer. Dependency installation through `noxc add` is therefore not advertised until [NXL-007](NOX_LIMITATIONS.md) is resolved and consumer integration tests pass.
+To consume the development branch from another Nox project, add this entry to `requires` in its `nox.json` and run `noxc fetch`. Commit the resulting `nox.lock` to pin the resolved revision.
+
+```json
+{ "alias": "chronos", "repo": "github.com/mburakmmm/chronos", "ref": "main" }
+```
+
+Use the canonical alias `chronos`. The published `v0.5.0` tag predates package-qualified imports. See the [migration guide](docs/migration-guide.md).
 
 ## UTC cron example
 
@@ -78,8 +78,8 @@ From a source checkout:
 
 ```nox
 import nox.time
-from cron import CronSchedule, parse
-from time import UtcInstant
+from chronos.cron import CronSchedule, parse
+from chronos.time import UtcInstant
 
 reference: UtcInstant = UtcInstant(
     nox.time.DateTime(2024, 1, 1, 8, 30, 0).to_epoch_ms()
@@ -141,11 +141,11 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 | macOS | arm64 | LLVM and QBE |
 | Windows | x64 | LLVM and QBE |
 
-The matrix runs all 21 deterministic tests, all 16 core examples, eight runtime/capability proofs, 17 freestanding module checks, and three benchmark source type-checks with checksum-pinned Nox 2.1.111 release archives. Timing-sensitive benchmarks are not executed as CI gates. The [first complete four-platform run](https://github.com/mburakmmm/chronos/actions/runs/43460710827) passed. See [compatibility](docs/compatibility.md) for dated evidence and [capabilities](docs/capabilities.md) for the underlying Nox API proofs.
+The matrix runs 21 deterministic tests, 16 core examples, 15 runtime/capability proofs, 17 freestanding module checks and three benchmark source type-checks with checksum-pinned Nox 2.2.70 archives. See [compatibility](docs/compatibility.md) for evidence and [capabilities](docs/capabilities.md) for the Nox API proofs.
 
-A separate Linux x64 CI job uses checksum-pinned Nox 2.1.186 to fetch the exact Nyx `v0.29.0` and Aether `v0.12.0` locks and execute both optional integration examples on LLVM and QBE. These dependencies never enter the core manifest. See [framework integrations](docs/integrations.md) for the request-driven semantics and `NXL-007` source-overlay boundary.
+A separate Linux x64 CI job verifies Chronos as a Git dependency and runs the optional Nyx `v0.29.0` and Aether `v0.12.0` integrations on LLVM and QBE. See [framework integrations](docs/integrations.md).
 
-An isolated Linux x64 job verifies SQLite definition storage and process restart for UTC one-shot and cron delivery using Nox 2.1.111 on LLVM and QBE. See [delivery guarantees](docs/persistence.md#at-most-once-utc-one-shot-dispatch).
+An isolated Linux x64 job verifies SQLite definition storage and process restart for UTC one-shot and cron delivery on LLVM and QBE. See [delivery guarantees](docs/persistence.md#at-most-once-utc-one-shot-dispatch).
 
 Run the complete local matrix with:
 

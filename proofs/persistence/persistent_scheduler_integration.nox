@@ -1,17 +1,17 @@
 import nox.fs
 import nox.os
 import nox.test
-from clock import FakeClock
-from errors import DuplicateJobError, InvalidStoredJobError, SchedulerStateError
-from handler_registry import HandlerRegistry
-from job import JobContext
-from job_codec import encode_once_utc, encode_policies
-from persistent_scheduler import PersistentPollResult, PersistentScheduler
-from policy import default_job_policies
-from sqlite_store import SQLiteJobStore, open_sqlite_store
-from store import JobStore, make_stored_job_definition
-from stored_cron import STORED_CRON_KIND, encode_stored_cron
-from time import UtcInstant
+from chronos.clock import FakeClock
+from chronos.errors import DuplicateJobError, InvalidStoredJobError, SchedulerStateError
+from chronos.handler_registry import HandlerRegistry
+from chronos.job import JobContext
+from chronos.job_codec import encode_once_utc, encode_policies
+from chronos.persistent_scheduler import PersistentPollResult, PersistentScheduler
+from chronos.policy import default_job_policies
+from chronos.sqlite_store import SQLiteJobStore, open_sqlite_store
+from chronos.store import JobStore, make_stored_job_definition
+from chronos.stored_cron import STORED_CRON_KIND, encode_stored_cron
+from chronos.time import UtcInstant
 
 def add_definition(backend: JobStore, job_id: str, key: str, kind: str, value: str) -> None:
     backend.put(make_stored_job_definition(job_id, job_id, key, "public", kind, value, encode_policies(default_job_policies()), True, UtcInstant(0), UtcInstant(0), 1), 0)

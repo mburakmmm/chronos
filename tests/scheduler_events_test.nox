@@ -1,10 +1,10 @@
 import nox.test
-from clock import FakeClock
-from events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_STARTED, EVENT_SUCCEEDED
-from job import Job, JobContext, make_monotonic_job, make_utc_job
-from scheduler import STATE_RUNNING, Scheduler
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedRateTrigger, OnceTrigger
+from chronos.clock import FakeClock
+from chronos.events import ChronosEvent, EVENT_CANCELLED, EVENT_FAILED, EVENT_REGISTERED, EVENT_SCHEDULED, EVENT_SCHEDULER_STARTED, EVENT_SCHEDULER_STOPPED, EVENT_STARTED, EVENT_SUCCEEDED
+from chronos.job import Job, JobContext, make_monotonic_job, make_utc_job
+from chronos.scheduler import STATE_RUNNING, Scheduler
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedRateTrigger, OnceTrigger
 
 class EventRecorder:
     occurrences: list[ChronosEvent]

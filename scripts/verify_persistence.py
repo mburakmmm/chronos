@@ -17,7 +17,7 @@ NOXC = os.environ.get("NOXC", "noxc")
 CASES = (
     (
         "proofs/persistence/sqlite_transaction_probe.nox",
-        "1\njob-one\nTrue\n1\nTrue\na:3",
+        "1\njob-one\nTrue\n1\nTrue\n3 0 3",
     ),
     (
         "proofs/persistence/sqlite_store_integration.nox",
@@ -28,7 +28,7 @@ CASES = (
     ("examples/persistence/dispatch_cron.nox", "60000 summary\nsucceeded\npending\n240000 summary\nsucceeded"),
     ("proofs/persistence/persistent_scheduler_integration.nox", "persistent-scheduler-ok"),
     ("proofs/persistence/outcome_migration.nox", "outcome-migration-ok"),
-    ("proofs/timezone/stored_local_cron_probe.nox", "zoned-cron-migration-ok"),
+    ("proofs/timezone/stored_local_cron_probe.nox", "zoned-cron-storage-ok"),
     ("examples/persistence/poll_stored.nox", "pending\nreport.once summary\nsucceeded\nrecorded succeeded\nstopped"),
 )
 
@@ -160,8 +160,8 @@ def verify_secret_reference(backend: str) -> None:
 
 def main() -> int:
     version = run([NOXC, "version"])
-    if "2.1.111" not in version:
-        raise RuntimeError(f"persistence proof requires Nox 2.1.111, got: {version}")
+    if version != "noxc 2.2.70":
+        raise RuntimeError(f"persistence proof requires Nox 2.2.70, got: {version}")
     for source, expected in CASES:
         for backend in ("llvm", "qbe"):
             with tempfile.TemporaryDirectory(prefix="chronos-sqlite-") as directory:

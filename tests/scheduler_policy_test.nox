@@ -1,14 +1,14 @@
 import nox.test
 import nox.time
-from clock import FakeClock
-from cron import CronTrigger, parse
-from errors import InvalidPolicyError
-from events import ChronosEvent, EVENT_COALESCED, EVENT_MISFIRED, EVENT_SKIPPED
-from job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
-from policy import JobPolicies, catch_up_misfires, fire_once_misfires, forbid_overlap, no_retry, skip_misfires
-from scheduler import MAX_TICK_CATCH_UP_DISPATCHES, STATE_RUNNING, Scheduler, TickResult
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedDelay, FixedRateTrigger, OnceTrigger
+from chronos.clock import FakeClock
+from chronos.cron import CronTrigger, parse
+from chronos.errors import InvalidPolicyError
+from chronos.events import ChronosEvent, EVENT_COALESCED, EVENT_MISFIRED, EVENT_SKIPPED
+from chronos.job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job_with_policies, make_utc_job, make_utc_job_with_policies
+from chronos.policy import JobPolicies, catch_up_misfires, fire_once_misfires, forbid_overlap, no_retry, skip_misfires
+from chronos.scheduler import MAX_TICK_CATCH_UP_DISPATCHES, STATE_RUNNING, Scheduler, TickResult
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedDelay, FixedRateTrigger, OnceTrigger
 
 class Recorder:
     calls: list[str]

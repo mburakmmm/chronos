@@ -1,5 +1,5 @@
-from errors import InvalidPolicyError
-from time import Duration, MAX_MS
+from chronos.errors import InvalidPolicyError
+from chronos.time import Duration, MAX_MS
 
 MISFIRE_SKIP: str = "skip"
 MISFIRE_FIRE_ONCE: str = "fire-once"

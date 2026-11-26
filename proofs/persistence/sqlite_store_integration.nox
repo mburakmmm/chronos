@@ -2,15 +2,15 @@ import nox.fs
 import nox.os
 import nox.sqlite
 import nox.test
-from errors import InvalidStoredJobError, StoreConflictError, StoreCorruptionError, StoreError, UnknownHandlerError, UnsupportedStoreVersionError
-from handler_registry import HandlerRegistry
-from job import Job, JobContext
-from job_codec import encode_once_utc, encode_policies, restore_utc_job
+from chronos.errors import InvalidStoredJobError, StoreConflictError, StoreCorruptionError, StoreError, UnknownHandlerError, UnsupportedStoreVersionError
+from chronos.handler_registry import HandlerRegistry
+from chronos.job import Job, JobContext
+from chronos.job_codec import encode_once_utc, encode_policies, restore_utc_job
 from nox.sqlite import Connection
-from policy import default_job_policies
-from sqlite_store import SQLiteJobStore, open_sqlite_store
-from store import JobStore, StoredJobDefinition, make_stored_job_definition
-from time import UtcInstant
+from chronos.policy import default_job_policies
+from chronos.sqlite_store import SQLiteJobStore, open_sqlite_store
+from chronos.store import JobStore, StoredJobDefinition, make_stored_job_definition
+from chronos.time import UtcInstant
 
 path: str = nox.os.getenv("CHRONOS_SQLITE_TEST_DB")
 nox.test.assert_true(not nox.fs.exists(path), "SQLite fixture path must be fresh")

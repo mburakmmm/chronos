@@ -1,16 +1,18 @@
 import nox.fs
 import nox.os
 import nox.test
-from errors import StoreConflictError, TimeRangeError
-from job_codec import encode_policies
-from policy import default_job_policies
+from chronos.errors import StoreConflictError, TimeRangeError
+from chronos.handler_registry import HandlerRegistry
+from chronos.job import JobContext
+from chronos.job_codec import encode_policies
+from chronos.policy import JobPolicies, default_job_policies, forbid_overlap, no_retry, skip_misfires
 from proofs.timezone.civil import ZoneProvider
 from proofs.timezone.fixture import FixtureZoneProvider
 from proofs.timezone.model import ZonePrototypeError, ZoneRules
-from proofs.timezone.stored_local_cron import ZONED_CRON_KIND, ZonedCronConfig, encode_zoned_cron, migrate_zoned_cron, validate_zoned_cron
-from sqlite_store import SQLiteJobStore, open_sqlite_store
-from store import JobStore, StoredJobDefinition, make_stored_job_definition
-from time import UtcInstant
+from proofs.timezone.stored_local_cron import ZONED_CRON_KIND, ZonedCronConfig, dispatch_zoned_cron, encode_zoned_cron, migrate_zoned_cron, validate_zoned_cron
+from chronos.sqlite_store import SQLiteJobStore, open_sqlite_store
+from chronos.store import JobStore, StoredJobDefinition, make_stored_job_definition
+from chronos.time import Duration, UtcInstant
 
 class ShiftedBerlinProvider:
     offset_seconds: int
@@ -94,6 +96,36 @@ nox.test.assert_eq_int(migrated.cursor.epoch_ms, 1719820800000, "new rules deter
 nox.test.assert_eq_int(validate_zoned_cron(read(updated, "cutoff"), shifted).cursor.epoch_ms, 1719907200000, "exact cutoff is not replayed")
 nox.test.assert_eq_int(validate_zoned_cron(read(updated, "no-rewind"), earlier).cursor.epoch_ms, 1719900000000, "earlier revised match cannot move the pending cursor backward")
 nox.test.assert_true(rejects_wrong_version(record, original), "the old provider cannot resume the migrated record")
+
+def verify_dispatch(backend: JobStore, provider: ZoneProvider) -> HandlerRegistry:
+    handlers: HandlerRegistry = HandlerRegistry()
+    called: list[int] = []
+    def record_delivery(context: JobContext, config: str) -> None:
+        nox.test.assert_eq_str(config, "public", "handler receives registered configuration")
+        called.append(context.scheduled_time_ms)
+    handlers.register("report", record_delivery)
+    first: UtcInstant = UtcInstant(1729989000000)
+    encoded: str = encode_zoned_cron(provider, "2026f", "Europe/Berlin", "30 2 * * *", "both", "skip", first)
+    policies: JobPolicies = JobPolicies(skip_misfires(Duration(0)), forbid_overlap(), no_retry())
+    backend.put(make_stored_job_definition("fold", "Report", "report", "public", ZONED_CRON_KIND, encoded, encode_policies(policies), True, first, first, 1), 0)
+    nox.test.assert_eq_str(dispatch_zoned_cron(backend, handlers, provider, "fold", UtcInstant(first.epoch_ms - 1)), "pending", "future fold stays pending")
+    nox.test.assert_eq_str(dispatch_zoned_cron(backend, handlers, provider, "fold", first), "succeeded", "first fold fires")
+    nox.test.assert_eq_int(len(called), 1, "one handler invocation")
+    nox.test.assert_eq_int(called[0], first.epoch_ms, "callback receives planned UTC time")
+    nox.test.assert_eq_int(validate_zoned_cron(read(backend, "fold"), provider).cursor.epoch_ms, 1729992600000, "second fold is committed")
+    return handlers
+
+handlers: HandlerRegistry = verify_dispatch(updated, original)
 updated.close()
+dispatch_store: SQLiteJobStore = open_sqlite_store(path)
+nox.test.assert_eq_str(dispatch_zoned_cron(dispatch_store, handlers, original, "fold", UtcInstant(1729989000000)), "pending", "reopen cannot replay first fold")
+nox.test.assert_eq_str(dispatch_zoned_cron(dispatch_store, handlers, original, "fold", UtcInstant(1729992600000)), "succeeded", "reopen dispatches second fold")
+nox.test.assert_eq_str(dispatch_zoned_cron(dispatch_store, handlers, original, "fold", UtcInstant(1767225600000)), "skipped", "overdue cursor is skipped at coverage end")
+nox.test.assert_true(not read(dispatch_store, "fold").enabled, "coverage end disables the record")
+dispatch_store.close()
+terminal: SQLiteJobStore = open_sqlite_store(path)
+nox.test.assert_eq_str(dispatch_zoned_cron(terminal, handlers, original, "fold", UtcInstant(1729992600000)), "exhausted", "terminal record survives reopen and clock rewind")
+nox.test.assert_eq_int(read(terminal, "fold").revision, 4, "terminal read does not change revision")
+terminal.close()
 nox.fs.remove_file(path)
-print("zoned-cron-migration-ok")
+print("zoned-cron-storage-ok")

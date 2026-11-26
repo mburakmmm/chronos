@@ -1,6 +1,6 @@
-from errors import DuplicateJobError, InvalidJobError, JobNotFoundError
-from job import Job
-from time import UtcInstant
+from chronos.errors import DuplicateJobError, InvalidJobError, JobNotFoundError
+from chronos.job import Job
+from chronos.time import UtcInstant
 
 MAX_REGISTRY_JOBS: int = 10000
 

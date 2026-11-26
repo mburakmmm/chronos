@@ -37,6 +37,13 @@ PROOF_EXPECTATIONS = {
     "proofs/concurrency_model.nox": "5\ntask failed\ncancelled at await\n49995000",
     "proofs/indexed_due_order.nox": "b\na\nTrue",
     "proofs/limitations/module_visibility_consumer.nox": "7\n9",
+    "proofs/limitations/optional_job_fields.nox": "True True\n1000 1025",
+    "proofs/limitations/default_policy_factory_consumer.nox": "default-argument",
+    "proofs/limitations/list_parameter_closure.nox": "recorded",
+    "proofs/limitations/list_parameter_insert.nox": "7",
+    "proofs/limitations/module_alias_shadow.nox": "1",
+    "proofs/limitations/package_self_import.nox": "package self-import resolved",
+    "proofs/limitations/pre_epoch_datetime.nox": "-432000000",
     "proofs/scheduler_sleep_probe.nox": "fast sleeper",
     "proofs/timezone/resolve_probe.nox": "timezone-prototype-ok",
     "proofs/timezone/local_cron_probe.nox": "local-cron-prototype-ok",
@@ -92,8 +99,8 @@ def relative(source: Path) -> str:
 
 def main() -> int:
     version_output = run([NOXC, "version"])
-    if "2.1.111" not in version_output:
-        raise RuntimeError(f"Chronos CI requires Nox 2.1.111, got: {version_output}")
+    if version_output != "noxc 2.2.70":
+        raise RuntimeError(f"Chronos CI requires Nox 2.2.70, got: {version_output}")
 
     test_sources = sources("tests", "*_test.nox")
     example_sources = sources("examples", "*.nox")
@@ -107,6 +114,13 @@ def main() -> int:
         raise RuntimeError("aggregate test output did not report 21 passed, 0 failed")
 
     for backend in BACKENDS:
+        rejected = subprocess.run(
+            [NOXC, "check", "--backend", backend, "proofs/limitations/private_handler_import.nox"],
+            cwd=ROOT, capture_output=True, text=True, timeout=30,
+        )
+        if rejected.returncode == 0 or "not part of the public API" not in rejected.stdout + rejected.stderr:
+            raise RuntimeError(f"{backend}: handler_registry private export was not rejected as expected")
+        print(f"  PASS private API rejection ({backend})", flush=True)
         for source in test_sources:
             run([NOXC, "run", "--backend", backend, relative(source)])
         for source in example_sources:

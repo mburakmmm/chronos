@@ -1,6 +1,6 @@
 import nox.test
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import DelayTrigger, OnceTrigger
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import DelayTrigger, OnceTrigger
 
 once: OnceTrigger = OnceTrigger(UtcInstant(1000))
 future: UtcInstant | None = once.next_fire_after(UtcInstant(999))

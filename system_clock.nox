@@ -1,5 +1,5 @@
 import nox.time as nox_time
-from time import MonotonicInstant, UtcInstant
+from chronos.time import MonotonicInstant, UtcInstant
 
 class SystemClock:
     def now_utc(self) -> UtcInstant:

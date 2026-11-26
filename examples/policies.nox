@@ -1,5 +1,5 @@
-from policy import MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, exponential_retry, forbid_overlap
-from time import Duration
+from chronos.policy import MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, exponential_retry, forbid_overlap
+from chronos.time import Duration
 
 misfire: MisfirePolicy = catch_up_misfires(Duration(60000), 3, 16)
 overlap: OverlapPolicy = forbid_overlap()

@@ -1,4 +1,4 @@
-from job import Job, JobContext
+from chronos.job import Job, JobContext
 
 class ExecutionOutcome:
     succeeded: bool

@@ -1,8 +1,8 @@
-from clock import FakeClock
-from job import Job, JobContext, make_fixed_delay_job
-from scheduler import Scheduler
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedDelay
+from chronos.clock import FakeClock
+from chronos.job import Job, JobContext, make_fixed_delay_job
+from chronos.scheduler import Scheduler
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedDelay
 
 def cleanup(context: JobContext) -> None:
     print("cleanup", context.scheduled_time_ms)

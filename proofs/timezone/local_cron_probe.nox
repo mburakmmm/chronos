@@ -1,11 +1,11 @@
 import nox.test
-from errors import TimeRangeError
+from chronos.errors import TimeRangeError
 from proofs.timezone.civil import ZoneProvider
 from proofs.timezone.fixture import FixtureZoneProvider
 from proofs.timezone.local_cron import LocalCronPrototype
 from proofs.timezone.model import ZonePrototypeError, ZoneRules
-from time import UtcInstant
-from trigger import UtcTrigger
+from chronos.time import UtcInstant
+from chronos.trigger import UtcTrigger
 
 def require_match(candidate: UtcInstant | None, expected_ms: int) -> None:
     nox.test.assert_true(candidate is not None, "local cron should have a candidate")

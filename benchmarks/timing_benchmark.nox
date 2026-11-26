@@ -1,10 +1,10 @@
 import nox.time
-from events import ChronosEvent, EVENT_SUCCEEDED
-from job import Job, JobContext, make_monotonic_job
-from scheduler import Scheduler, TickResult
-from system_clock import SystemClock
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import DelayTrigger, FixedRateTrigger
+from chronos.events import ChronosEvent, EVENT_SUCCEEDED
+from chronos.job import Job, JobContext, make_monotonic_job
+from chronos.scheduler import Scheduler, TickResult
+from chronos.system_clock import SystemClock
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import DelayTrigger, FixedRateTrigger
 
 WAKE_SAMPLES: int = 20
 WAKE_SLEEP_MS: int = 5

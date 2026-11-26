@@ -1,0 +1,25 @@
+{
+  "description": "Chronos RTK enforcement, Graphify discovery and local tool counters",
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [
+        {"type": "command", "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/hooks/codex_hook.py\" SessionStart", "timeout": 8}
+      ]}
+    ],
+    "SubagentStart": [
+      {"hooks": [
+        {"type": "command", "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/hooks/codex_hook.py\" SubagentStart", "timeout": 8}
+      ]}
+    ],
+    "PreToolUse": [
+      {"matcher": "^(Bash|Read|Glob|Grep)$", "hooks": [
+        {"type": "command", "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/hooks/codex_hook.py\" PreToolUse", "timeout": 8}
+      ]}
+    ],
+    "PostToolUse": [
+      {"matcher": "^(Bash|Read|Glob|Grep)$", "hooks": [
+        {"type": "command", "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/hooks/codex_hook.py\" PostToolUse", "timeout": 8}
+      ]}
+    ]
+  }
+}

@@ -1,13 +1,13 @@
 import nox.test
 import nox.time
-from clock import FakeClock
-from cron import CronTrigger, parse
-from events import ChronosEvent, EVENT_CANCELLED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED
-from job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job, make_monotonic_job_with_policies, make_utc_job_with_policies
-from policy import JobPolicies, fire_once_misfires, forbid_overlap, no_retry, queue_one_overlap
-from scheduler import Scheduler, TickResult
-from time import Duration, MAX_MS, MonotonicInstant, UtcInstant
-from trigger import DelayTrigger, FixedDelay, FixedRateTrigger
+from chronos.clock import FakeClock
+from chronos.cron import CronTrigger, parse
+from chronos.events import ChronosEvent, EVENT_CANCELLED, EVENT_OVERLAP_QUEUED, EVENT_OVERLAP_SKIPPED
+from chronos.job import Job, JobContext, make_fixed_delay_job_with_policies, make_monotonic_job, make_monotonic_job_with_policies, make_utc_job_with_policies
+from chronos.policy import JobPolicies, fire_once_misfires, forbid_overlap, no_retry, queue_one_overlap
+from chronos.scheduler import Scheduler, TickResult
+from chronos.time import Duration, MAX_MS, MonotonicInstant, UtcInstant
+from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger
 
 class OverlapRecorder:
     calls: list[str]

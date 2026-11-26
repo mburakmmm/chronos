@@ -1,8 +1,8 @@
 import nox.strings
-from errors import InvalidJobError, TimeRangeError
-from policy import JobPolicies, copy_job_policies, default_job_policies
-from time import MAX_MS, MonotonicInstant, UtcInstant
-from trigger import FixedDelay, MonotonicTrigger, UtcTrigger
+from chronos.errors import InvalidJobError, TimeRangeError
+from chronos.policy import JobPolicies, copy_job_policies, default_job_policies
+from chronos.time import MAX_MS, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedDelay, MonotonicTrigger, UtcTrigger
 
 MAX_JOB_ID_BYTES: int = 128
 MAX_JOB_NAME_BYTES: int = 256

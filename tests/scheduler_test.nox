@@ -1,12 +1,12 @@
 import nox.test
 import nox.time
-from clock import FakeClock
-from cron import CronTrigger, parse
-from errors import DuplicateJobError, InvalidJobError, SchedulerStateError
-from job import Job, JobContext, make_fixed_delay_job, make_monotonic_job, make_utc_job
-from scheduler import STATE_CREATED, STATE_RUNNING, STATE_STOPPED, Scheduler, TickResult
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
+from chronos.clock import FakeClock
+from chronos.cron import CronTrigger, parse
+from chronos.errors import DuplicateJobError, InvalidJobError, SchedulerStateError
+from chronos.job import Job, JobContext, make_fixed_delay_job, make_monotonic_job, make_utc_job
+from chronos.scheduler import STATE_CREATED, STATE_RUNNING, STATE_STOPPED, Scheduler, TickResult
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import DelayTrigger, FixedDelay, FixedRateTrigger, OnceTrigger
 
 class Recorder:
     events: list[str]

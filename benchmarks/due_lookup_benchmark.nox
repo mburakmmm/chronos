@@ -1,11 +1,11 @@
 import nox.strings
 import nox.time
-from clock import FakeClock
-from job import Job, JobContext, make_utc_job
-from registry import RegisteredJob
-from scheduler import DueItem, ScheduledEntry, Scheduler
-from time import MonotonicInstant, UtcInstant
-from trigger import OnceTrigger
+from chronos.clock import FakeClock
+from chronos.job import Job, JobContext, make_utc_job
+from chronos.registry import RegisteredJob
+from chronos.scheduler import DueItem, ScheduledEntry, Scheduler
+from chronos.time import MonotonicInstant, UtcInstant
+from chronos.trigger import OnceTrigger
 
 NOW_MS: int = 100000
 FUTURE_MS: int = 200000

@@ -2,10 +2,10 @@ import nox.fs
 import nox.os
 import nox.sqlite
 import nox.test
-from errors import InvalidStoredJobError, StoreError
+from chronos.errors import InvalidStoredJobError, StoreError
 from nox.sqlite import Connection
-from sqlite_store import CREATE_JOBS_SQL, CREATE_METADATA_SQL, SQLiteJobStore, open_sqlite_store
-from store import StoredJobDefinition
+from chronos.sqlite_store import CREATE_JOBS_SQL, CREATE_METADATA_SQL, SQLiteJobStore, open_sqlite_store
+from chronos.store import StoredJobDefinition
 
 def failed_migration(path: str) -> bool:
     try:

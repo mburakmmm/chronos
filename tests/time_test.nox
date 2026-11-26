@@ -1,6 +1,6 @@
 import nox.test
-from errors import InvalidDurationError, TimeRangeError
-from time import Duration, MAX_MS, MIN_MS, MonotonicInstant, UtcInstant, add_duration, add_monotonic_duration, elapsed_between, multiply_duration, require_positive_interval, subtract_duration
+from chronos.errors import InvalidDurationError, TimeRangeError
+from chronos.time import Duration, MAX_MS, MIN_MS, MonotonicInstant, UtcInstant, add_duration, add_monotonic_duration, elapsed_between, multiply_duration, require_positive_interval, subtract_duration
 
 def rejects_negative_duration() -> bool:
     try:

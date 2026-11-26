@@ -1,12 +1,12 @@
 import nox.strings
-from cron import CronTrigger, parse
-from errors import CronParseError, InvalidPolicyError, InvalidStoredJobError
-from handler_registry import HandlerRegistry
-from job import Job, JobContext, make_utc_job_with_policies
-from policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy, copy_job_policies, validate_policy_combination
-from store import StoredJobDefinition, copy_stored_job_definition
-from time import Duration, UtcInstant
-from trigger import OnceTrigger, UtcTrigger
+from chronos.cron import CronTrigger, parse
+from chronos.errors import CronParseError, InvalidPolicyError, InvalidStoredJobError
+from chronos.handler_registry import HandlerRegistry
+from chronos.job import Job, JobContext, make_utc_job_with_policies
+from chronos.policy import JobPolicies, MisfirePolicy, OverlapPolicy, RetryPolicy, copy_job_policies, validate_policy_combination
+from chronos.store import StoredJobDefinition, copy_stored_job_definition
+from chronos.time import Duration, UtcInstant
+from chronos.trigger import OnceTrigger, UtcTrigger
 
 def encode_once_utc(target: UtcInstant) -> str:
     checked: UtcInstant = UtcInstant(target.epoch_ms)

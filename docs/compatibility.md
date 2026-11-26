@@ -1,21 +1,21 @@
 # Compatibility
 
-Status: Phase 5 core/store-contract and experimental SQLite adapter compatibility baseline.
+Status: Phase 6 development compatibility baseline.
 
-Last verified locally: 2026-11-24
+Last verified locally: 2026-11-26
 
 ## Verified development target
 
 | Component | Verified value | Evidence status |
 |---|---|---|
-| Nox compiler | `noxc 2.1.111` | verified locally and in cross-platform CI |
+| Nox compiler | `noxc 2.2.70` | verified locally and pinned in cross-platform CI |
 | Host | macOS 27.2 (`Darwin 27.2.0`) arm64 | verified locally |
 | LLVM backend | Apple clang 21.0.0, arm64 target | full test/example matrix passed |
 | QBE backend | Nox-installed QBE toolchain | full test/example matrix passed |
 | Default profile | hosted | core, scheduler, examples, and `SystemClock` verified |
 | Freestanding profile | no clock capability | 17 clock-independent modules type-checked on LLVM and QBE |
 
-This table records a reproducible development baseline. A minimum supported Nox version has not been selected. The Phase 5 cross-platform run is recorded in [GitHub Actions run 45267286106](https://github.com/mburakmmm/chronos/actions/runs/45267286106) for commit `24f970d`.
+The Phase 5 source release used Nox 2.1.111. Its [cross-platform run](https://github.com/mburakmmm/chronos/actions/runs/45267286106) records results for commit `24f970d`.
 
 ## Backend matrix
 
@@ -31,7 +31,7 @@ This table records a reproducible development baseline. A minimum supported Nox 
 | Cross-module Internal-name import proof | output `7`, `9` | output `7`, `9` |
 | Clock-independent freestanding modules | 17 checked | 17 checked |
 
-The QBE backend is single-threaded and cooperative, while LLVM uses the documented multi-core scheduler. With Nox 2.1.111, `sleep_ms()` inside an async task suspends only the calling fiber on both tested backends. `Channel.wait(ms)` also provides a cooperative bounded wake primitive.
+The QBE backend is single-threaded and cooperative, while LLVM uses the documented multi-core scheduler. The task-local sleep and bounded `Channel.wait(ms)` probes exercise cooperative suspension on both backends.
 
 Cancellation remains cooperative: a task reaches cancellation at an await/checkpoint, but non-awaiting computation runs to completion. Chronos therefore does not claim forceful callback cancellation or enforceable in-process execution timeouts.
 
@@ -63,14 +63,14 @@ The following modules type-check with `--profile freestanding` on LLVM and QBE:
 
 ## Optional framework integration matrix
 
-Framework packages currently require a newer compiler than the core baseline, so they run in an isolated job rather than changing Chronos's minimum-version claim.
+Framework packages run in an isolated job with the same Nox pin as core.
 
 | Integration | Framework pin | Compiler | Local macOS arm64 | CI Linux x64 |
 |---|---|---|---|---|
-| Nyx request polling | `v0.29.0` / `8acc737cadf58e5f7529e91e3838c095bce3c8ad` | Nox 2.1.186 | LLVM/QBE passed | LLVM/QBE passed |
-| Aether request polling | `v0.12.0` / `eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001` | Nox 2.1.186 | LLVM/QBE passed | LLVM/QBE passed |
+| Nyx request polling | `v0.29.0` / `8acc737cadf58e5f7529e91e3838c095bce3c8ad` | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
+| Aether request polling | `v0.12.0` / `eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001` | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
 
-The job verifies locked framework APIs through the source-overlay mechanism documented in `docs/integrations.md`. It is not external Chronos package-consumption evidence and makes no live-server, multi-worker, background-progress, or exactly-once claim.
+The job fetches and locks Chronos alongside the framework packages. Standalone cron and scheduler consumers use the same canonical `chronos` alias. See [integration verification](integrations.md).
 
 ## Optional SQLite adapter matrix
 
@@ -78,12 +78,12 @@ The data-only `store.nox` module is part of the pure cross-platform matrix and d
 
 | Verification | Compiler | macOS arm64 | CI Linux x64 |
 |---|---|---|---|
-| File reopen, explicit commit/rollback, constraint recovery, prepared values | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
-| `SQLiteJobStore` schema/create/load/update/delete/corruption/version integration | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
-| Single-owner UTC one-shot process termination and reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
-| Single-owner UTC cron cursor process termination and reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
-| Persistent scheduler lifecycle, bounded outcomes and SQLite reopen | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
-| SQLite v1-to-v2 outcome migration, rollback and retention | Nox 2.1.111 | LLVM/QBE passed | isolated CI job configured |
+| File reopen, explicit commit/rollback, constraint recovery, prepared values | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
+| `SQLiteJobStore` schema/create/load/update/delete/corruption/version integration | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
+| Single-owner UTC one-shot process termination and reopen | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
+| Single-owner UTC cron cursor process termination and reopen | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
+| Persistent scheduler lifecycle, bounded outcomes and SQLite reopen | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
+| SQLite v1-to-v2 outcome migration, rollback and retention | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
 
 SQLite runtime evidence covers macOS arm64 and the isolated Linux x64 CI job. The suite covers rollback and retry of the v1-to-v2 migration. Power-loss recovery, concurrent schedulers and SQLite support on other targets require separate verification.
 
@@ -91,10 +91,10 @@ SQLite runtime evidence covers macOS arm64 and the isolated Linux x64 CI job. Th
 
 | Platform | Status |
 |---|---|
-| Linux x64 | verified in GitHub Actions with the complete matrix above |
-| Linux arm64 | verified in GitHub Actions with the complete matrix above |
-| macOS arm64 | verified locally and in GitHub Actions with the complete matrix above |
-| Windows x64 | verified in GitHub Actions with the complete matrix above |
+| Linux x64 | 2.2.70 CI configured; 2.1.111 historical CI passed |
+| Linux arm64 | 2.2.70 CI configured; 2.1.111 historical CI passed |
+| macOS arm64 | 2.2.70 verified locally; 2.1.111 historical CI passed |
+| Windows x64 | 2.2.70 CI configured; 2.1.111 historical CI passed |
 | Other architectures | unverified; no support claim yet |
 | Freestanding targets | pure/manual modules type-check; no hosted clock or runtime execution claim |
 

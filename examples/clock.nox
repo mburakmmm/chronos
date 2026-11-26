@@ -1,6 +1,6 @@
-from clock import Clock, FakeClock
-from system_clock import SystemClock
-from time import Duration
+from chronos.clock import Clock, FakeClock
+from chronos.system_clock import SystemClock
+from chronos.time import Duration
 
 def utc_ms(source: Clock) -> int:
     return source.now_utc().as_epoch_ms()

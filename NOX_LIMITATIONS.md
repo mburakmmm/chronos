@@ -2,11 +2,30 @@
 
 This file tracks compiler/runtime behavior encountered while implementing Chronos. It is intentionally separate from Chronos feature limitations. Entries remain open until the relevant Nox fix is verified with the recorded reproducer on every affected backend.
 
-Original observations used Nox 2.1.0 on macOS arm64. The latest full audit used Nox 2.1.111 on macOS arm64 on 2026-11-13; a targeted framework-integration audit rechecked NXL-003 and NXL-007 with Nox 2.1.186 on 2026-11-16. Chronos does not modify the Nox compiler, runtime, or standard library.
+Original observations used Nox 2.1.0 on macOS arm64. Historical audits used 2.1.111 and 2.1.186. The current audit uses the checksum-pinned Nox 2.2.70 release on macOS arm64.
+
+## Nox 2.2.70 audit
+
+The following results are from macOS arm64. The 2.1.111 baseline was reproduced from the previous Chronos checkout for NXL-003, NXL-005, NXL-007 and NXL-010. For the remaining historical results, see the individual entries.
+
+| Entry | 2.2.70 result |
+|---|---|
+| NXL-001 | Representative subclass, optional integer fields, typed trigger and captured handler pass on LLVM/QBE. The original failure was never reduced exactly. |
+| NXL-002 | Retained list insertion proof passes on LLVM/QBE. |
+| NXL-003 | Module shadowing proof with qualified imports passes on LLVM/QBE. |
+| NXL-004 | Retained pre-epoch conversion returns `-432000000` on LLVM/QBE. Chronos's public epoch range remains unchanged. |
+| NXL-005 | Existing importing consumer omits the default successfully on LLVM/QBE. |
+| NXL-006 | Awaiting work cancels; non-awaiting work still completes. Cooperative cancellation remains a runtime contract. |
+| NXL-007 | Self-import and a fetched canonical `chronos` dependency pass. A renamed `schedulelib` consumer exposes a duplicate `Clock` protocol on LLVM. |
+| NXL-008 | Opt-in `__all__` rejects a private import from `handler_registry`. Legacy modules with no export list keep their original behavior. |
+| NXL-009 | SQLite returns all three bytes and preserves NUL on LLVM/QBE. Chronos retains its own data-format validation. |
+| NXL-010 | Retained captured-list proof passes on LLVM/QBE. |
+
+The upstream [Nox 2.2.70 source and changelog](https://github.com/mburakmmm/nox-lang/tree/v2.2.70) contain the preceding releases. In particular, 2.2.5 introduced `__all__`. Version 2.2.63 fixed SQLite text NUL preservation and added wake-up on cancellation for blocked waits. That wake-up change is distinct from interrupting non-awaiting code.
 
 ## NXL-001 — production-shaped optional primitive fields reach unsupported codegen
 
-Status: open; no reliable minimal reproducer is available for a Nox 2.1.111 re-audit
+Status: no longer reproduced by the representative `optional_job_fields.nox` proof on 2.2.70 LLVM/QBE; original failure lacked a reliable reproducer
 
 Observed: 2026-11-10
 
@@ -52,7 +71,7 @@ Resolution evidence (2026-11-13): the retained reproducer printed `7` on both LL
 
 ## NXL-003 — local names matching imported module aliases resolve as modules
 
-Status: open
+Status: the qualified-import regression proof passes on 2.2.70 LLVM/QBE
 
 Observed: 2026-11-10
 
@@ -62,14 +81,14 @@ With `from clock import FakeClock`, a module-level local named `clock` followed 
 
 Chronos workaround: use noncolliding names such as `source_clock`, `event_clock`, `target`, `store`, and `engine` rather than `clock`, `job`, `registry`, or other imported module aliases.
 
-Reproducer: `proofs/limitations/module_alias_shadow.nox`.
+Reproducer in the historical checkout: `proofs/limitations/module_alias_shadow.nox`. The current proof uses qualified imports consistently with the rest of the package. Mixing the old unqualified imports with today's qualified modules can produce a separate type mismatch.
 
 ```text
 noxc check proofs/limitations/module_alias_shadow.nox -> UndefinedFunction: module 'clock' has no member named 'advance'/'now_utc'
 noxc check --backend qbe proofs/limitations/module_alias_shadow.nox -> same errors
 ```
 
-Fix verification: compile `proofs/limitations/module_alias_shadow.nox` and confirm the local binding wins consistently on LLVM and QBE, printing `1`.
+Nox 2.2.70 prints `1` on LLVM and QBE both for the original reproduction in the `f78c252` checkout and for the qualified-import regression in the current checkout.
 
 Latest audit (2026-11-13, Nox 2.1.98): still open. `noxc check` reports the same `UndefinedFunction` errors for `clock.advance` and `clock.now_utc`.
 
@@ -101,7 +120,7 @@ Resolution evidence (2026-11-13): the retained reproducer completed on LLVM and 
 
 ## NXL-005 — omitted default optional argument fails across a module boundary
 
-Status: open
+Status: retained importing consumer passes on 2.2.70 LLVM/QBE
 
 Observed: 2026-11-11
 
@@ -157,7 +176,7 @@ Fix/capability verification:
 
 ## NXL-007 — a package cannot use one internal import form in both its own project and a consumer
 
-Status: open
+Status: resolved for the root and canonical `chronos` alias on 2.2.70. Alternate alias reproduction remains.
 
 Observed: 2026-11-13 with Nox 2.1.111 on macOS arm64
 
@@ -174,7 +193,9 @@ noxc check proofs/limitations/package_self_import.nox
 
 Using an unqualified internal import such as `from time import UtcInstant` makes the source checkout compile, but it is not a safe package workaround. When the module is loaded through a dependency alias, that unqualified import is resolved against the consumer's project root. It either fails when the consumer has no matching file or can bind to unrelated consumer code.
 
-Chronos impact: Chronos remains source-checkout-only and does not claim working `noxc add` consumption while this limitation is open. README examples use checkout-local imports. CI still verifies all implemented behavior directly on every claimed platform/backend.
+Previous Chronos impact: the v0.5.0 release is source-checkout-only. The current development line uses package-qualified imports and verifies Git dependency consumption under `chronos`.
+
+The installed 2.2.87 compiler also passed the canonical cron and scheduler consumers on LLVM/QBE. The alternate `schedulelib` alias again produced `DuplicateDefinition: protocol already defined: Clock` on LLVM.
 
 Nox 2.1.186 audit (2026-11-16): still open. `noxc check proofs/limitations/package_self_import.nox` reports the same unknown-alias/project-file error on LLVM and QBE checks. Optional framework verification therefore uses a documented temporary `chronos.*` source overlay and is not counted as package-consumer evidence.
 
@@ -187,7 +208,7 @@ Fix verification:
 
 ## NXL-008 — module visibility cannot enforce a public API allowlist
 
-Status: open capability limitation
+Status: opt-in `__all__` implemented upstream and verified in `handler_registry` on 2.2.70
 
 Observed: 2026-11-16 with Nox 2.1.111 and 2.1.186 on macOS arm64
 
@@ -215,7 +236,7 @@ Fix/capability verification:
 
 ## NXL-009 — SQLite text reads truncate at embedded NUL
 
-Status: open in Nox 2.1.111 on macOS arm64, reproduced on LLVM and QBE.
+Status: fixed upstream in 2.2.63 and verified on 2.2.70 LLVM/QBE.
 
 The retained `proofs/persistence/sqlite_transaction_probe.nox` queries `CAST(X'610062' AS TEXT)` and the length of the same three-byte blob. `Row.get_str(0)` returns only `a`, producing `a:3`. The tagged runtime shim in `runtime/stdlib_shims/sqlite.zig` copies the NUL-terminated span of `sqlite3_column_text`. It does not use the SQLite column byte count. A row containing an embedded NUL therefore cannot be distinguished from its valid prefix by the caller.
 
@@ -225,7 +246,7 @@ To verify a runtime fix, check that the driver returns all three bytes on both b
 
 ## NXL-010 — closures capturing a list parameter fail during code generation
 
-Status: open in Nox 2.1.111 on macOS arm64, reproduced on LLVM and QBE.
+Status: retained reproducer passes on 2.2.70 LLVM/QBE.
 
 `proofs/limitations/list_parameter_closure.nox` returns a closure that captures and appends to a `list[str]` parameter. `noxc check` passes. Both `noxc run --backend llvm` and `noxc run --backend qbe` reject the program with the generic unsupported-construct codegen diagnostic.
 

@@ -8,8 +8,8 @@ Chronos exposes an application-owned manual scheduler. The framework examples at
 
 | Integration | Pinned release | Resolved commit | Nox | Evidence |
 |---|---|---|---|---|
-| Nyx | `v0.29.0` | `8acc737cadf58e5f7529e91e3838c095bce3c8ad` | `2.1.186` | LLVM/QBE code generation and execution |
-| Aether | `v0.12.0` | `eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001` | `2.1.186` | LLVM/QBE code generation and execution |
+| Nyx | `v0.29.0` | `8acc737cadf58e5f7529e91e3838c095bce3c8ad` | `2.2.70` | LLVM/QBE code generation and execution |
+| Aether | `v0.12.0` | `eef4664b5c7a2f9ec4c3bea19004f6bbebbdc001` | `2.2.70` | LLVM/QBE code generation and execution |
 
 The manifests and exact locks live under `integrations/nyx/` and `integrations/aether/`. The root `nox.json` keeps an empty `requires` list, so neither framework becomes a Chronos core dependency.
 
@@ -49,8 +49,8 @@ Run:
 NOX_HOME=/tmp/chronos-integration-home python3 scripts/verify_integrations.py
 ```
 
-The first run requires network access to fetch the locked framework commits. The verifier requires Nox 2.1.186, checks that `noxc fetch` does not change either lock, and runs both examples on LLVM and QBE.
+The first run requires network access to fetch the locked framework commits. The verifier requires Nox 2.2.70, verifies the resolved revisions and runs both examples on LLVM and QBE.
 
-`NXL-007` still prevents one Chronos source tree from using the same package-qualified internal imports both as the root project and as a fetched dependency. The verifier therefore creates a temporary source-overlay project: it copies the real Chronos sources under `chronos/`, mechanically qualifies only their internal import statements, then compiles them with the locked framework package. This proves framework API compatibility, closure/codegen compatibility, and namespace isolation. It does **not** prove `noxc add chronos` consumption; Chronos remains source-checkout-only until `NXL-007` is resolved and a separate consumer test passes.
+The verifier commits unchanged working-tree Chronos modules to a temporary Git repository. Each consumer uses `noxc fetch` to load the resulting commit under the `chronos` alias. It exercises an independent cron and scheduler consumer and both framework consumers. Alternate aliases remain unverified for support because the renamed consumer reproduces a duplicate `Clock` protocol. Reproduce with `python3 scripts/verify_integrations.py --consumer-alias schedulelib`.
 
 The examples are compiled and executed without starting a server or opening a socket. They validate the complete adapter functions through Nox code generation, not live HTTP timing or multi-worker behavior.

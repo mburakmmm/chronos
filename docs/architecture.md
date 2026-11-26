@@ -236,7 +236,7 @@ Nyx and Aether are not dependencies of Chronos core. Their optional examples con
 
 Request-driven polling has deliberately limited semantics: it makes progress only when requests arrive, and inline handlers contribute directly to request latency. Each framework worker owns independent module/application state, so registering the same schedule in multiple workers can duplicate execution. The examples therefore do not claim idle-time progress, cross-worker coordination, persistence, or exactly-once delivery.
 
-Nyx `v0.29.0` and Aether `v0.12.0` require Nox 2.1.186, while the core matrix remains pinned to 2.1.111. A separate integration verifier and CI job preserve that version boundary. Until NXL-007 is fixed, the verifier uses a temporary `chronos.*` source namespace with mechanically qualified internal imports. This tests the intended package namespace without presenting source-overlay success as `noxc add chronos` support.
+The Nox 2.2.70 verifier fetches Chronos as a Git dependency beside Nyx `v0.29.0` and Aether `v0.12.0`. Checkout and external consumer code share the qualified `chronos.*` imports. The optional integration job checks exact Git revisions and runs the examples independently of the core matrix.
 
 Nox 2.1.111 verifies cooperative task-local sleep, `Channel.wait(ms)`, and class-valued channel command transport on LLVM and QBE. These primitives make a future owned worker feasible, but they do not prove correct ownership of Chronos jobs, bounded command responses, deadline recomputation, or handler shutdown. Background mode remains a separate future executor/lifecycle design rather than being hidden inside the manual scheduler.
 

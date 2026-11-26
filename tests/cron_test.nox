@@ -1,9 +1,9 @@
 import nox.strings
 import nox.test
 import nox.time
-from cron import CronSchedule, CronTrigger, parse
-from errors import CronParseError, CronSearchLimitError, TimeRangeError
-from time import UtcInstant
+from chronos.cron import CronSchedule, CronTrigger, parse
+from chronos.errors import CronParseError, CronSearchLimitError, TimeRangeError
+from chronos.time import UtcInstant
 
 def epoch(year: int, month: int, day: int, hour: int, minute: int, second: int = 0) -> int:
     return nox.time.DateTime(year, month, day, hour, minute, second).to_epoch_ms()

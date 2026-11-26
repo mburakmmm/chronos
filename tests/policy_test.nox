@@ -1,7 +1,7 @@
 import nox.test
-from errors import InvalidPolicyError
-from policy import MISFIRE_CATCH_UP, MISFIRE_FIRE_ONCE, MISFIRE_SKIP, OVERLAP_FORBID, OVERLAP_QUEUE_ONE, RETRY_EXPONENTIAL, RETRY_FIXED, RETRY_NONE, MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
-from time import Duration, MAX_MS
+from chronos.errors import InvalidPolicyError
+from chronos.policy import MISFIRE_CATCH_UP, MISFIRE_FIRE_ONCE, MISFIRE_SKIP, OVERLAP_FORBID, OVERLAP_QUEUE_ONE, RETRY_EXPONENTIAL, RETRY_FIXED, RETRY_NONE, MisfirePolicy, OverlapPolicy, RetryPolicy, catch_up_misfires, exponential_retry, fire_once_misfires, fixed_retry, forbid_overlap, no_retry, queue_one_overlap, skip_misfires
+from chronos.time import Duration, MAX_MS
 
 def invalid_catch_up_rejected() -> bool:
     try:

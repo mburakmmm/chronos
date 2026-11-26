@@ -1,6 +1,6 @@
 import nox.strings
-from errors import EventListenerLimitError, InvalidEventError
-from time import MAX_MS, MonotonicInstant, UtcInstant, elapsed_between
+from chronos.errors import EventListenerLimitError, InvalidEventError
+from chronos.time import MAX_MS, MonotonicInstant, UtcInstant, elapsed_between
 
 EVENT_REGISTERED: str = "registered"
 EVENT_SCHEDULED: str = "scheduled"

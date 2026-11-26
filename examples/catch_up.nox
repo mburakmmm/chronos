@@ -1,9 +1,9 @@
-from clock import FakeClock
-from job import Job, JobContext, make_monotonic_job_with_policies
-from policy import JobPolicies, catch_up_misfires, forbid_overlap, no_retry
-from scheduler import Scheduler, TickResult
-from time import Duration, MonotonicInstant, UtcInstant
-from trigger import FixedRateTrigger
+from chronos.clock import FakeClock
+from chronos.job import Job, JobContext, make_monotonic_job_with_policies
+from chronos.policy import JobPolicies, catch_up_misfires, forbid_overlap, no_retry
+from chronos.scheduler import Scheduler, TickResult
+from chronos.time import Duration, MonotonicInstant, UtcInstant
+from chronos.trigger import FixedRateTrigger
 
 def handle(context: JobContext) -> None:
     print("catch-up", context.scheduled_time_ms)

@@ -1,6 +1,6 @@
 import nox.time
-from cron import CronSchedule, parse
-from time import UtcInstant
+from chronos.cron import CronSchedule, parse
+from chronos.time import UtcInstant
 
 PARSE_ITERATIONS: int = 20000
 DENSE_ITERATIONS: int = 50000

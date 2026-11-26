@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
 from pathlib import Path
 import shlex
@@ -14,23 +16,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 NOXC = os.environ.get("NOXC", "noxc")
-NOX_VERSION = "2.1.186"
+NOX_VERSION = "2.2.70"
 BACKENDS = ("llvm", "qbe")
-CORE_SOURCES = (
-    "clock.nox",
-    "cron.nox",
-    "errors.nox",
-    "events.nox",
-    "executor.nox",
-    "job.nox",
-    "policy.nox",
-    "registry.nox",
-    "scheduler.nox",
-    "system_clock.nox",
-    "time.nox",
-    "trigger.nox",
-)
-CORE_MODULES = tuple(source.removesuffix(".nox") for source in CORE_SOURCES)
 INTEGRATIONS = (
     (
         "nyx",
@@ -64,6 +51,7 @@ def run(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        timeout=180,
     )
     output = completed.stdout.strip()
     if completed.returncode != 0:
@@ -82,61 +70,85 @@ def run(
     return output
 
 
-def qualify_core_imports(source_text: str) -> str:
-    lines: list[str] = []
-    for line in source_text.splitlines(keepends=True):
-        qualified = line
-        for module in CORE_MODULES:
-            if line.startswith(f"from {module} import "):
-                qualified = line.replace(
-                    f"from {module} import ",
-                    f"from chronos.{module} import ",
-                    1,
-                )
-                break
-            if line == f"import {module}\n":
-                qualified = f"import chronos.{module}\n"
-                break
-        lines.append(qualified)
-    return "".join(lines)
+def prepare_package(destination: Path) -> str:
+    destination.mkdir()
+    for source in (*ROOT.glob("*.nox"), ROOT / "nox.json"):
+        shutil.copy2(source, destination / source.name)
+    (destination / "examples").mkdir()
+    shutil.copy2(ROOT / "examples" / "poll.nox", destination / "examples" / "poll.nox")
+    run(["git", "init", "-b", "main"], destination)
+    run(["git", "add", "."], destination)
+    run(["git", "-c", "user.name=Chronos Tests", "-c", "user.email=tests@example.invalid",
+         "-c", "commit.gpgsign=false", "commit", "-m", "Chronos package fixture"], destination)
+    return run(["git", "rev-parse", "HEAD"], destination)
 
 
-def prepare_workspace(name: str, resolved: str, destination: Path) -> str:
+def dependency(alias: str, package: Path, revision: str) -> dict:
+    return {"alias": alias, "repo": str(package), "ref": revision, "require_signed_commit": False}
+
+
+def write_manifest(workspace: Path, manifest: dict) -> None:
+    (workspace / "nox.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+
+def verify_lock(workspace: Path, expected: dict[str, str]) -> None:
+    packages = json.loads((workspace / "nox.lock").read_text(encoding="utf-8"))["packages"]
+    for alias, revision in expected.items():
+        if [item["resolved"] for item in packages if item["alias"] == alias] != [revision]:
+            raise RuntimeError(f"unexpected dependency resolution for {alias}")
+
+
+def prepare_workspace(name: str, destination: Path, package: Path, revision: str) -> None:
     source = ROOT / "integrations" / name
     shutil.copy2(source / "main.nox", destination / "main.nox")
-    shutil.copy2(source / "nox.json", destination / "nox.json")
-    lock = source / "nox.lock"
-    if not lock.exists():
-        raise RuntimeError(f"missing dependency lock for {name}")
-    lock_text = lock.read_text(encoding="utf-8")
-    if resolved not in lock_text:
-        raise RuntimeError(f"{name} lock does not contain expected commit {resolved}")
-    shutil.copy2(lock, destination / "nox.lock")
-    namespace = destination / "chronos"
-    namespace.mkdir()
-    for filename in CORE_SOURCES:
-        source_text = (ROOT / filename).read_text(encoding="utf-8")
-        (namespace / filename).write_text(
-            qualify_core_imports(source_text),
-            encoding="utf-8",
-        )
-    return lock_text
+    shutil.copy2(source / "nox.lock", destination / "nox.lock")
+    manifest = json.loads((source / "nox.json").read_text(encoding="utf-8"))
+    manifest["requires"].append(dependency("chronos", package, revision))
+    write_manifest(destination, manifest)
+
+
+def verify_consumer(workspace: Path, alias: str, package: Path, revision: str) -> None:
+    workspace.mkdir()
+    write_manifest(workspace, {"name": "chronos_consumer", "entry": "main.nox",
+                               "requires": [dependency(alias, package, revision)]})
+    examples = (
+        ("poll.nox", "main.nox", "before 0\nran notify.once scheduled 1250\nafter 1 True"),
+        ("cron_utc.nox", "cron_demo.nox", "2024-01-01 09:00:00 UTC\n2024-02-29 00:00:00 UTC"),
+    )
+    for source, filename, _ in examples:
+        snippet = (ROOT / "examples" / source).read_text(encoding="utf-8")
+        (workspace / filename).write_text(snippet.replace("from chronos.", f"from {alias}."), encoding="utf-8")
+    run([NOXC, "fetch"], workspace)
+    verify_lock(workspace, {alias: revision})
+    for backend in BACKENDS:
+        for _, filename, expected in examples:
+            run([NOXC, "run", "--backend", backend, filename], workspace, expected)
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--consumer-alias", help="run only the standalone consumer with the given alias")
+    options = parser.parse_args()
     version = run([NOXC, "version"], ROOT)
-    if NOX_VERSION not in version:
+    if version != f"noxc {NOX_VERSION}":
         raise RuntimeError(
             f"framework integrations require Nox {NOX_VERSION}, got: {version}"
         )
 
-    for name, resolved, expected_output in INTEGRATIONS:
-        with tempfile.TemporaryDirectory(prefix=f"chronos-{name}-") as temporary:
-            workspace = Path(temporary)
-            locked = prepare_workspace(name, resolved, workspace)
+    with tempfile.TemporaryDirectory(prefix="chronos-package-test-") as temporary:
+        root = Path(temporary)
+        package = root / "package"
+        revision = prepare_package(package)
+        if options.consumer_alias:
+            verify_consumer(root / "consumer", options.consumer_alias, package, revision)
+            return 0
+        verify_consumer(root / "consumer", "chronos", package, revision)
+        for name, resolved, expected_output in INTEGRATIONS:
+            workspace = root / name
+            workspace.mkdir()
+            prepare_workspace(name, workspace, package, revision)
             run([NOXC, "fetch"], workspace)
-            if (workspace / "nox.lock").read_text(encoding="utf-8") != locked:
-                raise RuntimeError(f"noxc fetch changed the pinned {name} lock")
+            verify_lock(workspace, {name: resolved, "chronos": revision})
             for backend in BACKENDS:
                 run(
                     [NOXC, "run", "--backend", backend, "main.nox"],
@@ -145,8 +157,7 @@ def main() -> int:
                 )
 
     print(
-        "Verified Nyx v0.29.0 and Aether v0.12.0 source-overlay "
-        "integrations on LLVM and QBE."
+        "Verified real Chronos package consumption and locked Nyx/Aether integrations on LLVM and QBE."
     )
     return 0
 
