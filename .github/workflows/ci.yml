@@ -135,3 +135,6 @@ jobs:
         env:
           NOX_HOME: ${{ runner.temp }}/chronos-persistence-nox-home
         run: python scripts/verify_persistence.py
+
+      - name: Verify IANA generator input boundary
+        run: python -B scripts/test_timezone_generator.py

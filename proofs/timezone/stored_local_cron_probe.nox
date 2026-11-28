@@ -6,7 +6,7 @@ from chronos.errors import InvalidStoredJobError, StoreConflictError, TimeRangeE
 from chronos.handler_registry import HandlerRegistry
 from chronos.job import JobContext
 from chronos.job_codec import encode_policies
-from chronos.persistent_scheduler import PersistentScheduler
+from chronos.persistent_scheduler import PersistentPollResult, PersistentScheduler
 from chronos.policy import JobPolicies, default_job_policies, forbid_overlap, no_retry, skip_misfires
 from chronos.timezone_civil import ZoneProvider
 from proofs.timezone.fixture import FixtureZoneProvider
@@ -161,6 +161,22 @@ engine.start()
 nox.test.assert_eq_int(engine.tick()[0].committed_revision, 6, "public scheduler commits the resumed occurrence")
 clock.set_utc_ms(1729989000000)
 nox.test.assert_eq_str(engine.tick()[0].status, "pending", "resumed record cannot replay an old fold")
+
+invalid_configs: list[str] = ["2026f|Europe/Berlin|both|skip|1729989000000|0 0 31 2 *", "2026f|Europe/../Berlin|both|skip|1729989000000|30 2 * * *", "2026f|Europe//Berlin|both|skip|1729989000000|30 2 * * *", "2026f|Europe/Berlin|last|skip|1729989000000|30 2 * * *"]
+for index in range(len(invalid_configs)):
+    key: str = "invalid-" + str(index)
+    resumed.put(make_stored_job_definition(key, "Invalid cursor", "report", "public", ZONED_CRON_KIND, invalid_configs[index], encode_policies(default_job_policies()), True, start, start, 1), 0)
+
+verification: PersistentScheduler = PersistentScheduler(resumed, handlers, clock, 5, extended)
+for index in range(len(invalid_configs)):
+    verification.watch("invalid-" + str(index))
+verification.watch("fold")
+verification.start()
+results: list[PersistentPollResult] = verification.tick()
+for index in range(len(invalid_configs)):
+    nox.test.assert_eq_str(results[index].status, "invalid-definition", "invalid persisted input is classified exactly")
+    nox.test.assert_eq_int(read(resumed, results[index].job_id).revision, 1, "invalid definition cannot consume its cursor")
+nox.test.assert_eq_str(results[4].status, "pending", "bad definitions do not prevent later watches")
 resumed.close()
 nox.fs.remove_file(path)
 print("zoned-cron-storage-ok")

@@ -35,12 +35,21 @@ class LocalCronSchedule:
 
         return self.rules.end_utc_ms - 2 * WALL_MARGIN_MS
 
+    def matches(self, reference: UtcInstant) -> bool:
+        utc_ms: int = reference.epoch_ms
+        self._require_covered(utc_ms)
+        offset_seconds: int = self.rules.initial_offset_seconds
+        for transition in self.rules.transitions:
+            if transition.utc_ms > utc_ms:
+                break
+            offset_seconds = transition.offset_seconds
+        wall_ms: int = utc_ms + offset_seconds * 1000
+        return self.schedule.matches(UtcInstant(wall_ms)) and self._accepts(wall_ms, utc_ms)
+
     def _next(self, reference: UtcInstant, advance: int) -> UtcInstant | None:
 
-        start: int = self.rules.start_utc_ms + 2 * WALL_MARGIN_MS
+        self._require_covered(reference.epoch_ms)
         end: int = self.coverage_end_utc_ms()
-        if reference.epoch_ms < start or reference.epoch_ms >= end:
-            raise TimeRangeError("reference is outside local cron coverage")
         lower: int = reference.epoch_ms + advance
         offset_seconds: int = self.rules.initial_offset_seconds
         evaluated: int = 0
@@ -78,6 +87,10 @@ class LocalCronSchedule:
             lower = upper
             offset_seconds = next_offset
         return None
+
+    def _require_covered(self, utc_ms: int) -> None:
+        if utc_ms < self.rules.start_utc_ms + 2 * WALL_MARGIN_MS or utc_ms >= self.coverage_end_utc_ms():
+            raise TimeRangeError("reference is outside local cron coverage")
 
     def _accepts(self, wall: int, candidate: int) -> bool:
 

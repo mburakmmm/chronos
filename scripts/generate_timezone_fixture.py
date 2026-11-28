@@ -4,6 +4,7 @@
 import argparse
 import datetime as dt
 import hashlib
+import io
 import os
 from pathlib import Path
 import re
@@ -15,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 
 ARCHIVE_SHA256 = "01b4a91cec5167ed48c11e8ab78f2048cead78ce94b0cafcad0ae8c5a3044d3d"
+MAX_ARCHIVE_BYTES = 4 * 1024 * 1024
 TZDATA_VERSION = "2026f"
 TOOL_VERSION = "2022g"
 CASES = (
@@ -44,9 +46,18 @@ def offset_at(zone: ZoneInfo, utc: int) -> int:
     return int(offset.total_seconds())
 
 
-def generate(archive: Path, cases: tuple[tuple[str, int, int], ...], fixture_mode: bool) -> str:
-    if hashlib.sha256(archive.read_bytes()).hexdigest() != ARCHIVE_SHA256:
+def read_verified_archive(archive: Path) -> bytes:
+    with archive.open("rb") as stream:
+        data = stream.read(MAX_ARCHIVE_BYTES + 1)
+    if len(data) > MAX_ARCHIVE_BYTES:
+        raise ValueError("tzdata archive exceeds size limit")
+    if hashlib.sha256(data).hexdigest() != ARCHIVE_SHA256:
         raise ValueError("unexpected tzdata2026f archive checksum")
+    return data
+
+
+def generate(archive: Path, cases: tuple[tuple[str, int, int], ...], fixture_mode: bool) -> str:
+    data = read_verified_archive(archive)
     for tool in ("zic", "zdump"):
         if run(tool, "--version").strip() != f"{tool} (tzcode) {TOOL_VERSION}":
             raise ValueError(f"fixture generation requires {tool} {TOOL_VERSION}")
@@ -61,7 +72,7 @@ def generate(archive: Path, cases: tuple[tuple[str, int, int], ...], fixture_mod
     source_files = SOURCE_FILES if fixture_mode else ALL_SOURCE_FILES
     with tempfile.TemporaryDirectory(prefix="chronos-tz-fixture-") as directory:
         root = Path(directory)
-        with tarfile.open(archive) as source:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as source:
             for name in source_files:
                 member = source.extractfile(name)
                 if member is None:

@@ -16,6 +16,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Internal SQLite proof for pinning zoned cron records to a ruleset and migrating their UTC cursor explicitly.
 - Internal SQLite dispatch proof that consumes zoned cron cursors before callback invocation and records terminal coverage exhaustion across reopen.
 - Experimental zoned cron support in `PersistentScheduler` with optional application-generated IANA 2026f providers. Exhausted records can resume through an explicit revision-checked migration to a wider coverage window.
+- Bound IANA archive reads and extract the verified byte snapshot. Reject malformed stored zone names and validate stored cron cursors at their exact UTC instant.
 
 ## 0.5.0 — 2026-11-24
 

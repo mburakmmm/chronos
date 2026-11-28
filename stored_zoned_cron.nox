@@ -52,8 +52,7 @@ def validate_zoned_cron(definition: StoredJobDefinition, provider: ZoneProvider)
     _validate_zoned_key(fields[1], 128, True)
     cursor: UtcInstant = UtcInstant(_read_nonnegative(fields[4]))
     local_schedule: LocalCronSchedule = LocalCronSchedule(provider, fields[0], fields[1], fields[5], fields[2], fields[3])
-    match: UtcInstant | None = local_schedule.next_fire_at_or_after(cursor)
-    if match is None or match.epoch_ms != cursor.epoch_ms:
+    if not local_schedule.matches(cursor):
         raise InvalidStoredJobError("zoned cron cursor does not match its rules")
     return ZonedCronConfig(fields[0], fields[1], fields[2], fields[3], cursor, fields[5], local_schedule)
 
@@ -157,3 +156,7 @@ def _validate_zoned_key(value: str, maximum: int, allow_slash: bool) -> None:
         punctuation: bool = byte == 45 or byte == 46 or byte == 95 or allow_slash and (byte == 43 or byte == 47)
         if not letter and not digit and not punctuation:
             raise InvalidStoredJobError("invalid zoned cron identifier")
+    if allow_slash:
+        for component in value.split("/"):
+            if component == "" or component == "." or component == "..":
+                raise InvalidStoredJobError("invalid zoned cron zone name")

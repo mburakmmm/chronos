@@ -1,6 +1,20 @@
 # Security model
 
-Status: Phase 4 review completed and Phase 5 SQLite definition adapter reviewed on 2026-11-20; latest matrix uses Nox 2.1.111.
+Status: Phase 4 core and Phase 5 SQLite reviews recorded. Phase 6 engineering review and regression fixes are recorded below. Independent Phase 6 sign-off remains open.
+
+## Phase 6 IANA and persistence review
+
+The review traced generator input, provider lookup, stored cursor validation, SQLite revision-checked writes, callback dispatch and coverage extension. Runtime tables come from an application-owned provider. Generated providers use explicitly selected zones and do not consult the host timezone, filesystem or network.
+
+| Finding | Fix and evidence |
+|---|---|
+| SEC-003. The generator loaded an unlimited file and reopened its path after verifying the checksum. | Read at most 4 MiB plus one byte for overflow detection. Verify and extract the same byte snapshot. Regression tests cover oversized files, digest mismatch and replacement of the path after verification. |
+| SEC-004. Validating a stored cursor could launch a forward cron search. An impossible cron expression could exhaust the search window and mask an invalid record as a schedule error. | Check only the stored instant against its offset segment, cron fields and fold policy. The SQLite regression checks invalid status, unchanged revisions and continued polling of later watches. |
+| SEC-005. Stored zone names could contain empty or dot path components before reaching a provider. | Reject these components before provider lookup. A provider still owns its allowlist and any access to external data. |
+
+SQLite writes use bound parameters and a revision compare-and-swap. The single-owner scheduler commits cursor consumption before invoking the trusted handler. The restart tests cover exit before commit, after commit and after a handler effect. A committed occurrence can remain unstarted if the process exits between commit and invocation. The old and replacement providers must be trusted when an operator migrates or resumes a record.
+
+Run `python -B scripts/test_timezone_generator.py` and `python3 scripts/verify_persistence.py` with Nox 2.2.70. For coverage bounds and the recovery procedure, see [IANA zoned cron](timezone-design.md).
 
 ## Phase 4 review result
 
@@ -37,7 +51,7 @@ Job IDs and `CronParseError.token` are application-visible diagnostic data. They
 - Reject malformed or oversized cron expressions before expansion.
 - Bound cron search, catch-up, retry, overlap queues, event buffers, history, and concurrent work.
 - Do not include handler arguments, secrets, or arbitrary exception payloads in events/logs by default.
-- Treat persisted job definitions as untrusted input if persistence is added later.
+- Treat persisted job definitions as untrusted input.
 - Keep database paths in trusted application configuration and bind every stored value through prepared statements.
 - Reject unknown schema/definition/handler/trigger/policy versions instead of guessing a decoder.
 - Do not serialize closures, function pointers, live handles, or connections.

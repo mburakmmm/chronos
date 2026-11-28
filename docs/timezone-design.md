@@ -28,6 +28,8 @@ python3 scripts/generate_timezone_fixture.py /path/to/tzdata2026f.tar.gz \
 
 The generator accepts up to 64 distinct explicit zone names, including IANA aliases in the pinned source, with a window of at most 100 years and up to 512 offset transitions per zone. At runtime the generated `IanaZoneProvider` is a Nox object. Chronos reads its version and zone rules without reading host tzdata or locale. Keep the exact generated module with the application's deployment artifacts and retain the old provider through migration. The example table covers the named zones from 2024 through 2030 UTC. [Persistent scheduler example](../examples/persistence/poll_zoned.nox)
 
+The generator caps the compressed archive at 4 MiB and extracts the same bytes it verified. Stored zone names must use nonempty slash-separated components with no `.` or `..` components. [Security review](security.md#phase-6-iana-and-persistence-review)
+
 ## Resolution rules
 
 - An ordinary local time resolves to one UTC instant.

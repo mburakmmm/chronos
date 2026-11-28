@@ -433,6 +433,7 @@ Faz 5 geliştirme kapsamı tamamlandı. Sürüm etiketi ve yayın kullanıcı on
 - [x] Tek sahipli SQLite prototipinde Berlin’in iki fold anını ayrı çalıştır, yeniden açılışta ilkini tekrar oynatma ve kapsama bitişini kalıcılaştır. Nox 2.2.70 LLVM/QBE doğrulaması `scripts/verify_persistence.py` içinde.
 - [x] Uygulamanın seçtiği IANA bölgelerini doğrulanmış 2026f arşivinden üret ve isteğe bağlı sağlayıcı ile `PersistentScheduler` üzerinden çalıştır.
 - [x] Berlin fold’u sırasında commit öncesi ve sonrası süreç kesintisini, kapsama bitişini ve aynı tzdata sürümünün genişletilmiş tablosuyla açık yeniden başlatmayı LLVM/QBE’de doğrula.
+- [x] Faz 6 mühendislik incelemesinde arşiv byte sınırını, doğrulanan snapshot’ın kullanılmasını ve hatalı kalıcı kayıtların sınıflandırılmasını regresyon testleriyle doğrula. [SEC-003–005](docs/security.md#phase-6-iana-and-persistence-review)
 - [ ] Faz 6 çıkışı için bağımsız mimari ve güvenlik incelemesini kaydet.
 
 ## PostgreSQL ve dağıtık koordinasyon
@@ -532,4 +533,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Faz 6 / `0.6.0-dev`. Sürümlü IANA sağlayıcısı ve tek sahipli kalıcı zoned cron doğrulandı. Sırada bağımsız mimari ve güvenlik incelemesi var. PostgreSQL ve dağıtık koordinasyon için ayrı onay gerekiyor.
+Faz 6 / `0.6.0-dev`. Sürümlü IANA sağlayıcısı ve tek sahipli kalıcı zoned cron doğrulandı. Mühendislik incelemesindeki SEC-003–005 düzeltildi. Faz 7’ye geçiş için bağımsız mimari ve güvenlik onayı bekleniyor. PostgreSQL ve dağıtık koordinasyon için ayrı onay gerekiyor.
