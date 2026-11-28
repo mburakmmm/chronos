@@ -1,10 +1,13 @@
 from chronos.clock import Clock
-from chronos.errors import CronSearchLimitError, DuplicateJobError, InvalidStoredJobError, SchedulerStateError, StoreConflictError, StoreError, TimeRangeError, UnknownHandlerError
+from chronos.errors import CronParseError, CronSearchLimitError, DuplicateJobError, InvalidStoredJobError, SchedulerStateError, StoreConflictError, StoreError, TimeRangeError, UnknownHandlerError
 from chronos.handler_registry import HandlerRegistry
 from chronos.store import JobStore, StoredJobDefinition, validate_stored_job_id
 from chronos.stored_cron import STORED_CRON_KIND, _dispatch_loaded_cron
 from chronos.stored_once import _dispatch_loaded_once
+from chronos.stored_zoned_cron import EXHAUSTED_ZONED_CRON_KIND, ZONED_CRON_KIND, _dispatch_loaded_zoned_cron
 from chronos.time import UtcInstant
+from chronos.timezone import TimezoneError
+from chronos.timezone_civil import ZoneProvider
 
 class PersistentPollResult:
     job_id: str
@@ -28,17 +31,19 @@ class PersistentScheduler:
     backend: JobStore
     handlers: HandlerRegistry
     source_clock: Clock
+    zone_provider: ZoneProvider | None
     watched_jobs: list[WatchedJob]
     max_jobs: int
     state_value: str
     polling: bool
 
-    def __init__(self, backend: JobStore, handlers: HandlerRegistry, source_clock: Clock, max_jobs: int) -> None:
+    def __init__(self, backend: JobStore, handlers: HandlerRegistry, source_clock: Clock, max_jobs: int, zone_provider: ZoneProvider | None = None) -> None:
         if max_jobs < 1 or max_jobs > 1024:
             raise InvalidStoredJobError("persistent scheduler capacity must be between 1 and 1024")
         self.backend = backend
         self.handlers = handlers
         self.source_clock = source_clock
+        self.zone_provider = zone_provider
         self.watched_jobs = []
         self.max_jobs = max_jobs
         self.state_value = "created"
@@ -107,7 +112,7 @@ class PersistentScheduler:
                     break
                 result: PersistentPollResult = self._poll(entry.job_id, observed)
                 status: str = result.status
-                if status != "pending" and status != "disabled" and status != "missing":
+                if status != "pending" and status != "disabled" and status != "missing" and status != "exhausted":
                     entry.latest = status
                 results.append(result)
         finally:
@@ -130,12 +135,19 @@ class PersistentScheduler:
                 status = _dispatch_loaded_once(self.backend, self.handlers, definition, observed)
             elif definition.trigger_kind == STORED_CRON_KIND:
                 status = _dispatch_loaded_cron(self.backend, self.handlers, definition, observed)
+            elif definition.trigger_kind == ZONED_CRON_KIND or definition.trigger_kind == EXHAUSTED_ZONED_CRON_KIND:
+                provider: ZoneProvider | None = self.zone_provider
+                if provider is None:
+                    return PersistentPollResult(job_id, "timezone-unavailable")
+                status = _dispatch_loaded_zoned_cron(self.backend, self.handlers, provider, definition, observed)
             else:
                 return PersistentPollResult(job_id, "invalid-definition")
             if status == "succeeded" or status == "handler-failed" or status == "skipped":
                 return PersistentPollResult(job_id, status, revision + 1)
             return PersistentPollResult(job_id, status)
         except InvalidStoredJobError:
+            return PersistentPollResult(job_id, "invalid-definition")
+        except CronParseError:
             return PersistentPollResult(job_id, "invalid-definition")
         except UnknownHandlerError:
             return PersistentPollResult(job_id, "unknown-handler")
@@ -146,6 +158,8 @@ class PersistentScheduler:
         except CronSearchLimitError:
             return PersistentPollResult(job_id, "schedule-error")
         except TimeRangeError:
+            return PersistentPollResult(job_id, "schedule-error")
+        except TimezoneError:
             return PersistentPollResult(job_id, "schedule-error")
 
     def _index(self, job_id: str) -> int:

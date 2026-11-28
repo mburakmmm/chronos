@@ -29,6 +29,7 @@ CASES = (
     ("proofs/persistence/persistent_scheduler_integration.nox", "persistent-scheduler-ok"),
     ("proofs/persistence/outcome_migration.nox", "outcome-migration-ok"),
     ("proofs/timezone/stored_local_cron_probe.nox", "zoned-cron-storage-ok"),
+    ("examples/persistence/poll_zoned.nox", "report 1729989000000\nsucceeded\nreport 1729992600000\nsucceeded"),
     ("examples/persistence/poll_stored.nox", "pending\nreport.once summary\nsucceeded\nrecorded succeeded\nstopped"),
 )
 
@@ -129,6 +130,33 @@ def verify_cron_restart(backend: str, executable: Path) -> None:
             raise RuntimeError(f"{backend}: invalid cron cursor changed state")
 
 
+def verify_zoned_restart(backend: str, executable: Path) -> None:
+    first = "1729989000000"
+    second = "1729992600000"
+    first_effect = f"fixture:{first}:1:public\n"
+    second_effect = f"fixture:{second}:1:public\n"
+    scenarios = (
+        ("before-commit", 74, "succeeded", first_effect),
+        ("after-commit", 72, "pending", ""),
+        ("after-effect", 73, "pending", first_effect),
+    )
+    with tempfile.TemporaryDirectory(prefix="chronos-zoned-restart-") as directory:
+        root = Path(directory)
+        for mode, code, restart_status, effects_after_restart in scenarios:
+            effects = root / f"{mode}.effects"
+            command = [str(executable), str(root / f"{mode}.db"), str(effects)]
+            run([*command, "init", "0", "zoned"])
+            run([*command, mode, first, "zoned"], expected_status=code)
+            recovered = run([*command, "poll", first, "zoned"])
+            observed = effects.read_text() if effects.exists() else ""
+            if recovered != f"{restart_status} 2 True {first}" or observed != effects_after_restart:
+                raise RuntimeError(f"{backend}/{mode}: unexpected zoned state after reopen")
+            following = run([*command, "poll", second, "zoned"])
+            if following != f"succeeded 3 True {second}" or effects.read_text() != observed + second_effect:
+                raise RuntimeError(f"{backend}/{mode}: second fold occurrence did not run once")
+            print(f"  PASS zoned restart {mode} ({backend})", flush=True)
+
+
 def verify_secret_reference(backend: str) -> None:
     env_key = "CHRONOS_EXAMPLE_REPORT_TOKEN"
     token = "chronos-synthetic-runtime-credential-731e"
@@ -182,8 +210,9 @@ def main() -> int:
             run([NOXC, "build", "--backend", backend, "-o", str(executable), "proofs/persistence/restart_worker.nox"])
             verify_once_restart(backend, executable)
             verify_cron_restart(backend, executable)
+            verify_zoned_restart(backend, executable)
         verify_secret_reference(backend)
-    print("Verified SQLite definition storage and UTC one-shot and cron restart on LLVM/QBE.")
+    print("Verified SQLite definition storage and UTC one-shot, UTC cron and zoned cron restart on LLVM/QBE.")
     return 0
 
 

@@ -1,9 +1,10 @@
 import nox.test
 from chronos.errors import TimeRangeError
-from proofs.timezone.civil import LocalDateTime, ZoneProvider, resolve_civil
+from chronos.timezone_civil import LocalDateTime, ZoneProvider, resolve_civil
 from proofs.timezone.fixture import FixtureZoneProvider, fixture_rules
-from proofs.timezone.model import LocalWallTime, ZonePrototypeError, ZoneRules, ZoneTransition, select_occurrences
+from chronos.timezone import LocalWallTime, TimezoneError, ZoneRules, ZoneTransition, select_occurrences
 from chronos.time import UtcInstant
+from examples.persistence.iana_rules import IanaZoneProvider
 
 def verify(zone_rules: ZoneRules, wall_ms: int, expected: list[int]) -> None:
     candidates: list[UtcInstant] = zone_rules.resolve(LocalWallTime(wall_ms))
@@ -14,7 +15,7 @@ def verify(zone_rules: ZoneRules, wall_ms: int, expected: list[int]) -> None:
 def rejects_bad_zone() -> bool:
     try:
         fixture_rules("Unknown/Zone")
-    except ZonePrototypeError:
+    except TimezoneError:
         return True
     return False
 
@@ -28,7 +29,7 @@ def rejects_outside(zone_rules: ZoneRules) -> bool:
 def rejects_unordered_rules() -> bool:
     try:
         ZoneRules(0, 345600000, 0, [ZoneTransition(200000000, 2000), ZoneTransition(100000000, 1000)])
-    except ZonePrototypeError:
+    except TimezoneError:
         return True
     return False
 
@@ -68,14 +69,14 @@ nox.test.assert_true(rejects_unordered_rules(), "unordered tables are rejected")
 def rejects_civil(year: int, month: int, day: int, hour: int, minute: int, second: int, ms: int) -> bool:
     try:
         LocalDateTime(year, month, day, hour, minute, second, ms)
-    except ZonePrototypeError:
+    except TimezoneError:
         return True
     return False
 
 def rejects_provider_request(provider: ZoneProvider, version: str, zone_name: str, expected: str) -> bool:
     try:
         resolve_civil(provider, version, zone_name, LocalDateTime(2024, 10, 27, 2, 0, 0, 0))
-    except ZonePrototypeError as error:
+    except TimezoneError as error:
         return error.message == expected
     return False
 
@@ -101,4 +102,13 @@ nox.test.assert_true(rejects_civil(2024, 1, 1, 0, 0, 0, 1000), "milliseconds mus
 nox.test.assert_true(rejects_provider_request(provider, "2026e", "Europe/Berlin", "timezone ruleset version mismatch"), "different ruleset rejected")
 nox.test.assert_true(rejects_provider_request(provider, "", "Europe/Berlin", "timezone ruleset version mismatch"), "explicit ruleset required")
 nox.test.assert_true(rejects_provider_request(provider, "2026f", "Europe/Unknown", "unknown timezone fixture"), "unknown zone fails closed")
+generated: ZoneProvider = IanaZoneProvider()
+future_fold: list[UtcInstant] = resolve_civil(generated, "2026f", "Europe/Berlin", LocalDateTime(2030, 10, 27, 2, 30, 0, 0))
+nox.test.assert_eq_int(len(future_fold), 2, "generated coverage includes rule-derived future DST")
+nox.test.assert_eq_int(future_fold[0].epoch_ms, 1919291400000, "future fold first UTC time")
+nox.test.assert_eq_int(future_fold[1].epoch_ms, 1919295000000, "future fold second UTC time")
+istanbul: list[UtcInstant] = resolve_civil(generated, "2026f", "Europe/Istanbul", LocalDateTime(2030, 7, 1, 9, 0, 0, 0))
+nox.test.assert_eq_int(len(istanbul), 1, "Istanbul local morning has one occurrence")
+nox.test.assert_eq_int(istanbul[0].epoch_ms, 1909116000000, "Istanbul local morning maps to UTC")
+nox.test.assert_true(rejects_provider_request(generated, "2026f", "Europe/istanbul", "unknown timezone in this provider"), "generated provider requires an exact zone name")
 print("timezone-prototype-ok")

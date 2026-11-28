@@ -130,7 +130,7 @@ Process tests verify rollback before commit, restart after commit, exit after a 
 
 ## Persistent scheduler lifecycle
 
-Construct `PersistentScheduler` with an open store, a trusted handler registry, a clock and a watch limit. The application supplies the IDs to watch, then calls `start()` and drives `tick()` on a single owner. A tick reads the current definition of each watched ID in registration order and invokes the same at-most-once dispatch functions used for individual polling. It handles `once-utc` and `cron-cursor-utc` records. Application startup must rebuild watches and handler registrations after reopening the database.
+Construct `PersistentScheduler` with an open store, a trusted handler registry, a clock and a watch limit. The application supplies the IDs to watch, then calls `start()` and drives `tick()` on a single owner. A tick reads the current definition of each watched ID in registration order. It handles `once-utc` and `cron-cursor-utc` records, plus `cron-cursor-zoned` when an explicit provider is configured. Application startup must rebuild watches and handler registrations after reopening the database. Zoned records also require the pinned provider. [Zoned dispatch and restart](timezone-design.md#stored-zoned-dispatch)
 
 Poll results contain only the job ID and a fixed status. Per-job faults leave the remaining watches eligible for the same poll. The scheduler stores at most one safe outcome per watch in memory. No-op statuses such as pending leave that outcome intact. Unwatch releases the outcome. Reopening the store retains consumed one-shots and cron cursors. A fresh scheduler has an empty outcome cache.
 

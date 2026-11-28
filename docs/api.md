@@ -33,6 +33,9 @@ Methods and fields are supported only when their contract is explicitly describe
 | `job_codec` | `encode_once_utc`, `encode_cron_utc`, `encode_policies`, `restore_utc_job` |
 | `stored_once` | `dispatch_stored_once` |
 | `stored_cron` | `STORED_CRON_KIND`, `encode_stored_cron`, `dispatch_stored_cron` |
+| `timezone` | `TimezoneError`, `ZoneRules`, `ZoneTransition` (provider contract) |
+| `timezone_civil` | `ZoneProvider` |
+| `stored_zoned_cron` | `ZONED_CRON_KIND`, `encode_zoned_cron`, `migrate_zoned_cron` |
 | `persistent_scheduler` | `PersistentScheduler`, `PersistentPollResult` |
 
 The following previously tempting entry points are explicitly **Internal**: `InvalidTriggerError`; `CronField`; `UtcJob`, `MonotonicJob`, and `FixedDelayJob`; `RegisteredJob` and `JobRegistry`; `ExecutionOutcome` and `InlineExecutor`; `EventDispatcher`; `ScheduledEntry` and `DueItem`; raw scheduler/policy/event state, kind, and bound constants; `copy_job_policies`; and every leading-underscore helper. Applications should use factories and `Scheduler` forwarding methods instead.
@@ -262,13 +265,21 @@ This path requires retry policy `none` and a store that commits the revision com
 
 `dispatch_stored_cron(backend, handlers, job_id, now) -> str` uses the same result strings as `dispatch_stored_once`. It advances the revision and next occurrence before a callback runs, while keeping the job enabled. It supports `skip` and `fire-once` with retry disabled. The caller owns the polling loop. See [cron delivery semantics](persistence.md#at-most-once-utc-cron-dispatch).
 
+## Zoned cron providers and persistence — Experimental
+
+`ZoneProvider` supplies `version() -> str` and `rules_for(zone_name) -> ZoneRules`. Chronos checks the exact version before reading the explicitly named zone. A provider raises `TimezoneError` for unknown zones and returns fresh `ZoneRules(start_utc_ms, end_utc_ms, initial_offset_seconds, transitions)` data. The start offset is effective at the inclusive start. Each `ZoneTransition(utc_ms, offset_seconds)` gives the new offset at an instant strictly within coverage. At most 512 transitions are allowed in a table. Applications can generate an IANA provider with the [documented generator](timezone-design.md#generate-an-application-provider).
+
+`encode_zoned_cron(provider, version, zone_name, expression, fold, gap, start) -> str` initializes the cursor at the first eligible UTC instant at or after `start`. Set `trigger_kind` to `ZONED_CRON_KIND`. Fold values are `first`, `last`, `both` and `neither`. Gap policy is `skip`. The function validates all inputs and fails if there is no covered occurrence.
+
+`migrate_zoned_cron(backend, old_provider, new_provider, new_version, job_id, expected_revision, cutoff) -> None` is an explicit revision-checked write. Migrating an active record preserves its enabled flag and requires a different ruleset version. The same operation resumes an exhausted record with extended coverage and an explicit UTC cutoff at or after its last recorded update. See [migration and exhaustion rules](timezone-design.md#stored-ruleset-migration).
+
 ## `chronos.persistent_scheduler` — Experimental
 
-`PersistentScheduler(backend, handlers, clock, max_jobs)` accepts a caller-owned `JobStore`, handler registry and clock, with a capacity of 1–1,024 watches. `watch(job_id)` adds a unique ID and `unwatch(job_id) -> bool` removes it and its retained outcome. Watch changes require the `created` or idle `running` state. The application writes definitions through the store.
+`PersistentScheduler(backend, handlers, clock, max_jobs, zone_provider=None)` accepts a caller-owned `JobStore`, handler registry and clock, with a capacity of 1–1,024 watches. Pass a provider for zoned jobs. `watch(job_id)` adds a unique ID and `unwatch(job_id) -> bool` removes it and its retained outcome. Watch changes require the `created` or idle `running` state. The application writes definitions through the store.
 
 `state()`, `start()` and `stop()` manage `created`, `running`, `stopping` and `stopped`. A running start and repeated stops are idempotent. Stop is terminal. A stop during dispatch lets the current synchronous operation finish and prevents later watched jobs from starting. The application closes the store.
 
-`tick() -> list[PersistentPollResult]` requires a running, idle scheduler. It visits watched IDs once in watch order, reading UTC separately before each job. Each result exposes `job_id` and `status`. Alongside the dispatch statuses, per-job faults return `invalid-definition`, `unknown-handler`, `conflict`, `store-error` or `schedule-error`. A caller-supplied clock failure aborts the tick. `latest_outcome(job_id) -> str | None` retains the most recent status other than `pending`, `disabled` or `missing` for each watch. See [persistent scheduler lifecycle](persistence.md#persistent-scheduler-lifecycle).
+`tick() -> list[PersistentPollResult]` requires a running, idle scheduler. It visits watched IDs once in watch order, reading UTC separately before each job. Each result exposes `job_id` and `status`. Alongside the dispatch statuses, per-job faults return `invalid-definition`, `unknown-handler`, `conflict`, `store-error`, `schedule-error` or `timezone-unavailable`. The last status indicates a zoned definition without a configured provider. A caller-supplied clock failure aborts the tick. `latest_outcome(job_id) -> str | None` retains the most recent status other than `pending`, `disabled`, `missing` or `exhausted` for each watch. See [persistent scheduler lifecycle](persistence.md#persistent-scheduler-lifecycle).
 
 `PersistentPollResult.committed_revision` is positive for `succeeded`, `handler-failed` and `skipped`, and zero otherwise. Applications may pass these terminal results to SQLite for explicit recording.
 

@@ -4,8 +4,8 @@ from chronos.handler_registry import HandlerRegistry
 from chronos.job import JobContext
 from chronos.job_codec import _decode_policies, _read_nonnegative
 from chronos.policy import JobPolicies, MISFIRE_CATCH_UP, MISFIRE_SKIP, RETRY_NONE
-from proofs.timezone.civil import ZoneProvider
-from proofs.timezone.local_cron import LocalCronPrototype
+from chronos.timezone_civil import ZoneProvider
+from chronos.local_cron import LocalCronSchedule
 from chronos.store import JobStore, StoredJobDefinition, copy_stored_job_definition
 from chronos.time import Duration, MAX_MS, UtcInstant
 
@@ -20,9 +20,9 @@ class ZonedCronConfig:
     gap: str
     cursor: UtcInstant
     expression: str
-    schedule: LocalCronPrototype
+    schedule: LocalCronSchedule
 
-    def __init__(self, version: str, zone_name: str, fold: str, gap: str, cursor: UtcInstant, expression: str, schedule: LocalCronPrototype) -> None:
+    def __init__(self, version: str, zone_name: str, fold: str, gap: str, cursor: UtcInstant, expression: str, schedule: LocalCronSchedule) -> None:
         self.version = version
         self.zone_name = zone_name
         self.fold = fold
@@ -34,7 +34,7 @@ class ZonedCronConfig:
 def encode_zoned_cron(provider: ZoneProvider, version: str, zone_name: str, expression: str, fold: str, gap: str, start: UtcInstant) -> str:
     _validate_zoned_key(version, 32, False)
     _validate_zoned_key(zone_name, 128, True)
-    local_schedule: LocalCronPrototype = LocalCronPrototype(provider, version, zone_name, expression, fold, gap)
+    local_schedule: LocalCronSchedule = LocalCronSchedule(provider, version, zone_name, expression, fold, gap)
     cursor: UtcInstant | None = local_schedule.next_fire_at_or_after(start)
     if cursor is None:
         raise InvalidStoredJobError("no covered zoned cron occurrence")
@@ -42,7 +42,8 @@ def encode_zoned_cron(provider: ZoneProvider, version: str, zone_name: str, expr
 
 def validate_zoned_cron(definition: StoredJobDefinition, provider: ZoneProvider) -> ZonedCronConfig:
     checked: StoredJobDefinition = copy_stored_job_definition(definition)
-    if checked.trigger_kind != ZONED_CRON_KIND or nox.strings.byte_len(checked.trigger_config) > MAX_ZONED_CONFIG_BYTES:
+    known_kind: bool = checked.trigger_kind == ZONED_CRON_KIND or checked.trigger_kind == EXHAUSTED_ZONED_CRON_KIND and not checked.enabled
+    if not known_kind or nox.strings.byte_len(checked.trigger_config) > MAX_ZONED_CONFIG_BYTES:
         raise InvalidStoredJobError("invalid zoned cron configuration")
     fields: list[str] = checked.trigger_config.split("|")
     if len(fields) != 6:
@@ -50,7 +51,7 @@ def validate_zoned_cron(definition: StoredJobDefinition, provider: ZoneProvider)
     _validate_zoned_key(fields[0], 32, False)
     _validate_zoned_key(fields[1], 128, True)
     cursor: UtcInstant = UtcInstant(_read_nonnegative(fields[4]))
-    local_schedule: LocalCronPrototype = LocalCronPrototype(provider, fields[0], fields[1], fields[5], fields[2], fields[3])
+    local_schedule: LocalCronSchedule = LocalCronSchedule(provider, fields[0], fields[1], fields[5], fields[2], fields[3])
     match: UtcInstant | None = local_schedule.next_fire_at_or_after(cursor)
     if match is None or match.epoch_ms != cursor.epoch_ms:
         raise InvalidStoredJobError("zoned cron cursor does not match its rules")
@@ -61,10 +62,15 @@ def dispatch_zoned_cron(backend: JobStore, handlers: HandlerRegistry, provider: 
     loaded: StoredJobDefinition | None = backend.load(job_id)
     if loaded is None:
         return "missing"
-    saved: StoredJobDefinition = copy_stored_job_definition(loaded)
-    if saved.job_id != job_id:
+    if loaded.job_id != job_id:
         raise InvalidStoredJobError("stored job ID does not match the requested job")
+    return _dispatch_loaded_zoned_cron(backend, handlers, provider, loaded, observed)
+
+def _dispatch_loaded_zoned_cron(backend: JobStore, handlers: HandlerRegistry, provider: ZoneProvider, loaded: StoredJobDefinition, observed: UtcInstant) -> str:
+    saved: StoredJobDefinition = copy_stored_job_definition(loaded)
     if saved.trigger_kind == EXHAUSTED_ZONED_CRON_KIND:
+        if saved.enabled:
+            raise InvalidStoredJobError("exhausted zoned cron must be disabled")
         return "exhausted"
     if saved.trigger_kind != ZONED_CRON_KIND:
         raise InvalidStoredJobError("stored zoned cron cursor definition required")
@@ -102,7 +108,7 @@ def dispatch_zoned_cron(backend: JobStore, handlers: HandlerRegistry, provider: 
     if skipped:
         return "skipped"
     try:
-        callback(JobContext(job_id, "utc", planned.epoch_ms, 1))
+        callback(JobContext(saved.job_id, "utc", planned.epoch_ms, 1))
     except Exception:
         return "handler-failed"
     return "succeeded"
@@ -117,15 +123,21 @@ def migrate_zoned_cron(backend: JobStore, old_provider: ZoneProvider, new_provid
         raise StoreConflictError(job_id, expected_revision, current.revision)
     if expected_revision == MAX_MS or cutoff.epoch_ms == MAX_MS:
         raise StoreError("zoned cron migration cannot advance")
+    exhausted: bool = current.trigger_kind == EXHAUSTED_ZONED_CRON_KIND
     old: ZonedCronConfig = validate_zoned_cron(current, old_provider)
-    if new_version == old.version:
+    if not exhausted and new_version == old.version:
         raise InvalidStoredJobError("zoned cron migration requires a different ruleset version")
     checked_cutoff: UtcInstant = UtcInstant(cutoff.epoch_ms)
+    if exhausted and checked_cutoff.epoch_ms < current.updated_at_utc_ms:
+        raise InvalidStoredJobError("resume cutoff cannot predate the exhausted poll")
     lower: int = checked_cutoff.epoch_ms + 1
     if old.cursor.epoch_ms > lower:
         lower = old.cursor.epoch_ms
     replacement: StoredJobDefinition = copy_stored_job_definition(current)
     replacement.trigger_config = encode_zoned_cron(new_provider, new_version, old.zone_name, old.expression, old.fold, old.gap, UtcInstant(lower))
+    if exhausted:
+        replacement.trigger_kind = ZONED_CRON_KIND
+        replacement.enabled = True
     replacement.revision = expected_revision + 1
     if checked_cutoff.epoch_ms > replacement.updated_at_utc_ms:
         replacement.updated_at_utc_ms = checked_cutoff.epoch_ms

@@ -1,0 +1,34 @@
+from chronos.clock import FakeClock
+from chronos.handler_registry import HandlerRegistry
+from chronos.job import JobContext
+from chronos.job_codec import encode_policies
+from chronos.persistent_scheduler import PersistentScheduler
+from chronos.policy import default_job_policies
+from chronos.sqlite_store import SQLiteJobStore, open_sqlite_store
+from chronos.store import make_stored_job_definition
+from chronos.stored_zoned_cron import ZONED_CRON_KIND, encode_zoned_cron
+from chronos.time import UtcInstant
+from examples.persistence.iana_rules import IanaZoneProvider
+
+def report(context: JobContext, name: str) -> None:
+    print(name, context.scheduled_time_ms)
+
+backend: SQLiteJobStore = open_sqlite_store(":memory:")
+try:
+    handlers: HandlerRegistry = HandlerRegistry()
+    handlers.register("report", report)
+    rules: IanaZoneProvider = IanaZoneProvider()
+    # On this Berlin fold, 02:30 occurs twice, one hour apart in UTC.
+    start: UtcInstant = UtcInstant(1729989000000)
+    clock: FakeClock = FakeClock(start.epoch_ms, 0)
+    config: str = encode_zoned_cron(rules, "2026f", "Europe/Berlin", "30 2 * * *", "both", "skip", start)
+    backend.put(make_stored_job_definition("berlin", "Berlin report", "report", "report", ZONED_CRON_KIND, config, encode_policies(default_job_policies()), True, start, start, 1), 0)
+    engine: PersistentScheduler = PersistentScheduler(backend, handlers, clock, 8, rules)
+    engine.watch("berlin")
+    engine.start()
+    print(engine.tick()[0].status)
+    clock.set_utc_ms(1729992600000)
+    print(engine.tick()[0].status)
+    engine.stop()
+finally:
+    backend.close()

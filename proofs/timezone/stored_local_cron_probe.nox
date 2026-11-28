@@ -1,18 +1,21 @@
 import nox.fs
 import nox.os
 import nox.test
-from chronos.errors import StoreConflictError, TimeRangeError
+from chronos.clock import FakeClock
+from chronos.errors import InvalidStoredJobError, StoreConflictError, TimeRangeError
 from chronos.handler_registry import HandlerRegistry
 from chronos.job import JobContext
 from chronos.job_codec import encode_policies
+from chronos.persistent_scheduler import PersistentScheduler
 from chronos.policy import JobPolicies, default_job_policies, forbid_overlap, no_retry, skip_misfires
-from proofs.timezone.civil import ZoneProvider
+from chronos.timezone_civil import ZoneProvider
 from proofs.timezone.fixture import FixtureZoneProvider
-from proofs.timezone.model import ZonePrototypeError, ZoneRules
-from proofs.timezone.stored_local_cron import ZONED_CRON_KIND, ZonedCronConfig, dispatch_zoned_cron, encode_zoned_cron, migrate_zoned_cron, validate_zoned_cron
+from chronos.timezone import TimezoneError, ZoneRules
+from chronos.stored_zoned_cron import ZONED_CRON_KIND, ZonedCronConfig, dispatch_zoned_cron, encode_zoned_cron, migrate_zoned_cron, validate_zoned_cron
 from chronos.sqlite_store import SQLiteJobStore, open_sqlite_store
 from chronos.store import JobStore, StoredJobDefinition, make_stored_job_definition
 from chronos.time import Duration, UtcInstant
+from examples.persistence.iana_rules import IanaZoneProvider
 
 class ShiftedBerlinProvider:
     offset_seconds: int
@@ -29,7 +32,7 @@ class ShiftedBerlinProvider:
     def rules_for(self, zone_name: str) -> ZoneRules:
 
         if zone_name != "Europe/Berlin":
-            raise ZonePrototypeError("unknown synthetic timezone")
+            raise TimezoneError("unknown synthetic timezone")
         return ZoneRules(1704067200000, 1767225600000, self.offset_seconds, [])
 
 def read(backend: JobStore, job_id: str) -> StoredJobDefinition:
@@ -41,7 +44,7 @@ def read(backend: JobStore, job_id: str) -> StoredJobDefinition:
 def rejects_wrong_version(definition: StoredJobDefinition, provider: ZoneProvider) -> bool:
     try:
         validate_zoned_cron(definition, provider)
-    except ZonePrototypeError as error:
+    except TimezoneError as error:
         return error.message == "timezone ruleset version mismatch"
     return False
 
@@ -57,6 +60,13 @@ def rejects_stale(backend: JobStore, original: ZoneProvider, shifted: ZoneProvid
         migrate_zoned_cron(backend, original, shifted, "synthetic-review-1", "future", 1, UtcInstant(1719813600000))
     except StoreConflictError as error:
         return error.expected_revision == 1 and error.actual_revision == 2
+    return False
+
+def rejects_resume_rewind(backend: JobStore, original: ZoneProvider, extended: ZoneProvider) -> bool:
+    try:
+        migrate_zoned_cron(backend, original, extended, "2026f", "fold", 4, UtcInstant(1767225599999))
+    except InvalidStoredJobError:
+        return True
     return False
 
 original: ZoneProvider = FixtureZoneProvider()
@@ -126,6 +136,31 @@ dispatch_store.close()
 terminal: SQLiteJobStore = open_sqlite_store(path)
 nox.test.assert_eq_str(dispatch_zoned_cron(terminal, handlers, original, "fold", UtcInstant(1729992600000)), "exhausted", "terminal record survives reopen and clock rewind")
 nox.test.assert_eq_int(read(terminal, "fold").revision, 4, "terminal read does not change revision")
+extended: ZoneProvider = IanaZoneProvider()
+nox.test.assert_true(rejects_resume_rewind(terminal, original, extended), "terminal resume cannot rewind observed time")
+nox.test.assert_eq_int(read(terminal, "fold").revision, 4, "invalid resume leaves the row untouched")
+migrate_zoned_cron(terminal, original, extended, "2026f", "fold", 4, UtcInstant(1767225600000))
+nox.test.assert_true(read(terminal, "fold").enabled, "operator explicitly resumes the exhausted record")
+nox.test.assert_eq_int(validate_zoned_cron(read(terminal, "fold"), extended).cursor.epoch_ms, 1767231000000, "extended coverage starts strictly after cutoff")
 terminal.close()
+
+resumed: SQLiteJobStore = open_sqlite_store(path)
+clock: FakeClock = FakeClock(1767231000000, 0)
+no_rules: PersistentScheduler = PersistentScheduler(resumed, handlers, clock, 1)
+no_rules.watch("fold")
+no_rules.start()
+nox.test.assert_eq_str(no_rules.tick()[0].status, "timezone-unavailable", "old constructor requires opt-in for zoned records")
+wrong_rules: PersistentScheduler = PersistentScheduler(resumed, handlers, clock, 1, shifted)
+wrong_rules.watch("fold")
+wrong_rules.start()
+nox.test.assert_eq_str(wrong_rules.tick()[0].status, "schedule-error", "mismatched rules cannot reinterpret a pending occurrence")
+nox.test.assert_eq_int(read(resumed, "fold").revision, 5, "missing or mismatched provider cannot consume a cursor")
+engine: PersistentScheduler = PersistentScheduler(resumed, handlers, clock, 1, extended)
+engine.watch("fold")
+engine.start()
+nox.test.assert_eq_int(engine.tick()[0].committed_revision, 6, "public scheduler commits the resumed occurrence")
+clock.set_utc_ms(1729989000000)
+nox.test.assert_eq_str(engine.tick()[0].status, "pending", "resumed record cannot replay an old fold")
+resumed.close()
 nox.fs.remove_file(path)
 print("zoned-cron-storage-ok")

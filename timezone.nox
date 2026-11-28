@@ -1,11 +1,11 @@
-from chronos.errors import TimeRangeError
+from chronos.errors import ChronosError, TimeRangeError
 from chronos.time import MAX_MS, UtcInstant
 
 OFFSET_LIMIT_SECONDS: int = 86400
 WALL_MARGIN_MS: int = 86400000
 MAX_TRANSITIONS: int = 512
 
-class ZonePrototypeError(Exception):
+class TimezoneError(ChronosError):
     pass
 
 class LocalWallTime:
@@ -33,9 +33,9 @@ class ZoneRules:
 
     def __init__(self, start_utc_ms: int, end_utc_ms: int, initial_offset_seconds: int, transitions: list[ZoneTransition]) -> None:
         if start_utc_ms < 0 or end_utc_ms < start_utc_ms or end_utc_ms > MAX_MS - WALL_MARGIN_MS:
-            raise ZonePrototypeError("invalid timezone coverage bounds")
+            raise TimezoneError("invalid timezone coverage bounds")
         if end_utc_ms - start_utc_ms <= 2 * WALL_MARGIN_MS or len(transitions) > MAX_TRANSITIONS:
-            raise ZonePrototypeError("invalid timezone table size or coverage")
+            raise TimezoneError("invalid timezone table size or coverage")
         _validate_offset(initial_offset_seconds)
         self.start_utc_ms = start_utc_ms
         self.end_utc_ms = end_utc_ms
@@ -44,7 +44,7 @@ class ZoneRules:
         previous_utc_ms: int = start_utc_ms
         for transition in transitions:
             if transition.utc_ms <= previous_utc_ms or transition.utc_ms >= end_utc_ms:
-                raise ZonePrototypeError("invalid timezone transition order")
+                raise TimezoneError("invalid timezone transition order")
             _validate_offset(transition.offset_seconds)
             self.transitions.append(ZoneTransition(transition.utc_ms, transition.offset_seconds))
             previous_utc_ms = transition.utc_ms
@@ -80,8 +80,8 @@ def select_occurrences(candidates: list[UtcInstant], fold_policy: str) -> list[U
 
 def validate_fold_policy(fold_policy: str) -> None:
     if fold_policy != "first" and fold_policy != "last" and fold_policy != "both" and fold_policy != "neither":
-        raise ZonePrototypeError("unknown timezone fold policy")
+        raise TimezoneError("unknown timezone fold policy")
 
 def _validate_offset(seconds: int) -> None:
     if seconds < -OFFSET_LIMIT_SECONDS or seconds > OFFSET_LIMIT_SECONDS:
-        raise ZonePrototypeError("timezone offset exceeds supported bound")
+        raise TimezoneError("timezone offset exceeds supported bound")

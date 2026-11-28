@@ -431,7 +431,9 @@ Faz 5 geliştirme kapsamı tamamlandı. Sürüm etiketi ve yayın kullanıcı on
 - [x] Sağlayıcıya açık bölge adı ve tzdata sürümü ver; prototipte makine locale’ından bölge türetme.
 - [x] Tzdata değişiminde eski kayıtları sürüme sabitle; açık UTC kesim anı ve revision kontrollü geçişi SQLite yeniden açma testiyle doğrula.
 - [x] Tek sahipli SQLite prototipinde Berlin’in iki fold anını ayrı çalıştır, yeniden açılışta ilkini tekrar oynatma ve kapsama bitişini kalıcılaştır. Nox 2.2.70 LLVM/QBE doğrulaması `scripts/verify_persistence.py` içinde.
-- [ ] Yerel cron kayıtları için desteklenen kalıcı dispatch yolu ve gerçek veri sağlayıcısını doğrula.
+- [x] Uygulamanın seçtiği IANA bölgelerini doğrulanmış 2026f arşivinden üret ve isteğe bağlı sağlayıcı ile `PersistentScheduler` üzerinden çalıştır.
+- [x] Berlin fold’u sırasında commit öncesi ve sonrası süreç kesintisini, kapsama bitişini ve aynı tzdata sürümünün genişletilmiş tablosuyla açık yeniden başlatmayı LLVM/QBE’de doğrula.
+- [ ] Faz 6 çıkışı için bağımsız mimari ve güvenlik incelemesini kaydet.
 
 ## PostgreSQL ve dağıtık koordinasyon
 
@@ -530,4 +532,4 @@ Kullanıcı onayı gereken sonraki adım:
 
 ## Sıradaki aktif iş
 
-Faz 6 / `0.6.0-dev`. Kalıcı yerel cron için tek sahipli dispatch prototipinden üretimde kullanılacak sürümlü IANA sağlayıcısına geç. Veri biçimini, kapsama sonundaki yeniden yapılandırmayı ve public scheduler entegrasyonunu doğrula.
+Faz 6 / `0.6.0-dev`. Sürümlü IANA sağlayıcısı ve tek sahipli kalıcı zoned cron doğrulandı. Sırada bağımsız mimari ve güvenlik incelemesi var. PostgreSQL ve dağıtık koordinasyon için ayrı onay gerekiyor.

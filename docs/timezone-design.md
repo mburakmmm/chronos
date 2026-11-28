@@ -1,6 +1,6 @@
-# Phase 6 timezone prototype
+# IANA zoned cron
 
-The internal prototype maps local civil fields to UTC candidates using bounded transition tables. It lives under `proofs/timezone`. The public scheduler in Chronos 0.5.0 uses UTC.
+Chronos 0.6.0-dev supports experimental zoned cron through the single-owner persistent scheduler. Applications generate and compile a bounded provider for the IANA zones and UTC years they need. The general cron parser and the default in-memory examples use UTC.
 
 ## Data and scope
 
@@ -16,13 +16,25 @@ noxc run --backend llvm proofs/timezone/resolve_probe.nox
 noxc run --backend qbe proofs/timezone/resolve_probe.nox
 ```
 
-## Resolution rules to verify
+## Generate an application provider
+
+Use the checksum-pinned archive above and put the generated Nox module in your application. Coverage ends at the start of the exclusive UTC end year.
+
+```sh
+python3 scripts/generate_timezone_fixture.py /path/to/tzdata2026f.tar.gz \
+  --zone Europe/Berlin --zone Europe/Istanbul --zone Australia/Lord_Howe \
+  --from-year 2024 --until-year 2031 > iana_rules.nox
+```
+
+The generator accepts up to 64 distinct explicit zone names, including IANA aliases in the pinned source, with a window of at most 100 years and up to 512 offset transitions per zone. At runtime the generated `IanaZoneProvider` is a Nox object. Chronos reads its version and zone rules without reading host tzdata or locale. Keep the exact generated module with the application's deployment artifacts and retain the old provider through migration. The example table covers the named zones from 2024 through 2030 UTC. [Persistent scheduler example](../examples/persistence/poll_zoned.nox)
+
+## Resolution rules
 
 - An ordinary local time resolves to one UTC instant.
 - A repeated local time returns UTC candidates in increasing order. An explicit policy selects the first, last, both or neither.
 - A nonexistent local time yields no candidates. Shift policies require separate definitions and tests.
 - Historical UTC offsets may include seconds, and changes can be smaller than one hour. Keep the full offset when resolving a calendar timestamp.
-- A ruleset revision changes the interpretation of future civil times. An eventual persistence format must record the zone, ruleset version and resolution policies. Reconciliation across versions needs an explicit migration.
+- A ruleset revision can change the interpretation of future civil times. Persistent zoned records store the zone, ruleset version and resolution policies. Reconcile versions with an explicit migration.
 
 ## Civil input and provider contract
 
@@ -40,7 +52,7 @@ LLVM and QBE agree at millisecond boundaries around Berlin gaps and folds, Lord 
 
 The prototype implements inclusive and exclusive UTC queries. It accepts references from the table's UTC start plus 48 hours through its UTC end minus 48 hours, exclusive. The same interval bounds returned occurrences and leaves enough rule coverage to classify ambiguous local times. Exhausting that interval returns `None`. Invalid references and matcher search exhaustion remain errors. Each query evaluates at most 2,048 local candidates.
 
-The proof covers all four fold policies, nonexistent times, increasing UTC order, Lord Howe's half-hour transitions, a local weekday that differs from the UTC weekday, and second-resolution offsets. Run it with `noxc run --backend llvm proofs/timezone/local_cron_probe.nox` or use `--backend qbe`. A general-purpose data provider and persisted zoned schedules still require validation.
+The proof covers all four fold policies, nonexistent times, increasing UTC order, Lord Howe's half-hour transitions, a local weekday that differs from the UTC weekday, and second-resolution offsets. Run it with `noxc run --backend llvm proofs/timezone/local_cron_probe.nox` or use `--backend qbe`.
 
 ## Manual scheduler integration proof
 
@@ -50,18 +62,20 @@ Registration requires complete coverage. If completion or a late tick moves to o
 
 Run `noxc run --backend llvm proofs/timezone/manual_scheduler_probe.nox` and repeat with `--backend qbe`.
 
-## Stored ruleset migration proof
+## Stored ruleset migration
 
 The internal `cron-cursor-zoned` kind uses the existing SQLite v2 definition row. Its payload is `version|zone|fold|gap|cursor-utc-ms|expression`. Reading the payload checks that the supplied provider advertises the pinned version and that the cursor is an eligible match under that version. Opening SQLite leaves the stored value intact.
 
 Migration is an explicit revision-checked write. It requires the old provider, the new provider, the new version, the current revision and an operator-selected UTC cutoff. Under the new rules, Chronos chooses the first eligible candidate strictly after the cutoff and at or after the old saved cursor. This avoids replay at or before the cutoff and prevents moving the pending cursor backward. Old pending occurrences may be dropped by that boundary. The contract is defined in UTC instants. A repeated civil label can resolve to a different UTC instant after a ruleset change.
 
-The zone, cron expression, fold and gap policies, handler and enabled state remain intact. A missing matching version, a stale revision or insufficient target coverage prevents the write. The reference providers must stay available for validation and review. The two-backend SQLite proof uses real `2026f` input and a synthetic revised provider to exercise the change without claiming a second IANA release. It verifies both the new cursor and the rejection path after reopening.
+Migration preserves the zone, cron expression, fold and gap policies, handler and enabled flag of a pending record. A missing matching version, stale revision or insufficient target coverage prevents the write. The proof exercises a version change with a synthetic revision, and extends an exhausted record with a second generated provider for the same `2026f` release.
 
-## Stored zoned dispatch proof
+When a record is exhausted, pass its revision, its original provider, the replacement provider and a UTC cutoff at or after the update that marked the row exhausted. The replacement may extend the same ruleset version or use another version. The write re-enables the definition at the first eligible UTC occurrence strictly after the cutoff. Retrying with a stale revision fails. Use a cutoff that the new provider covers.
 
-The internal `dispatch_zoned_cron` function loads one record and verifies the pinned ruleset and pending UTC occurrence. It accepts skip or fire-once misfires without retries. When a poll is due, it writes the next cursor after the observed UTC time using the current revision before invoking the trusted handler. A process exit after commit can lose that invocation. Earlier occurrences cannot be replayed by moving the wall clock backward.
+## Stored zoned dispatch
 
-When the rules have no later covered occurrence, dispatch commits an exhausted disabled record. The old payload remains available for inspection and further dispatch returns `exhausted`. Resuming after terminal exhaustion and loading general IANA coverage remain separate work.
+Pass the provider as the optional fifth argument to `PersistentScheduler`. On a zoned record, the scheduler verifies the pinned ruleset and pending UTC occurrence. It accepts skip or fire-once misfires without retries. When a poll is due, it writes the next cursor after the observed UTC time using the current revision before invoking the trusted handler. A process exit after commit can lose that invocation. Earlier occurrences cannot be replayed by moving the wall clock backward.
 
-Run `python3 scripts/verify_persistence.py` with Nox 2.2.70. The SQLite proof exercises both Berlin fold occurrences across a database reopen, clock rewind and persisted terminal exhaustion. The public persistent scheduler currently dispatches UTC jobs only.
+When the rules have no later covered occurrence, dispatch commits an exhausted disabled record. The old payload remains available for inspection and subsequent polls return `exhausted`. One poll may still run the last covered occurrence according to its misfire policy. The scheduler reports `timezone-unavailable` for a zoned record with no configured provider, and `schedule-error` for a provider version or zone mismatch.
+
+Run `python3 scripts/verify_persistence.py` with Nox 2.2.70. The SQLite tests reopen the database after both normal closure and process exit before commit, after commit or after a handler effect. They check fold ordering, clock rewind, persisted exhaustion and explicit resume with wider coverage.

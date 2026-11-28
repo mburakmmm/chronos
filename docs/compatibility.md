@@ -2,7 +2,7 @@
 
 Status: Phase 6 development compatibility baseline.
 
-Last verified locally: 2026-11-26
+Last verified locally: 2026-11-28
 
 ## Verified development target
 
@@ -13,7 +13,7 @@ Last verified locally: 2026-11-26
 | LLVM backend | Apple clang 21.0.0, arm64 target | full test/example matrix passed |
 | QBE backend | Nox-installed QBE toolchain | full test/example matrix passed |
 | Default profile | hosted | core, scheduler, examples, and `SystemClock` verified |
-| Freestanding profile | no clock capability | 17 clock-independent modules type-checked on LLVM and QBE |
+| Freestanding profile | no clock capability | 21 clock-independent modules type-checked on LLVM and QBE |
 
 The Phase 5 source release used Nox 2.1.111. Its [cross-platform run](https://github.com/mburakmmm/chronos/actions/runs/45267286106) records results for commit `24f970d`.
 
@@ -29,7 +29,7 @@ The Phase 5 source release used Nox 2.1.111. Its [cross-platform run](https://gi
 | Class-valued command channel and bounded worker stop | output `7` | output `7` |
 | Cooperative cancellation proof | output ends with `49995000` | output ends with `49995000` |
 | Cross-module Internal-name import proof | output `7`, `9` | output `7`, `9` |
-| Clock-independent freestanding modules | 17 checked | 17 checked |
+| Clock-independent freestanding modules | 21 checked | 21 checked |
 
 The QBE backend is single-threaded and cooperative, while LLVM uses the documented multi-core scheduler. The task-local sleep and bounded `Channel.wait(ms)` probes exercise cooperative suspension on both backends.
 
@@ -49,6 +49,7 @@ The following modules type-check with `--profile freestanding` on LLVM and QBE:
 - `handler_registry.nox`
 - `job.nox`
 - `job_codec.nox`
+- `local_cron.nox`
 - `persistent_scheduler.nox`
 - `policy.nox`
 - `registry.nox`
@@ -56,7 +57,10 @@ The following modules type-check with `--profile freestanding` on LLVM and QBE:
 - `store.nox`
 - `stored_cron.nox`
 - `stored_once.nox`
+- `stored_zoned_cron.nox`
 - `time.nox`
+- `timezone.nox`
+- `timezone_civil.nox`
 - `trigger.nox`
 
 `system_clock.nox` type-checks in the hosted profile. Its freestanding rejection is expected and explicit: `nox.time.now_ms()` and `nox.time.boot_ms()` require the unavailable `clock` capability. Pure scheduling calculation remains usable without that adapter.
@@ -84,6 +88,7 @@ The data-only `store.nox` module is part of the pure cross-platform matrix and d
 | Single-owner UTC cron cursor process termination and reopen | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
 | Persistent scheduler lifecycle, bounded outcomes and SQLite reopen | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
 | SQLite v1-to-v2 outcome migration, rollback and retention | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
+| Pinned zoned cron, process restart across a fold, and explicit coverage extension | Nox 2.2.70 | LLVM/QBE passed | isolated CI job configured |
 
 SQLite runtime evidence covers macOS arm64 and the isolated Linux x64 CI job. The suite covers rollback and retry of the v1-to-v2 migration. Power-loss recovery, concurrent schedulers and SQLite support on other targets require separate verification.
 

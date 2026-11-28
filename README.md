@@ -40,9 +40,9 @@ Chronos is a Nox-native library for deterministic UTC scheduling, monotonic time
 | Nyx/Aether integration examples | Verified separately | Request-driven manual polling; no core dependency or background claim |
 | Nox package dependency consumption | Experimental | Git dependency under the canonical `chronos` alias on Nox 2.2.70 |
 | Background scheduler | Deferred | Runtime primitives are proven; full worker ownership is not |
-| IANA time zones and DST | Deferred | Current cron and calendar behavior is UTC-only |
+| IANA zoned cron | Experimental | Optional version-pinned, application-generated rules for the single-owner persistent scheduler |
 | SQLite definition store | Experimental | Single-owner, revision-checked adapter |
-| Persistent scheduler | Experimental | Application-driven polling for watched UTC one-shot and cron definitions |
+| Persistent scheduler | Experimental | Application-driven polling for watched UTC one-shot, UTC cron and opt-in IANA zoned cron definitions |
 | Stored UTC one-shot dispatch | Experimental | At most one callback start per armed record through the single-owner SQLite path |
 | Stored UTC cron dispatch | Experimental | Commit the next occurrence before invoking a callback through the single-owner SQLite path |
 | Durable scheduling and distributed coordination | Deferred | Definition reopen is proven, but no restart/delivery guarantee exists |
@@ -120,7 +120,7 @@ An active handler is allowed to return; shutdown starts no later due, catch-up, 
 
 ## Time and policy defaults
 
-- Calendar schedules and cron expressions are UTC-only.
+- Core calendar and cron scheduling uses UTC. The optional persistent scheduler can resolve explicitly named IANA zones with an application-generated ruleset. [IANA provider and DST policies](docs/timezone-design.md)
 - Cron uses `minute hour day-of-month month day-of-week` with Sunday `0`.
 - Restricted day-of-month and day-of-week fields use traditional OR semantics.
 - Recurring next-fire calculation is strictly after the reference.
@@ -141,11 +141,11 @@ Every push and pull request runs the same release-quality matrix on GitHub-hoste
 | macOS | arm64 | LLVM and QBE |
 | Windows | x64 | LLVM and QBE |
 
-The matrix runs 21 deterministic tests, 16 core examples, 15 runtime/capability proofs, 17 freestanding module checks and three benchmark source type-checks with checksum-pinned Nox 2.2.70 archives. See [compatibility](docs/compatibility.md) for evidence and [capabilities](docs/capabilities.md) for the Nox API proofs.
+The matrix runs 21 deterministic tests, 16 core examples, 15 runtime/capability proofs, 21 freestanding module checks and three benchmark source type-checks with checksum-pinned Nox 2.2.70 archives. See [compatibility](docs/compatibility.md) for evidence and [capabilities](docs/capabilities.md) for the Nox API proofs.
 
 A separate Linux x64 CI job verifies Chronos as a Git dependency and runs the optional Nyx `v0.29.0` and Aether `v0.12.0` integrations on LLVM and QBE. See [framework integrations](docs/integrations.md).
 
-An isolated Linux x64 job verifies SQLite definition storage and process restart for UTC one-shot and cron delivery on LLVM and QBE. See [delivery guarantees](docs/persistence.md#at-most-once-utc-one-shot-dispatch).
+An isolated Linux x64 job verifies SQLite definition storage and process restart for UTC one-shot, UTC cron and zoned cron delivery on LLVM and QBE. See [delivery guarantees](docs/persistence.md#persistent-scheduler-lifecycle).
 
 Run the complete local matrix with:
 

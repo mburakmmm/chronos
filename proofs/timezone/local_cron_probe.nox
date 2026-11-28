@@ -1,9 +1,9 @@
 import nox.test
 from chronos.errors import TimeRangeError
-from proofs.timezone.civil import ZoneProvider
+from chronos.timezone_civil import ZoneProvider
 from proofs.timezone.fixture import FixtureZoneProvider
-from proofs.timezone.local_cron import LocalCronPrototype
-from proofs.timezone.model import ZonePrototypeError, ZoneRules
+from chronos.local_cron import LocalCronSchedule
+from chronos.timezone import TimezoneError, ZoneRules
 from chronos.time import UtcInstant
 from chronos.trigger import UtcTrigger
 
@@ -21,8 +21,8 @@ def rejects_reference(trigger_view: UtcTrigger, utc_ms: int) -> bool:
 
 def rejects_policy(provider: ZoneProvider, version: str, fold: str, gap: str) -> bool:
     try:
-        LocalCronPrototype(provider, version, "Europe/Berlin", "* * * * *", fold, gap)
-    except ZonePrototypeError:
+        LocalCronSchedule(provider, version, "Europe/Berlin", "* * * * *", fold, gap)
+    except TimezoneError:
         return True
     return False
 
@@ -35,34 +35,34 @@ class SyntheticZoneProvider:
         return ZoneRules(0, 864000000, 45, [])
 
 provider: ZoneProvider = FixtureZoneProvider()
-berlin_both: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "both", "skip")
+berlin_both: UtcTrigger = LocalCronSchedule(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "both", "skip")
 require_match(berlin_both.next_fire_at_or_after(UtcInstant(1729987200000)), 1729987200000)
 require_match(berlin_both.next_fire_after(UtcInstant(1729987200000)), 1729987260000)
 require_match(berlin_both.next_fire_after(UtcInstant(1729990740000)), 1729990800000)
 require_match(berlin_both.next_fire_after(UtcInstant(1729990800000)), 1729990860000)
 
-berlin_first: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "first", "skip")
+berlin_first: UtcTrigger = LocalCronSchedule(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "first", "skip")
 require_match(berlin_first.next_fire_after(UtcInstant(1729987199999)), 1729987200000)
 require_match(berlin_first.next_fire_after(UtcInstant(1729990740000)), 1729994400000)
-berlin_last: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "last", "skip")
+berlin_last: UtcTrigger = LocalCronSchedule(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "last", "skip")
 require_match(berlin_last.next_fire_after(UtcInstant(1729987199999)), 1729990800000)
-berlin_neither: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "neither", "skip")
+berlin_neither: UtcTrigger = LocalCronSchedule(provider, "2026f", "Europe/Berlin", "* 2,3 * * *", "neither", "skip")
 require_match(berlin_neither.next_fire_after(UtcInstant(1729987199999)), 1729994400000)
 
-spring: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "30 2 * * *", "both", "skip")
+spring: UtcTrigger = LocalCronSchedule(provider, "2026f", "Europe/Berlin", "30 2 * * *", "both", "skip")
 require_match(spring.next_fire_after(UtcInstant(1711846799999)), 1711931400000)
-half_hour: UtcTrigger = LocalCronPrototype(provider, "2026f", "Australia/Lord_Howe", "45 1 * * *", "both", "skip")
+half_hour: UtcTrigger = LocalCronSchedule(provider, "2026f", "Australia/Lord_Howe", "45 1 * * *", "both", "skip")
 require_match(half_hour.next_fire_after(UtcInstant(1712414699999)), 1712414700000)
 require_match(half_hour.next_fire_after(UtcInstant(1712414700000)), 1712416500000)
-half_gap: UtcTrigger = LocalCronPrototype(provider, "2026f", "Australia/Lord_Howe", "15,30 2 * * *", "both", "skip")
+half_gap: UtcTrigger = LocalCronSchedule(provider, "2026f", "Australia/Lord_Howe", "15,30 2 * * *", "both", "skip")
 require_match(half_gap.next_fire_after(UtcInstant(1728142199999)), 1728142200000)
-local_sunday: UtcTrigger = LocalCronPrototype(provider, "2026f", "Australia/Lord_Howe", "0 0 * * 0", "both", "skip")
+local_sunday: UtcTrigger = LocalCronSchedule(provider, "2026f", "Australia/Lord_Howe", "0 0 * * 0", "both", "skip")
 require_match(local_sunday.next_fire_after(UtcInstant(1712408399999)), 1712408400000)
 
-second_offset: UtcTrigger = LocalCronPrototype(SyntheticZoneProvider(), "synthetic", "test", "* * * * *", "both", "skip")
+second_offset: UtcTrigger = LocalCronSchedule(SyntheticZoneProvider(), "synthetic", "test", "* * * * *", "both", "skip")
 require_match(second_offset.next_fire_after(UtcInstant(172800000)), 172815000)
 
-out_of_season: UtcTrigger = LocalCronPrototype(provider, "2026f", "Europe/Berlin", "30 2 31 3 *", "both", "skip")
+out_of_season: UtcTrigger = LocalCronSchedule(provider, "2026f", "Europe/Berlin", "30 2 31 3 *", "both", "skip")
 nox.test.assert_true(out_of_season.next_fire_after(UtcInstant(1766534400000)) is None, "coverage exhaustion is explicit")
 nox.test.assert_true(berlin_both.next_fire_after(UtcInstant(1767052799999)) is None, "exclusive final millisecond has no later coverage")
 nox.test.assert_true(rejects_reference(berlin_both, 1767052800000), "coverage end is exclusive")

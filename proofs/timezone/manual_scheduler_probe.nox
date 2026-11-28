@@ -4,7 +4,7 @@ from chronos.errors import TimeRangeError
 from chronos.job import Job, JobContext, make_utc_job_with_policies
 from chronos.policy import JobPolicies, catch_up_misfires, default_job_policies, forbid_overlap, no_retry
 from proofs.timezone.fixture import FixtureZoneProvider
-from proofs.timezone.local_cron import LocalCronPrototype, ManualLocalCronTrigger
+from chronos.local_cron import LocalCronSchedule, ManualLocalCronTrigger
 from chronos.scheduler import Scheduler, TickResult
 from chronos.time import Duration, UtcInstant
 
@@ -23,7 +23,7 @@ def record_into(observed: Observation) -> (JobContext) -> None:
     return record
 
 def make_local(expression: str, observed: Observation, policies: JobPolicies) -> Job:
-    prototype: LocalCronPrototype = LocalCronPrototype(FixtureZoneProvider(), "2026f", "Europe/Berlin", expression, "both", "skip")
+    prototype: LocalCronSchedule = LocalCronSchedule(FixtureZoneProvider(), "2026f", "Europe/Berlin", expression, "both", "skip")
     return make_utc_job_with_policies("local", "Local cron proof", ManualLocalCronTrigger(prototype), record_into(observed), True, UtcInstant(0), [], policies)
 
 def verify_next(engine: Scheduler, expected: int) -> None:

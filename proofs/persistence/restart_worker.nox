@@ -1,16 +1,20 @@
 import nox.fs
 import nox.os
 import nox.test
+from chronos.clock import FakeClock
 from chronos.errors import InvalidStoredJobError
 from chronos.handler_registry import HandlerRegistry
 from chronos.job import JobContext
 from chronos.job_codec import encode_once_utc, encode_policies
+from chronos.persistent_scheduler import PersistentScheduler
 from chronos.policy import JobPolicies, default_job_policies, forbid_overlap, no_retry, skip_misfires
 from chronos.sqlite_store import SQLiteJobStore, open_sqlite_store
 from chronos.store import JobStore, StoredJobDefinition, make_stored_job_definition
 from chronos.stored_cron import STORED_CRON_KIND, dispatch_stored_cron, encode_stored_cron
 from chronos.stored_once import dispatch_stored_once
+from chronos.stored_zoned_cron import ZONED_CRON_KIND, encode_zoned_cron
 from chronos.time import Duration, UtcInstant
+from examples.persistence.iana_rules import IanaZoneProvider
 
 class InterruptedStore:
     backend: SQLiteJobStore
@@ -62,6 +66,7 @@ database_path: str = nox.os.arg(1)
 effect_path: str = nox.os.arg(2)
 mode: str = nox.os.arg(3)
 recurring: bool = nox.os.arg_count() > 5 and nox.os.arg(5) == "cron"
+zoned: bool = nox.os.arg_count() > 5 and nox.os.arg(5) == "zoned"
 sqlite: SQLiteJobStore = open_sqlite_store(database_path)
 backend: JobStore = InterruptedStore(sqlite, mode)
 try:
@@ -76,6 +81,9 @@ try:
             trigger_config = encode_stored_cron("* * * * *", UtcInstant(1000))
             if mode == "init-invalid":
                 trigger_config = "60001|* * * * *"
+        if zoned:
+            kind = ZONED_CRON_KIND
+            trigger_config = encode_zoned_cron(IanaZoneProvider(), "2026f", "Europe/Berlin", "30 2 * * *", "both", "skip", UtcInstant(1729989000000))
         backend.put(make_stored_job_definition("fixture", "Restart fixture", "example", "public", kind, trigger_config, encode_policies(policies), True, UtcInstant(100), UtcInstant(200), 1), 0)
     else:
         handlers: HandlerRegistry = HandlerRegistry()
@@ -89,6 +97,12 @@ try:
                 if mode != "invalid":
                     raise error
                 result = error.message
+        elif zoned:
+            engine: PersistentScheduler = PersistentScheduler(backend, handlers, FakeClock(now.epoch_ms, 0), 1, IanaZoneProvider())
+            engine.watch("fixture")
+            engine.start()
+            result = engine.tick()[0].status
+            engine.stop()
         else:
             result = dispatch_stored_once(backend, handlers, "fixture", now)
         record: StoredJobDefinition | None = backend.load("fixture")

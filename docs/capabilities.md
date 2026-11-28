@@ -1,6 +1,6 @@
 # Nox capability matrix
 
-Last updated 2026-11-26.
+Last updated 2026-11-28.
 Chronos phase 6 (`0.6.0-dev`).
 
 This document separates documentation findings from executable verification. A documented API is not marked fully verified until an appropriate Chronos proof of concept compiles and runs.
@@ -40,7 +40,7 @@ This document separates documentation findings from executable verification. A d
 | `Instant.elapsed_ms()` | Monotonic elapsed milliseconds | verified on LLVM/QBE |
 | `nox.time.boot_ms()` | Monotonic counter including device suspend | difference measurement verified on LLVM/QBE; physical suspend not emulated |
 | `nox.time.sleep_ms(ms)` | Outside a task it blocks the thread; inside an async task Nox 2.1.98 suspends only that fiber | latest two-task probe verified on LLVM/QBE |
-| Time zones | Not provided by documented `nox.time` | missing; UTC-only MVP |
+| Time zones | `nox.time` calendar conversion is UTC | opt-in Chronos rules derived from IANA tables and verified with Nox 2.2.70 LLVM/QBE |
 | Clock capability | Clock-reading APIs unavailable in freestanding profile | pure calendar accepted and clock APIs rejected with `CapabilityNotGranted` |
 
 The documented suspend behavior of `Instant` differs by platform, while `boot_ms()` includes suspend time on documented platforms. Chronos delay semantics will be fixed only after the clock POCs and design decision are complete.
@@ -86,6 +86,12 @@ The documented suspend behavior of `Instant` differs by platform, while `boot_ms
 | `nox.sqlite` | File-backed open/reopen, prepared statements, rows, explicit SQL transactions | verified with Nox 2.1.111 on LLVM/QBE; adapter and crash semantics pending |
 
 ## Evidence log
+
+### P6-TZ-001 — generated IANA provider and durable zoned cursor
+
+The provider generator compiles checksum-pinned IANA 2026f data with tzcode 2022g and checks offsets against Python `zoneinfo` from the compiled files. It reproduced the checked-in tables byte-for-byte. Nox 2.2.70 LLVM/QBE verified explicit named-zone lookup, a 2030 Berlin fold, Istanbul's UTC mapping and an optional `ZoneProvider` protocol in `PersistentScheduler`. The Nox scheduler and provider use no host timezone, filesystem or network calls. SQLite is the optional hosted adapter.
+
+The SQLite verifier interrupted the process on both sides of cursor commit and after a callback effect. It also reopens an exhausted record, rejects an earlier resume cutoff and advances the record with a wider provider for the same ruleset. Reproduce with `python3 scripts/verify_persistence.py`. [Provider and delivery contract](timezone-design.md)
 
 ### P0-PKG-001 — dependency namespace layout
 

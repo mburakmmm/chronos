@@ -22,6 +22,7 @@ FREESTANDING_MODULES = (
     "handler_registry.nox",
     "job.nox",
     "job_codec.nox",
+    "local_cron.nox",
     "persistent_scheduler.nox",
     "policy.nox",
     "registry.nox",
@@ -29,7 +30,10 @@ FREESTANDING_MODULES = (
     "store.nox",
     "stored_cron.nox",
     "stored_once.nox",
+    "stored_zoned_cron.nox",
     "time.nox",
+    "timezone.nox",
+    "timezone_civil.nox",
     "trigger.nox",
 )
 PROOF_EXPECTATIONS = {

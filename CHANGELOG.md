@@ -15,6 +15,7 @@ The project uses Semantic Versioning, including explicit documentation of breaki
 - Manual scheduler integration proof for local cron, including clock rollback, bounded catch-up and terminal coverage exhaustion.
 - Internal SQLite proof for pinning zoned cron records to a ruleset and migrating their UTC cursor explicitly.
 - Internal SQLite dispatch proof that consumes zoned cron cursors before callback invocation and records terminal coverage exhaustion across reopen.
+- Experimental zoned cron support in `PersistentScheduler` with optional application-generated IANA 2026f providers. Exhausted records can resume through an explicit revision-checked migration to a wider coverage window.
 
 ## 0.5.0 — 2026-11-24
 

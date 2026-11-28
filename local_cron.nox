@@ -1,13 +1,13 @@
 from chronos.cron import CronSchedule, MINUTE_MS, parse
 from chronos.errors import CronSearchLimitError, TimeRangeError
-from proofs.timezone.civil import ZoneProvider, rules_for_version
-from proofs.timezone.model import LocalWallTime, WALL_MARGIN_MS, ZonePrototypeError, ZoneRules, ZoneTransition, validate_fold_policy
+from chronos.timezone_civil import ZoneProvider, rules_for_version
+from chronos.timezone import LocalWallTime, WALL_MARGIN_MS, TimezoneError, ZoneRules, ZoneTransition, validate_fold_policy
 from chronos.time import UtcInstant
 
 MAX_LOCAL_CANDIDATES: int = 2048
 MAX_CALENDAR_END_UTC_MS: int = 253402300800000
 
-class LocalCronPrototype:
+class LocalCronSchedule:
     rules: ZoneRules
     schedule: CronSchedule
     fold_policy: str
@@ -15,10 +15,10 @@ class LocalCronPrototype:
     def __init__(self, provider: ZoneProvider, version: str, zone_name: str, expression: str, fold_policy: str, gap_policy: str) -> None:
         validate_fold_policy(fold_policy)
         if gap_policy != "skip":
-            raise ZonePrototypeError("unsupported timezone gap policy")
+            raise TimezoneError("unsupported timezone gap policy")
         selected: ZoneRules = rules_for_version(provider, version, zone_name)
         if selected.end_utc_ms > MAX_CALENDAR_END_UTC_MS or selected.end_utc_ms - selected.start_utc_ms <= 4 * WALL_MARGIN_MS:
-            raise ZonePrototypeError("invalid local cron coverage")
+            raise TimezoneError("invalid local cron coverage")
         self.rules = selected
         self.schedule = parse(expression)
         self.fold_policy = fold_policy
@@ -93,9 +93,9 @@ class LocalCronPrototype:
         return False
 
 class ManualLocalCronTrigger:
-    prototype: LocalCronPrototype
+    prototype: LocalCronSchedule
 
-    def __init__(self, prototype: LocalCronPrototype) -> None:
+    def __init__(self, prototype: LocalCronSchedule) -> None:
         self.prototype = prototype
 
     def next_fire_after(self, reference: UtcInstant) -> UtcInstant | None:

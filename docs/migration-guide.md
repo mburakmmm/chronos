@@ -8,6 +8,8 @@ Chronos follows Semantic Versioning. The `v0.5.0` tag is a source release. The `
 
 Use the Nox 2.2.70 verification baseline and update application imports to `chronos.*`, including when building from a Chronos checkout. Consumers can fetch a pinned development commit using the canonical `chronos` dependency alias. See [integration manifests](integrations.md) and [the remaining alias limitation](../NOX_LIMITATIONS.md#nxl-007--a-package-cannot-use-one-internal-import-form-in-both-its-own-project-and-a-consumer).
 
+Existing SQLite schemas and four-argument `PersistentScheduler` calls continue to work. To use zoned cron, compile a generated provider and pass it as the fifth argument. Keep the provider that matches stored records until migration finishes. [Generation, exhaustion and migration](timezone-design.md)
+
 ## Development boundaries
 
 | Boundary | Representative commit | Manifest version | Meaning |
