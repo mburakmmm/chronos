@@ -51,6 +51,6 @@ NOX_HOME=/tmp/chronos-integration-home python3 scripts/verify_integrations.py
 
 The first run requires network access to fetch the locked framework commits. The verifier requires Nox 2.2.70, verifies the resolved revisions and runs both examples on LLVM and QBE.
 
-The verifier commits unchanged working-tree Chronos modules to a temporary Git repository. Each consumer uses `noxc fetch` to load the resulting commit under the `chronos` alias. It exercises an independent cron and scheduler consumer and both framework consumers. Alternate aliases remain unverified for support because the renamed consumer reproduces a duplicate `Clock` protocol. Reproduce with `python3 scripts/verify_integrations.py --consumer-alias schedulelib`.
+The verifier commits unchanged working-tree Chronos modules to a temporary Git repository. Each consumer uses `noxc fetch` to load the resulting commit under the `chronos` alias. It exercises an independent cron and scheduler consumer and both framework consumers. A renamed dependency alias produces a duplicate `Clock` protocol on Nox 2.2.107 LLVM and QBE. Run `python3 scripts/reproduce_package_alias.py` with the installed compiler for the standalone reproduction. [NXL-007](../NOX_LIMITATIONS.md#nxl-007--a-package-cannot-use-one-internal-import-form-in-both-its-own-project-and-a-consumer)
 
 The examples are compiled and executed without starting a server or opening a socket. They validate the complete adapter functions through Nox code generation, not live HTTP timing or multi-worker behavior.

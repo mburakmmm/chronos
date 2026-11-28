@@ -1,0 +1,18 @@
+import nox.tasks
+import nox.time
+
+async def work() -> None:
+    try:
+        while True:
+            nox.tasks.checkpoint()
+            nox.time.sleep_ms(0)
+    except CancelledError:
+        print("cancelled at checkpoint")
+
+async def run() -> None:
+    task: Task[None] = spawn work()
+    task.cancel()
+    await task
+
+main_task: Task[None] = spawn run()
+await main_task
